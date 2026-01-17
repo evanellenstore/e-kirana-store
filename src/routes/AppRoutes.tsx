@@ -6,6 +6,9 @@ import RequireAuth from '../auth/RequireAuth';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import Reports from '../pages/admin/Reports';
 import Users from '../pages/admin/Users';
+import FromPurchase from '../pages/admin/FromPurchase';
+import AdminProduct from '../pages/admin/AdminProduct';
+import AdminInventory from '../pages/admin/AdminInventory';
 
 import ShopkeeperDashboard from '../pages/shopkeeper/ShopkeeperDashboard';
 import Products from '../pages/shopkeeper/Products';
@@ -49,6 +52,30 @@ const AppRoutes: React.FC = () => (
       element={
         <RequireAuth roles={['ADMIN']}>
           <Users />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/from-purchase"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <FromPurchase />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/admin-products"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminProduct />
+        </RequireAuth>
+      }
+    />
+      <Route
+      path="/admin/admin-inventory"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminInventory />
         </RequireAuth>
       }
     />
