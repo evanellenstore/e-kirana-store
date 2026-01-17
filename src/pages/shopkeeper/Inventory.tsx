@@ -1,171 +1,157 @@
 import React, { useEffect, useState } from "react";
-import { Container, Card, Row, Col, Form, Button, Spinner } from "react-bootstrap";
 import {
-  getInventory,
-  adjustInventory,
-  reserveInventory,
-  releaseInventory,
-  type InventoryStatus
-} from "../../services/inventoryService";
+  Table,
+  Spinner,
+  Card,
+  Badge,
+  Form,
+  InputGroup
+} from "react-bootstrap";
+import api from "../../services/api";
 
-const InventoryPage: React.FC = () => {
-  const PRODUCT_ID = 1; // later make dynamic
+interface InventoryRow {
+  productId: number;
+  reservedQty: number;
+  availableQty: number;
+  productName?: string;
+  sku?: string;
+}
 
-  const [inventory, setInventory] = useState<InventoryStatus | null>(null);
+const LOW_STOCK_LIMIT = 10;
+
+const Inventory: React.FC = () => {
+  const [data, setData] = useState<InventoryRow[]>([]);
+  const [filteredData, setFilteredData] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [quantity, setQuantity] = useState(0);
-  const [remarks, setRemarks] = useState("");
-  const [referenceId, setReferenceId] = useState("");
-
-  const loadInventory = () => {
-    setLoading(true);
-    getInventory(PRODUCT_ID)
-      .then(res => setInventory(res.data))
-      .finally(() => setLoading(false));
-  };
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
+    const loadInventory = async () => {
+      try {
+        const inventoryRes = await api.get("/inventory");
+        const inventoryData: InventoryRow[] = inventoryRes.data;
+
+        const enrichedData = await Promise.all(
+          inventoryData.map(async (item) => {
+            try {
+              const productRes = await api.get(`/products/${item.productId}`);
+              return {
+                ...item,
+                productName: productRes.data.name,
+                sku: productRes.data.sku
+              };
+            } catch {
+              return {
+                ...item,
+                productName: "Unknown",
+                sku: "N/A"
+              };
+            }
+          })
+        );
+
+        setData(enrichedData);
+        setFilteredData(enrichedData);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadInventory();
   }, []);
 
+  /* 🔍 Search filter */
+  useEffect(() => {
+    const q = search.toLowerCase();
+    setFilteredData(
+      data.filter(
+        d =>
+          d.productName?.toLowerCase().includes(q) ||
+          d.sku?.toLowerCase().includes(q)
+      )
+    );
+  }, [search, data]);
+
   if (loading) {
-    return <div className="text-center mt-5"><Spinner /></div>;
+    return (
+      <div className="text-center mt-5">
+        <Spinner animation="border" />
+        <div className="mt-2 text-muted">Loading inventory...</div>
+      </div>
+    );
   }
 
   return (
-    <Container className="mt-4">
-      <h3 className="text-center mb-4">📦 Inventory Management</h3>
+    <Card className="shadow-sm mt-4">
+      <Card.Body>
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <Card.Title className="mb-0">📦 Inventory Overview</Card.Title>
 
-      {/* Inventory Status */}
-      {inventory && (
-        <Row className="mb-4">
-          <Col md={6}>
-            <Card bg="success" text="white">
-              <Card.Body>
-                <Card.Title>Available Quantity</Card.Title>
-                <h2>{inventory.availableQty}</h2>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={6}>
-            <Card bg="warning">
-              <Card.Body>
-                <Card.Title>Reserved Quantity</Card.Title>
-                <h2>{inventory.reservedQty}</h2>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      )}
+          <InputGroup style={{ maxWidth: 300 }}>
+            <Form.Control
+              placeholder="Search SKU / Product"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </InputGroup>
+        </div>
 
-      {/* Adjust Inventory */}
-      <Card className="mb-3">
-        <Card.Header>Adjust Inventory (IN / OUT)</Card.Header>
-        <Card.Body>
-          <Form className="row g-2">
-            <Col md={3}>
-              <Form.Control
-                type="number"
-                placeholder="Quantity"
-                onChange={e => setQuantity(+e.target.value)}
-              />
-            </Col>
-            <Col md={5}>
-              <Form.Control
-                placeholder="Remarks"
-                onChange={e => setRemarks(e.target.value)}
-              />
-            </Col>
-            <Col md={2}>
-              <Button
-                variant="success"
-                onClick={() =>
-                  adjustInventory(PRODUCT_ID, quantity, "IN", remarks).then(loadInventory)
-                }
-              >
-                IN
-              </Button>
-            </Col>
-            <Col md={2}>
-              <Button
-                variant="danger"
-                onClick={() =>
-                  adjustInventory(PRODUCT_ID, quantity, "OUT", remarks).then(loadInventory)
-                }
-              >
-                OUT
-              </Button>
-            </Col>
-          </Form>
-        </Card.Body>
-      </Card>
+        <Table bordered hover responsive className="align-middle">
+          <thead className="table-light">
+            <tr>
+              <th>SKU</th>
+              <th>Product Name</th>
+              <th className="text-center">Reserved</th>
+              <th className="text-center">Available</th>
+              <th className="text-center">Status</th>
+            </tr>
+          </thead>
 
-      {/* Reserve Inventory */}
-      <Card className="mb-3">
-        <Card.Header>Reserve Inventory</Card.Header>
-        <Card.Body>
-          <Form className="row g-2">
-            <Col md={3}>
-              <Form.Control
-                type="number"
-                placeholder="Quantity"
-                onChange={e => setQuantity(+e.target.value)}
-              />
-            </Col>
-            <Col md={5}>
-              <Form.Control
-                placeholder="Reference ID (ORDER-1001)"
-                onChange={e => setReferenceId(e.target.value)}
-              />
-            </Col>
-            <Col md={4}>
-              <Button
-                variant="primary"
-                onClick={() =>
-                  reserveInventory(PRODUCT_ID, quantity, referenceId).then(loadInventory)
-                }
-              >
-                Reserve
-              </Button>
-            </Col>
-          </Form>
-        </Card.Body>
-      </Card>
+          <tbody>
+            {filteredData.map(item => {
+              const isLowStock = item.availableQty <= LOW_STOCK_LIMIT;
 
-      {/* Release Inventory */}
-      <Card>
-        <Card.Header>Release Inventory</Card.Header>
-        <Card.Body>
-          <Form className="row g-2">
-            <Col md={3}>
-              <Form.Control
-                type="number"
-                placeholder="Quantity"
-                onChange={e => setQuantity(+e.target.value)}
-              />
-            </Col>
-            <Col md={5}>
-              <Form.Control
-                placeholder="Reference ID (ORDER-1001)"
-                onChange={e => setReferenceId(e.target.value)}
-              />
-            </Col>
-            <Col md={4}>
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  releaseInventory(PRODUCT_ID, quantity, referenceId).then(loadInventory)
-                }
-              >
-                Release
-              </Button>
-            </Col>
-          </Form>
-        </Card.Body>
-      </Card>
-    </Container>
+              return (
+                <tr
+                  key={item.productId}
+                  className={isLowStock ? "table-warning" : ""}
+                >
+                  <td className="fw-semibold">{item.sku}</td>
+                  <td>{item.productName}</td>
+
+                  <td className="text-center">
+                    <Badge bg="secondary">
+                      {item.reservedQty}
+                    </Badge>
+                  </td>
+
+                  <td className="text-center fw-bold">
+                    {item.availableQty}
+                  </td>
+
+                  <td className="text-center">
+                    {isLowStock ? (
+                      <Badge bg="danger">Low Stock</Badge>
+                    ) : (
+                      <Badge bg="success">In Stock</Badge>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {filteredData.length === 0 && (
+              <tr>
+                <td colSpan={5} className="text-center text-muted py-4">
+                  No inventory items found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </Card.Body>
+    </Card>
   );
 };
 
-export default InventoryPage;
+export default Inventory;

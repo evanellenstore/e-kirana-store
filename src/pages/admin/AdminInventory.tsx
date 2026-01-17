@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import { Container, Button, Card } from "react-bootstrap";
 import InventoryEntry from "./AdminInventoryEntry";
 import InventoryList from "./AdminInventoryList";
+import InventoryEdit from "./AdminInventoryEdit";
 
-type ViewMode = "LIST" | "ADD";
+type ViewMode = "LIST" | "ADD" | "EDIT";
 
 const AdminInventory: React.FC = () => {
   const [view, setView] = useState<ViewMode>("LIST");
@@ -19,7 +20,7 @@ const AdminInventory: React.FC = () => {
             variant={view === "LIST" ? "primary" : "outline-primary"}
             onClick={() => setView("LIST")}
           >
-            Inventory Details
+           👁️ Inventory Details
           </Button>
 
           <Button
@@ -27,6 +28,13 @@ const AdminInventory: React.FC = () => {
             onClick={() => setView("ADD")}
           >
             ➕ Add Inventory
+          </Button>
+
+          <Button
+            variant={view === "EDIT" ? "success" : "outline-success"}
+            onClick={() => setView("EDIT")}
+          >
+            ✏️ Edit Inventory
           </Button>
         </div>
       </div>
@@ -36,6 +44,7 @@ const AdminInventory: React.FC = () => {
         <Card.Body>
           {view === "LIST" && <InventoryList />}
           {view === "ADD" && <InventoryEntry />}
+          {view === "EDIT" && <InventoryEdit />}
         </Card.Body>
       </Card>
     </Container>
