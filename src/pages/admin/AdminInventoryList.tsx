@@ -19,7 +19,7 @@ interface InventoryRow {
 
 const LOW_STOCK_LIMIT = 10;
 
-const Inventory: React.FC = () => {
+const InventoryList: React.FC = () => {
   const [data, setData] = useState<InventoryRow[]>([]);
   const [filteredData, setFilteredData] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,4 +154,4 @@ const Inventory: React.FC = () => {
   );
 };
 
-export default Inventory;
+export default InventoryList;
