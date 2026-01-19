@@ -50,6 +50,7 @@ const AdminInventoryEntry: React.FC = () => {
   const [quantity, setQuantity] = useState(0);
   const [remarks, setRemarks] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [expiryDate, setExpiryDate] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
@@ -102,11 +103,11 @@ const AdminInventoryEntry: React.FC = () => {
   /* ---------- SUBMIT ---------- */
   const handleSubmit = () => {
     if (!product || product.id == null || !confirmed || quantity <= 0) return;
-
     adjustInventory(product.id, {
       quantity,
       type: "IN",
-      remarks
+      remarks,
+      expiryDate: expiryDate ?? null
     }).then(() => {
       setSuccess("✅ Inventory updated successfully");
       resetForm();
@@ -122,6 +123,7 @@ const AdminInventoryEntry: React.FC = () => {
     setQuantity(0);
     setRemarks("");
     setConfirmed(false);
+  setExpiryDate(null);
   };
 
   return (
@@ -223,6 +225,16 @@ const AdminInventoryEntry: React.FC = () => {
               placeholder="Initial stock"
               value={remarks}
               onChange={e => setRemarks(e.target.value)}
+            />
+          </Form.Group>
+
+          {/* EXPIRY DATE */}
+          <Form.Group className="mb-3">
+            <Form.Label>Expiry Date (optional)</Form.Label>
+            <Form.Control
+              type="date"
+              value={expiryDate ?? ""}
+              onChange={e => setExpiryDate(e.target.value || null)}
             />
           </Form.Group>
 
