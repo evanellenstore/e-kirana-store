@@ -220,19 +220,37 @@ const AdminProducts: React.FC = () => {
       <div className="d-block d-md-none">
         {filteredProducts.map(p => (
           <Card className="mb-3" key={p.id}>
-            <Card.Body>
+            <Card.Header className="fw-semibold py-2">{p.name}</Card.Header>
+            <Card.Body className="p-2">
               <Row>
-                <Col xs={8}>
-                  <div className="fw-semibold">{p.name}</div>
-                  <div className="text-muted">SKU: {p.sku}</div>
-                  <div className="text-muted">{p.brand} • {p.category}</div>
+                <Col xs={6} className="pe-2">
+                  <div className="small text-muted">ID</div>
+                  <div className="mb-2 text-truncate">{p.id}</div>
+
+                  <div className="small text-muted">SKU</div>
+                  <div className="mb-2 text-truncate">{p.sku}</div>
+
+                  <div className="small text-muted">Brand</div>
+                  <div className="mb-2 text-truncate">{p.brand}</div>
                 </Col>
-                <Col xs={4} className="text-end">
-                  <div className="fw-bold">₹{p.price}</div>
-                  <div className="mt-2">
-                    <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
-                    <Button size="sm" variant="danger" onClick={() => removeProduct(p.id)}>Delete</Button>
-                  </div>
+
+                <Col xs={6} className="ps-2">
+                  <div className="small text-muted">Category</div>
+                  <div className="mb-2 text-truncate">{p.category}</div>
+
+                  <div className="small text-muted">Unit</div>
+                  <div className="mb-2 text-truncate">{p.unit}</div>
+
+                  <div className="small text-muted">Status</div>
+                  <div className="mb-2"><span className={`badge bg-${p.status === "ACTIVE" ? "success" : "secondary"}`}>{p.status}</span></div>
+                </Col>
+              </Row>
+
+              <Row className="align-items-center">
+                <Col xs={6} className="fw-bold">₹{p.price}</Col>
+                <Col xs={6} className="text-end">
+                  <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
+                  <Button size="sm" variant="danger" onClick={() => removeProduct(p.id)}>Delete</Button>
                 </Col>
               </Row>
             </Card.Body>
