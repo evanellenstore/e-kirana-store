@@ -20,9 +20,26 @@ import { adjustInventory } from "../../services/adminInventoryService";
 
 const AdminInventoryEntry: React.FC = () => {
 
-  const [categories, setCategories] = useState<string[]>([]);
-  const [brands, setBrands] = useState<string[]>([]);
-  const [names, setNames] = useState<string[]>([]);
+  // API may return string[] or object[] (e.g. {id, category} etc.).
+  // Keep them as unknown[] and normalize when rendering.
+  const [categories, setCategories] = useState<unknown[]>([]);
+  const [brands, setBrands] = useState<unknown[]>([]);
+  const [names, setNames] = useState<unknown[]>([]);
+
+  // Helper: normalize an option item to a string for key/value/label
+  const optionToString = (item: unknown) => {
+    if (item == null) return "";
+    if (typeof item === "string") return item;
+    if (typeof item === "number") return String(item);
+    if (typeof item === "object") {
+      const obj = item as Record<string, any>;
+      // common property names used by APIs
+      return (
+        obj.category ?? obj.brand ?? obj.name ?? obj.value ?? obj.label ?? obj.id ?? JSON.stringify(obj)
+      );
+    }
+    return String(item);
+  };
 
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
@@ -126,9 +143,12 @@ const AdminInventoryEntry: React.FC = () => {
               onChange={e => setCategory(e.target.value)}
             >
               <option value="">-- Select Category --</option>
-              {categories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {categories.map((c, idx) => {
+                const v = optionToString(c) || `cat-${idx}`;
+                return (
+                  <option key={v} value={v}>{v}</option>
+                );
+              })}
             </Form.Select>
           </Form.Group>
 
@@ -141,9 +161,12 @@ const AdminInventoryEntry: React.FC = () => {
               onChange={e => setBrand(e.target.value)}
             >
               <option value="">-- Select Brand --</option>
-              {brands.map(b => (
-                <option key={b} value={b}>{b}</option>
-              ))}
+              {brands.map((b, idx) => {
+                const v = optionToString(b) || `brand-${idx}`;
+                return (
+                  <option key={v} value={v}>{v}</option>
+                );
+              })}
             </Form.Select>
           </Form.Group>
 
@@ -156,9 +179,12 @@ const AdminInventoryEntry: React.FC = () => {
               onChange={e => setName(e.target.value)}
             >
               <option value="">-- Select Product --</option>
-              {names.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+              {names.map((n, idx) => {
+                const v = optionToString(n) || `name-${idx}`;
+                return (
+                  <option key={v} value={v}>{v}</option>
+                );
+              })}
             </Form.Select>
           </Form.Group>
 
