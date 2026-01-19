@@ -117,10 +117,10 @@ const InventoryList: React.FC = () => {
 
       {/* 🔍 Search Header */}
       <Card className="mb-4 shadow-sm">
-        <Card.Body className="d-flex justify-content-between align-items-center">
-          <Card.Title className="mb-0">📦 Inventory Overview</Card.Title>
+        <Card.Body className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
+          <Card.Title className="mb-2 mb-md-0">📦 Inventory Overview</Card.Title>
 
-          <InputGroup style={{ maxWidth: 320 }}>
+          <InputGroup className="w-100 w-md-auto" style={{ maxWidth: 320 }}>
             <Form.Control
               placeholder="Search SKU / Product Name"
               value={search}
@@ -153,8 +153,9 @@ const InventoryList: React.FC = () => {
               </Col>
             </Row>
 
-            {/* Batch Table */}
-            <Table bordered hover responsive className="align-middle">
+            {/* Batch Table (desktop) */}
+            <div className="d-none d-md-block">
+              <Table bordered hover responsive className="align-middle">
               <thead className="table-light">
                 <tr>
                   <th>Batch No</th>
@@ -198,7 +199,36 @@ const InventoryList: React.FC = () => {
                   );
                 })}
               </tbody>
-            </Table>
+              </Table>
+            </div>
+
+            {/* Batch stacked view (mobile) */}
+            <div className="d-block d-md-none">
+              {product.batches.map(batch => {
+                const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
+                return (
+                  <div key={batch.batchNo} className="border rounded p-2 mb-2">
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <div className="fw-semibold">{batch.batchNo}</div>
+                      <div className="text-muted">{new Date(batch.expiry).toLocaleDateString()}</div>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <div>
+                        <div className="fw-bold">Qty: {batch.qty}</div>
+                      </div>
+                      <div className="text-end">
+                        <div className="mb-1">{getExpiryBadge(batch.expiry)}</div>
+                        {isLowStock ? (
+                          <Badge bg="danger">Low Stock</Badge>
+                        ) : (
+                          <Badge bg="success">In Stock</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </Card.Body>
         </Card>
       ))}

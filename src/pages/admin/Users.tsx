@@ -7,6 +7,9 @@ import {
   Form,
   Spinner,
   Alert,
+  Card,
+  Row,
+  Col,
 } from "react-bootstrap";
 import {
   getUsers,
@@ -93,9 +96,9 @@ const Users: React.FC = () => {
 
   return (
     <Container className="mt-4">
-      <div className="d-flex justify-content-between mb-3">
-        <h3>Admin Users</h3>
-        <Button onClick={handleAdd}>+ Add User</Button>
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
+        <h3 className="mb-2 mb-md-0">Admin Users</h3>
+        <Button className="w-100 w-md-auto" onClick={handleAdd}>+ Add User</Button>
       </div>
 
       {error && <Alert variant="danger">{error}</Alert>}
@@ -103,44 +106,64 @@ const Users: React.FC = () => {
       {loading ? (
         <Spinner animation="border" />
       ) : (
-        <Table striped bordered hover>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Username</th>
-              <th>Role</th>
-              <th style={{ width: "180px" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.id}</td>
-                <td>{u.username}</td>
-                <td>{u.role}</td>
-                <td>{u.email}</td>
-                <td>{u.active ? "Yes" : "No"}</td>
-                <td>
-                  <Button
-                    size="sm"
-                    variant="warning"
-                    className="me-2"
-                    onClick={() => handleEdit(u)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => handleDelete(u.id)}
-                  >
-                    Delete
-                  </Button>
-                </td>
-              </tr>
+        <>
+          {/* Desktop table */}
+          <div className="d-none d-md-block">
+            <Table striped bordered hover>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Active</th>
+                  <th style={{ width: "180px" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.id}</td>
+                    <td>{u.username}</td>
+                    <td>{u.email}</td>
+                    <td>{u.role}</td>
+                    <td>{u.active ? "Yes" : "No"}</td>
+                    <td>
+                      <Button size="sm" variant="warning" className="me-2" onClick={() => handleEdit(u)}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => handleDelete(u.id)}>
+                        Delete
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="d-block d-md-none">
+            {users.map(u => (
+              <Card className="mb-3" key={u.id}>
+                <Card.Body>
+                  <Row>
+                    <Col xs={8}>
+                      <div className="fw-semibold">{u.username}</div>
+                      <div className="text-muted">{u.email}</div>
+                      <div className="text-muted">Role: {u.role}</div>
+                    </Col>
+                    <Col xs={4} className="text-end">
+                      <div className="mb-2">Active: {u.active ? 'Yes' : 'No'}</div>
+                      <Button size="sm" variant="warning" className="me-1 mb-1 w-100" onClick={() => handleEdit(u)}>Edit</Button>
+                      <Button size="sm" variant="danger" className="w-100" onClick={() => handleDelete(u.id)}>Delete</Button>
+                    </Col>
+                  </Row>
+                </Card.Body>
+              </Card>
             ))}
-          </tbody>
-        </Table>
+          </div>
+        </>
       )}
 
       {/* Modal */}

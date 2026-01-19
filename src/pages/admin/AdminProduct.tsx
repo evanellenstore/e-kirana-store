@@ -7,7 +7,8 @@ import {
   Form,
   Spinner,
   Row,
-  Col
+  Col,
+  Card
 } from "react-bootstrap";
 import {
   getAllProducts,
@@ -114,9 +115,9 @@ const AdminProducts: React.FC = () => {
     <Container className="mt-4">
       <h3 className="text-center mb-4">🛒 Product Management</h3>
 
-      {/* 🔍 Filters */}
-      <Row className="mb-3">
-        <Col md={4}>
+      {/* 🔍 Filters - responsive */}
+      <Row className="mb-3 g-2">
+        <Col xs={12} md={4}>
           <Form.Control
             placeholder="Search by SKU or Name"
             value={search}
@@ -124,7 +125,7 @@ const AdminProducts: React.FC = () => {
           />
         </Col>
 
-        <Col md={3}>
+        <Col xs={6} md={3}>
           <Form.Select
             value={brandFilter}
             onChange={e => setBrandFilter(e.target.value)}
@@ -136,7 +137,7 @@ const AdminProducts: React.FC = () => {
           </Form.Select>
         </Col>
 
-        <Col md={3}>
+        <Col xs={6} md={3}>
           <Form.Select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
@@ -148,13 +149,14 @@ const AdminProducts: React.FC = () => {
           </Form.Select>
         </Col>
 
-        <Col md={2} className="text-end">
-          <Button onClick={() => openModal()}>+ Add Product</Button>
+        <Col xs={12} md={2} className="text-md-end">
+          <Button className="w-100 w-md-auto" onClick={() => openModal()}>+ Add Product</Button>
         </Col>
       </Row>
 
-      {/* 📦 Product Table */}
-      <Table bordered hover responsive>
+      {/* 📦 Product Table (desktop) */}
+      <div className="d-none d-md-block">
+        <Table bordered hover responsive>
         <thead className="table-dark">
           <tr>
             <th>ID</th>
@@ -211,7 +213,32 @@ const AdminProducts: React.FC = () => {
             </tr>
           )}
         </tbody>
-      </Table>
+        </Table>
+      </div>
+
+      {/* 📱 Product list (mobile) */}
+      <div className="d-block d-md-none">
+        {filteredProducts.map(p => (
+          <Card className="mb-3" key={p.id}>
+            <Card.Body>
+              <Row>
+                <Col xs={8}>
+                  <div className="fw-semibold">{p.name}</div>
+                  <div className="text-muted">SKU: {p.sku}</div>
+                  <div className="text-muted">{p.brand} • {p.category}</div>
+                </Col>
+                <Col xs={4} className="text-end">
+                  <div className="fw-bold">₹{p.price}</div>
+                  <div className="mt-2">
+                    <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
+                    <Button size="sm" variant="danger" onClick={() => removeProduct(p.id)}>Delete</Button>
+                  </div>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
+        ))}
+      </div>
 
       {/* 🧾 Modal */}
       <Modal show={show} onHide={() => setShow(false)}>

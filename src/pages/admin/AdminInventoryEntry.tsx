@@ -51,6 +51,7 @@ const AdminInventoryEntry: React.FC = () => {
   const [remarks, setRemarks] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [expiryDate, setExpiryDate] = useState<string | null>(null);
+  const presetQuantities = [1, 2, 5, 10, 25, 50, 100];
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
@@ -127,7 +128,7 @@ const AdminInventoryEntry: React.FC = () => {
   };
 
   return (
-    <Container className="mt-4" style={{ maxWidth: 520 }}>
+  <Container className="mt-4" style={{ maxWidth: 520, width: '100%' }}>
 
       <Card className="shadow">
         <Card.Body>
@@ -211,10 +212,24 @@ const AdminInventoryEntry: React.FC = () => {
           {/* QUANTITY */}
           <Form.Group className="mb-3">
             <Form.Label>Quantity (IN)</Form.Label>
-            <Form.Control
-              type="number"
-              value={quantity}
+            <Form.Select
+              value={String(quantity || "")}
               onChange={e => setQuantity(Number(e.target.value))}
+            >
+              <option value="">-- Select Quantity --</option>
+              {presetQuantities.map(q => (
+                <option key={q} value={q}>{q}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+           {/* EXPIRY DATE */}
+          <Form.Group className="mb-3">
+            <Form.Label>Expiry Date (optional)</Form.Label>
+            <Form.Control
+              type="date"
+              value={expiryDate ?? ""}
+              onChange={e => setExpiryDate(e.target.value || null)}
             />
           </Form.Group>
 
@@ -225,16 +240,6 @@ const AdminInventoryEntry: React.FC = () => {
               placeholder="Initial stock"
               value={remarks}
               onChange={e => setRemarks(e.target.value)}
-            />
-          </Form.Group>
-
-          {/* EXPIRY DATE */}
-          <Form.Group className="mb-3">
-            <Form.Label>Expiry Date (optional)</Form.Label>
-            <Form.Control
-              type="date"
-              value={expiryDate ?? ""}
-              onChange={e => setExpiryDate(e.target.value || null)}
             />
           </Form.Group>
 
