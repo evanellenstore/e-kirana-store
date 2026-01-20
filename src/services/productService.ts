@@ -26,9 +26,10 @@ export const getBrandsByCategory = (category: string) =>
 export const getNamesByBrand = (brand: string) =>
   api.get<string[]>("/products/search/brand", { params: { brand } });
 
-// GET product by name → returns Product
-export const getProductByName = (name: string) =>
-  api.get<Product>("/products/search/name", { params: { name } });
+
+// GET product by sku → returns Product
+export const getProductBySku = (sku: string) =>
+  api.get<Product>("/products/search/sku", { params: { sku } });
 
 // CREATE product
 export const createProduct = (product: Product) =>
