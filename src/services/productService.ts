@@ -10,6 +10,7 @@ export interface Product {
   unit: string;
   price: number;
   status: "ACTIVE" | "INACTIVE";
+  barcode?: string;
 }
 
 // GET all products

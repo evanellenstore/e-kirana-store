@@ -27,8 +27,6 @@ const AdminProducts: React.FC = () => {
 
   /* 🔍 Filters */
   const [search, setSearch] = useState("");
-  const [brandFilter, setBrandFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
 
   const emptyProduct: Product = {
     sku: "",
@@ -42,6 +40,8 @@ const AdminProducts: React.FC = () => {
   };
 
   const [formData, setFormData] = useState<Product>(emptyProduct);
+  const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
   const loadProducts = () => {
     setLoading(true);
@@ -78,16 +78,7 @@ const AdminProducts: React.FC = () => {
     }
   };
 
-  /* 🧠 Unique brands & categories for filters */
-  const brands = useMemo(
-    () => [...new Set(products.map(p => p.brand).filter(Boolean))],
-    [products]
-  );
-
-  const categories = useMemo(
-    () => [...new Set(products.map(p => p.category).filter(Boolean))],
-    [products]
-  );
+  /* brand/category filters removed */
 
   /* 🔎 Filter logic */
   const filteredProducts = useMemo(() => {
@@ -96,12 +87,9 @@ const AdminProducts: React.FC = () => {
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.sku.toLowerCase().includes(search.toLowerCase());
 
-      const matchBrand = brandFilter ? p.brand === brandFilter : true;
-      const matchCategory = categoryFilter ? p.category === categoryFilter : true;
-
-      return matchSearch && matchBrand && matchCategory;
+      return matchSearch;
     });
-  }, [products, search, brandFilter, categoryFilter]);
+  }, [products, search]);
 
   if (loading) {
     return (
@@ -125,32 +113,22 @@ const AdminProducts: React.FC = () => {
           />
         </Col>
 
-        <Col xs={6} md={3}>
-          <Form.Select
-            value={brandFilter}
-            onChange={e => setBrandFilter(e.target.value)}
-          >
-            <option value="">All Brands</option>
-            {brands.map(b => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </Form.Select>
-        </Col>
-
-        <Col xs={6} md={3}>
-          <Form.Select
-            value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value)}
-          >
-            <option value="">All Categories</option>
-            {categories.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </Form.Select>
-        </Col>
+  {/* filters removed: Brand / Category / Unit */}
 
         <Col xs={12} md={2} className="text-md-end">
-          <Button className="w-100 w-md-auto" onClick={() => openModal()}>+ Add Product</Button>
+          <Button
+            variant="success"
+            className="w-100 w-md-auto d-flex align-items-center justify-content-center gap-2 py-2 shadow-sm rounded-3"
+            onClick={() => openModal()}
+          >
+            <span
+              className="bg-white text-success rounded-circle d-inline-flex align-items-center justify-content-center"
+              style={{ width: 28, height: 28, fontSize: 16 }}
+            >
+              +
+            </span>
+            <span className="fw-semibold">Add Product</span>
+          </Button>
         </Col>
       </Row>
 
@@ -162,10 +140,9 @@ const AdminProducts: React.FC = () => {
             <th>ID</th>
             <th>SKU</th>
             <th>Name</th>
-            <th>Brand</th>
-            <th>Category</th>
-            <th>Unit</th>
+            {/* Brand / Category / Unit removed */}
             <th>Price</th>
+            <th>Barcode</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -177,10 +154,20 @@ const AdminProducts: React.FC = () => {
               <td>{p.id}</td>
               <td className="fw-semibold">{p.sku}</td>
               <td>{p.name}</td>
-              <td>{p.brand}</td>
-              <td>{p.category}</td>
-              <td>{p.unit}</td>
+              {/* Brand / Category / Unit removed */}
               <td>₹{p.price}</td>
+              <td className="text-center">
+                {p.barcode ? (
+                  <img
+                    src={`data:image/png;base64,${p.barcode}`}
+                    alt="barcode"
+                    style={{ width: 220, height: 'auto', cursor: 'pointer' }}
+                    onClick={() => { setBarcodePreview(p.barcode || null); setShowBarcodeModal(true); }}
+                  />
+                ) : (
+                  <small className="text-muted">—</small>
+                )}
+              </td>
               <td>
                 <span className={`badge bg-${p.status === "ACTIVE" ? "success" : "secondary"}`}>
                   {p.status}
@@ -222,6 +209,16 @@ const AdminProducts: React.FC = () => {
           <Card className="mb-3" key={p.id}>
             <Card.Header className="fw-semibold py-2">{p.name}</Card.Header>
             <Card.Body className="p-2">
+              {p.barcode && (
+                <div className="text-center mb-2">
+                  <img
+                    src={`data:image/png;base64,${p.barcode}`}
+                    alt="barcode"
+                    style={{ maxWidth: 260, cursor: 'pointer' }}
+                    onClick={() => { setBarcodePreview(p.barcode || null); setShowBarcodeModal(true); }}
+                  />
+                </div>
+              )}
               <Row>
                 <Col xs={6} className="pe-2">
                   <div className="small text-muted">ID</div>
@@ -293,6 +290,24 @@ const AdminProducts: React.FC = () => {
         <Modal.Footer>
           <Button onClick={saveProduct}>Save</Button>
         </Modal.Footer>
+      </Modal>
+      {/* Barcode preview modal */}
+      <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Barcode Preview</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center">
+          {barcodePreview ? (
+            <>
+              <img src={`data:image/png;base64,${barcodePreview}`} alt="barcode" style={{maxWidth: '100%'}} />
+              <div className="mt-3">
+                <a href={`data:image/png;base64,${barcodePreview}`} download="barcode.png" className="btn btn-outline-primary btn-sm">Download</a>
+              </div>
+            </>
+          ) : (
+            <div className="text-muted">No preview available</div>
+          )}
+        </Modal.Body>
       </Modal>
     </Container>
   );

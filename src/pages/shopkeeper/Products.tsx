@@ -8,21 +8,6 @@ import {
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [show, setShow] = useState(false);
-  const [editing, setEditing] = useState<Product | null>(null);
-
-  const emptyProduct: Product = {
-    sku: "",
-    name: "",
-    description: "",
-    category: "",
-    brand: "",
-    unit: "",
-    price: 0,
-    status: "ACTIVE",
-  };
-
-  const [formData, setFormData] = useState<Product>(emptyProduct);
 
   const loadProducts = () => {
     setLoading(true);
@@ -35,11 +20,7 @@ const Products: React.FC = () => {
     loadProducts();
   }, []);
 
-  const openModal = (product?: Product) => {
-    setEditing(product || null);
-    setFormData(product ? product : emptyProduct);
-    setShow(true);
-  };
+  // no edit modal on shopkeeper list
 
 
   if (loading)
@@ -57,9 +38,6 @@ const Products: React.FC = () => {
               <th>ID</th>
               <th>SKU</th>
               <th>Name</th>
-              <th>Brand</th>
-              <th>Category</th>
-              <th>Unit</th>
               <th>Price</th>
               <th>Status</th>
             </tr>
@@ -70,9 +48,6 @@ const Products: React.FC = () => {
                 <td>{p.id}</td>
                 <td>{p.sku}</td>
                 <td>{p.name}</td>
-                <td>{p.brand}</td>
-                <td>{p.category}</td>
-                <td>{p.unit}</td>
                 <td>₹{p.price}</td>
                 <td>{p.status}</td>
               </tr>
@@ -90,31 +65,19 @@ const Products: React.FC = () => {
                 <Card.Header className="fw-semibold py-2">{p.name}</Card.Header>
                 <Card.Body className="p-2">
                   <Row>
-                    <Col xs={6} className="pe-2">
+                    <Col xs={8}>
                       <div className="small text-muted">ID</div>
                       <div className="mb-2 text-truncate">{p.id}</div>
 
                       <div className="small text-muted">SKU</div>
                       <div className="mb-2 text-truncate">{p.sku}</div>
-
-                      <div className="small text-muted">Brand</div>
-                      <div className="mb-2 text-truncate">{p.brand}</div>
                     </Col>
 
-                    <Col xs={6} className="ps-2">
-                      <div className="small text-muted">Category</div>
-                      <div className="mb-2 text-truncate">{p.category}</div>
-
-                      <div className="small text-muted">Unit</div>
-                      <div className="mb-2 text-truncate">{p.unit}</div>
-
-                      <div className="small text-muted">Status</div>
-                      <div className="mb-2"><span className={`badge bg-${p.status === 'ACTIVE' ? 'success' : 'secondary'}`}>{p.status}</span></div>
+                    <Col xs={4} className="text-end">
+                      <div className="small text-muted">Price</div>
+                      <div className="fw-bold">₹{p.price}</div>
+                      <div className="mt-2"><span className={`badge bg-${p.status === 'ACTIVE' ? 'success' : 'secondary'}`}>{p.status}</span></div>
                     </Col>
-                  </Row>
-
-                  <Row>
-                    <Col className="text-end fw-bold">₹{p.price}</Col>
                   </Row>
                 </Card.Body>
               </Card>
