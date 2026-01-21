@@ -255,7 +255,7 @@ const AdminProducts: React.FC = () => {
         ))}
       </div>
 
-      {/* 🧾 Modal */}
+  {/* 🧾 Modal */}
       <Modal show={show} onHide={() => setShow(false)}>
         <Modal.Header closeButton>
           <Modal.Title>{editing ? "Edit Product" : "Add Product"}</Modal.Title>
