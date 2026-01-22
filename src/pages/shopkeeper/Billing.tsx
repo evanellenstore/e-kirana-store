@@ -126,17 +126,15 @@ const Billing = () => {
       if (cameraOn) stopCameraScan();
 
       const productRes = await getProductBySku(barcode.trim());
-      const product = productRes.data;
+      const product = productRes.data || {};
 
-      const batchRes = await getBatches(product.id);
+      const pid = product.productId ?? product.id ?? product.sku ?? "";
+      const batchRes = await getBatches(pid);
       const batch = batchRes.data[0]; // FIFO
 
       setCart(prev => {
-        const idx = prev.findIndex(
-          i =>
-            i.productId === product.id &&
-            i.batchNo === batch.batchNo
-        );
+        const batchNo = batch.batchNo ?? batch.batchId ?? String(batch.batchId ?? batch.id ?? "");
+        const idx = prev.findIndex(i => i.productId === pid && i.batchNo === batchNo);
 
         if (idx !== -1) {
           if (prev[idx].qty + 1 > prev[idx].availableQty) return prev;
@@ -148,13 +146,13 @@ const Billing = () => {
         return [
           ...prev,
           {
-            productId: product.productId,
-            batchNo: batch.batchNo,
-            name: product.name,
-            price: product.price,
-            sku: product.sku,
+            productId: pid,
+            batchNo: batchNo,
+            name: product.name ?? product.title ?? "",
+            sku: product.sku ?? product.skuCode ?? "",
+            price: product.price ?? 0,
             qty: 1,
-            availableQty: batch.availableQty
+            availableQty: batch.availableQty ?? batch.qty ?? 0
           }
         ];
       });
@@ -304,6 +302,37 @@ const Billing = () => {
     window.location.reload();
   };
 
+  /* =====================
+     Cart quantity helpers
+  ===================== */
+  /* =====================
+    Cart item quantity controls
+  ===================== */
+  const increaseQty = (productId: string, batchNo: string) => {
+    setCart(prev => {
+      return prev.map(i => {
+        if (i.productId === productId && i.batchNo === batchNo) {
+          if (i.qty + 1 > i.availableQty) return i; // limit
+          return { ...i, qty: i.qty + 1 };
+        }
+        return i;
+      });
+    });
+  };
+
+  const decreaseQty = (productId: string, batchNo: string) => {
+    setCart(prev => {
+      return prev
+        .map(i => {
+          if (i.productId === productId && i.batchNo === batchNo) {
+            return { ...i, qty: i.qty - 1 };
+          }
+          return i;
+        })
+        .filter(i => i.qty > 0);
+    });
+  };
+
   return (
     <div style={{ padding: 20, maxWidth: 700, margin: "auto" }}>
       <h2>🧾 Billing</h2>
@@ -366,7 +395,11 @@ const Billing = () => {
           {cart.map(i => (
             <tr key={`${i.productId}-${i.batchNo}`}>
               <td>{i.sku}</td>
-              <td align="left">{i.qty}</td>
+              <td align="left">
+                <button onClick={() => decreaseQty(i.productId, i.batchNo)} style={{marginRight:8}}>-</button>
+                <span>{i.qty}</span>
+                <button onClick={() => increaseQty(i.productId, i.batchNo)} style={{marginLeft:8}}>+</button>
+              </td>
               <td align="left">₹{i.price}</td>
               <td align="left">₹{i.price * i.qty}</td>
             </tr>
