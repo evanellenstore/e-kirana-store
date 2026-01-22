@@ -1,5 +1,16 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import {
+  Container,
+  Card,
+  InputGroup,
+  Form,
+  Button,
+  Table,
+  Row,
+  Col,
+  Badge
+} from "react-bootstrap";
+import {
   startBill,
   getProductBySku,
   getBatches,
@@ -334,96 +345,102 @@ const Billing = () => {
   };
 
   return (
-    <div style={{ padding: 20, maxWidth: 700, margin: "auto" }}>
-      <h2>🧾 Billing</h2>
+    <Container className="py-4" style={{ maxWidth: 900 }}>
+      <Card>
+        <Card.Header>
+          <Row className="align-items-center">
+            <Col><h4 className="mb-0">🧾 Billing</h4></Col>
+            <Col className="text-end">{billId ? <Badge bg="secondary">Bill: {billId}</Badge> : null}</Col>
+          </Row>
+        </Card.Header>
 
-      {/* USB Scanner Input */}
-      <input
-        ref={barcodeRef}
-        placeholder="Scan barcode"
-        autoFocus
-        onKeyDown={e => {
-          if (e.key === "Enter") {
-            console.log("manual Enter pressed, value:", e.currentTarget.value);
-            handleBarcode(e.currentTarget.value);
-          }
-        }}
-        style={{
-          fontSize: 22,
-          width: "100%",
-          height: 50
-        }}
-      />
+        <Card.Body>
+          <Row className="g-2">
+            <Col xs={12} md={8}>
+              <InputGroup>
+                <Form.Control
+                  ref={barcodeRef}
+                  placeholder="Scan barcode or enter SKU"
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      console.log("manual Enter pressed, value:", e.currentTarget.value);
+                      handleBarcode(e.currentTarget.value);
+                    }
+                  }}
+                  style={{ fontSize: 18 }}
+                />
+                <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>Focus</Button>
+              </InputGroup>
+            </Col>
 
-      <button
-        onClick={cameraOn ? stopCameraScan : startCameraScan}
-        style={{
-          width: "100%",
-          height: 45,
-          marginTop: 10
-        }}
-      >
-        {cameraOn ? "❌ Stop Camera" : "📷 Scan Using Mobile Camera"}
-      </button>
+            <Col xs={12} md={4} className="d-flex gap-2">
+              <Button
+                variant={cameraOn ? "danger" : "primary"}
+                onClick={cameraOn ? stopCameraScan : startCameraScan}
+                className="flex-grow-1"
+              >
+                {cameraOn ? "❌ Stop Camera" : "📷 Scan Using Camera"}
+              </Button>
 
-      {/* Camera Preview */}
-      {cameraOn && (
-        <video
-          id="video"
-          autoPlay
-          muted
-          playsInline
-          style={{
-            width: "100%",
-            marginTop: 10,
-            border: "2px solid #333"
-          }}
-        />
-      )}
+              <Button
+                variant="success"
+                onClick={pay}
+                className="flex-grow-1"
+                disabled={!billId || cart.length === 0}
+              >
+                PAY
+              </Button>
+            </Col>
+          </Row>
 
-      {/* Cart */}
-      <table width="100%" style={{ marginTop: 20 }}>
-        <thead>
-          <tr>
-            <th align="left">Item</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {cart.map(i => (
-            <tr key={`${i.productId}-${i.batchNo}`}>
-              <td>{i.sku}</td>
-              <td align="left">
-                <button onClick={() => decreaseQty(i.productId, i.batchNo)} style={{marginRight:8}}>-</button>
-                <span>{i.qty}</span>
-                <button onClick={() => increaseQty(i.productId, i.batchNo)} style={{marginLeft:8}}>+</button>
-              </td>
-              <td align="left">₹{i.price}</td>
-              <td align="left">₹{i.price * i.qty}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          {cameraOn && (
+            <div className="mt-3">
+              <video
+                id="video"
+                autoPlay
+                muted
+                playsInline
+                style={{ width: "100%", borderRadius: 6, border: "1px solid #ddd" }}
+              />
+            </div>
+          )}
 
-      <h3 style={{ textAlign: "right" }}>Total: ₹{total}</h3>
+          <Table striped bordered hover size="sm" className="mt-3">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th style={{ width: 180 }}>Qty</th>
+                <th style={{ width: 120 }}>Price</th>
+                <th style={{ width: 140 }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cart.map(i => (
+                <tr key={`${i.productId}-${i.batchNo}`}>
+                  <td style={{ maxWidth: 300 }}>{i.sku || i.name}</td>
+                  <td>
+                    <div className="d-flex align-items-center">
+                      <Button size="sm" variant="outline-secondary" onClick={() => decreaseQty(i.productId, i.batchNo)}>-</Button>
+                      <div className="px-3">{i.qty}</div>
+                      <Button size="sm" variant="outline-secondary" onClick={() => increaseQty(i.productId, i.batchNo)}>+</Button>
+                      <div className="ms-auto small text-muted">Avl: {i.availableQty}</div>
+                    </div>
+                  </td>
+                  <td>₹{i.price}</td>
+                  <td>₹{i.price * i.qty}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
 
-      <button
-        onClick={pay}
-        style={{
-          width: "100%",
-          height: 60,
-          fontSize: 22,
-          background: "green",
-          color: "white",
-          border: "none",
-          cursor: "pointer"
-        }}
-      >
-        PAY & PRINT
-      </button>
-    </div>
+          <div className="text-end mt-3">
+            <h4>
+              Total: <Badge bg="dark">₹{total}</Badge>
+            </h4>
+          </div>
+        </Card.Body>
+      </Card>
+    </Container>
   );
 };
 
