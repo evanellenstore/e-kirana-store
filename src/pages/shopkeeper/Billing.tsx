@@ -1,124 +1,397 @@
-import React, { useEffect, useState } from "react";
-import { Container, Table, Button, Form, Card, Spinner, Row, Col } from "react-bootstrap";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
-  createBilling,
-  getAllBillings,
-  getBillingByPurchaseId,
-  type Billing
-} from "../../services/billingService";
+  startBill,
+  getProductBySku,
+  getBatches,
+  addItem,
+  finalizeBill,
+  type CartItem
+} from "../../services/billingApi";
 
-const BillingPage: React.FC = () => {
-  const [billings, setBillings] = useState<Billing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [purchaseId, setPurchaseId] = useState<number>(0);
+import {
+  BrowserMultiFormatReader
+} from "@zxing/browser";
 
-  const loadBillings = () => {
-    setLoading(true);
-    getAllBillings()
-      .then(res => setBillings(res.data))
-      .finally(() => setLoading(false));
-  };
+import { AuthContext } from "../../auth/AuthContext";
 
+const Billing = () => {
+  const [billId, setBillId] = useState<string>();
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [cameraOn, setCameraOn] = useState(false);
+
+  const barcodeRef = useRef<HTMLInputElement>(null);
+  // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
+  const scannerBufferRef = useRef<string>("");
+  const scannerLastTimeRef = useRef<number | null>(null);
+  const scannerTimerRef = useRef<number | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const scanningRef = useRef(false); // Prevent double scan
+
+  const auth = useContext(AuthContext);
+
+  /* =====================
+     Start Bill
+  ===================== */
   useEffect(() => {
-    loadBillings();
+    const uname =
+      auth?.user?.username ??
+      (() => {
+        const s = localStorage.getItem("user");
+        if (!s) return "guest";
+        try {
+          return JSON.parse(s).username;
+        } catch {
+          return "guest";
+        }
+      })();
+
+    startBill(uname).then(res => setBillId(res.data.billId));
+    barcodeRef.current?.focus();
+  }, [auth?.user?.username]);
+
+  // Global keycapture to support USB barcode scanners that act like keyboards.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const k = e.key;
+
+      // If user is focused on an input (manual typing), don't intercept — let the input handler run.
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+        // allow normal Enter when focused in barcode input
+        return;
+      }
+
+      const now = Date.now();
+
+      if (k === "Enter") {
+        // If we have accumulated buffer, process it
+        const code = scannerBufferRef.current;
+        scannerBufferRef.current = "";
+        scannerLastTimeRef.current = null;
+        if (code) {
+          // dispatch to handler
+          handleBarcode(code);
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (k.length === 1) {
+        // char
+        const last = scannerLastTimeRef.current;
+        if (last && now - last > 200) {
+          // gap too big - treat as new sequence
+          scannerBufferRef.current = k;
+        } else {
+          scannerBufferRef.current += k;
+        }
+        scannerLastTimeRef.current = now;
+
+        // reset buffer after short timeout if Enter never comes
+        if (scannerTimerRef.current) window.clearTimeout(scannerTimerRef.current);
+        scannerTimerRef.current = window.setTimeout(() => {
+          scannerBufferRef.current = "";
+          scannerLastTimeRef.current = null;
+          scannerTimerRef.current = null;
+        }, 800);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      if (scannerTimerRef.current) window.clearTimeout(scannerTimerRef.current);
+    };
   }, []);
 
-  const handleCreateBill = () => {
-    if (!purchaseId) return alert("Enter purchase ID");
-    createBilling(purchaseId).then(() => {
-      setPurchaseId(0);
-      loadBillings();
-    });
+  /* Always keep focus for USB scanner */
+  useEffect(() => {
+    const focus = () => barcodeRef.current?.focus();
+    window.addEventListener("click", focus);
+    return () => window.removeEventListener("click", focus);
+  }, []);
+
+  /* =====================
+     Handle Barcode (USB / Camera)
+  ===================== */
+  const handleBarcode = async (barcode: string) => {
+    console.log("handleBarcode called", { barcode });
+    if (!barcode.trim() || !billId || scanningRef.current) return;
+
+    scanningRef.current = true;
+
+    try {
+      // Auto-stop camera if USB scanner used
+      if (cameraOn) stopCameraScan();
+
+      const productRes = await getProductBySku(barcode.trim());
+      const product = productRes.data;
+
+      const batchRes = await getBatches(product.id);
+      const batch = batchRes.data[0]; // FIFO
+
+      setCart(prev => {
+        const idx = prev.findIndex(
+          i =>
+            i.productId === product.id &&
+            i.batchNo === batch.batchNo
+        );
+
+        if (idx !== -1) {
+          if (prev[idx].qty + 1 > prev[idx].availableQty) return prev;
+          const copy = [...prev];
+          copy[idx].qty += 1;
+          return copy;
+        }
+
+        return [
+          ...prev,
+          {
+            productId: product.productId,
+            batchNo: batch.batchNo,
+            name: product.name,
+            price: product.price,
+            sku: product.sku,
+            qty: 1,
+            availableQty: batch.availableQty
+          }
+        ];
+      });
+
+      // Play beep for feedback
+      const audio = new Audio("/beep.mp3"); // Add beep.mp3 in public folder
+      audio.play();
+
+      if (barcodeRef.current) barcodeRef.current.value = "";
+    } catch (e) {
+      console.error("Barcode error", e);
+      alert("❌ Product not found");
+    } finally {
+      scanningRef.current = false;
+    }
   };
 
-  const searchByPurchaseId = () => {
-    if (!purchaseId) return;
-    setLoading(true);
-    getBillingByPurchaseId(purchaseId)
-      .then(res => setBillings(res.data))
-      .finally(() => setLoading(false));
+  /* =====================
+     Calculate Total
+  ===================== */
+  useEffect(() => {
+    setTotal(cart.reduce((s, i) => s + i.price * i.qty, 0));
+  }, [cart]);
+
+  /* =====================
+     Start Camera Scan (Mobile)
+  ===================== */
+  const startCameraScan = async () => {
+    setCameraOn(true);
+
+    const reader = new BrowserMultiFormatReader();
+    readerRef.current = reader;
+
+    try {
+      const devices =
+        await BrowserMultiFormatReader.listVideoInputDevices();
+
+      // Force BACK camera
+      const backCamera =
+        devices.find(d =>
+          d.label.toLowerCase().includes("back") ||
+          d.label.toLowerCase().includes("rear")
+        ) || devices[devices.length - 1];
+
+      if (!backCamera) {
+        alert("No camera found");
+        stopCameraScan();
+        return;
+      }
+
+      // Wait for the video element to be rendered and mounted
+      let videoElem: HTMLVideoElement | null = null;
+      for (let i = 0; i < 6; i++) {
+        videoElem = document.getElementById("video") as HTMLVideoElement | null;
+        if (videoElem) break;
+        // wait a bit for React to render the element
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      if (!videoElem) {
+        console.warn("Video element not found after mount; aborting camera start");
+        alert("Camera failed to start");
+        stopCameraScan();
+        return;
+      }
+
+      console.log("Starting decode on device", backCamera.deviceId, "videoElem:", videoElem);
+
+      await reader.decodeFromVideoDevice(
+        backCamera.deviceId,
+        videoElem,
+        (result) => {
+          if (result) {
+            console.log("ZXing result:", result.getText());
+            handleBarcode(result.getText());
+            // keep camera briefly to show feedback; then stop
+            setTimeout(stopCameraScan, 300);
+          }
+        }
+      );
+    } catch (e) {
+      console.error("Camera start failed", e);
+      alert("Camera permission denied");
+      stopCameraScan();
+    }
   };
 
-  if (loading)
-    return <div className="text-center mt-5"><Spinner /></div>;
+  /* =====================
+     Stop Camera
+  ===================== */
+  const stopCameraScan = () => {
+    // stop ZXing reader
+    try {
+      if (readerRef.current) {
+        (readerRef.current as any).reset?.();
+        // some versions expose stopContinuousDecode
+        (readerRef.current as any).stopContinuousDecode?.();
+      }
+    } catch (e) {
+      console.warn("Error resetting reader", e);
+    }
+
+    // stop any active media tracks on the video element
+    try {
+      const video = document.getElementById("video") as HTMLVideoElement | null;
+      if (video) {
+        const stream = (video.srcObject as MediaStream) || null;
+        if (stream && stream.getTracks) {
+          stream.getTracks().forEach(t => {
+            try { t.stop(); } catch (_) { /* ignore */ }
+          });
+        }
+        try {
+          video.pause();
+        } catch (_) {}
+        try {
+          video.srcObject = null;
+        } catch (_) {
+          video.removeAttribute('src');
+        }
+      }
+    } catch (e) {
+      console.warn("Error stopping video stream", e);
+    }
+
+    readerRef.current = null;
+    setCameraOn(false);
+  };
+
+  /* =====================
+     Pay & Finalize
+  ===================== */
+  const pay = async () => {
+    if (!billId || cart.length === 0) return;
+
+    for (const item of cart) {
+      await addItem(billId, {
+        productId: item.productId,
+        batchNo: item.batchNo,
+        quantity: item.qty
+      });
+    }
+
+    await finalizeBill(billId);
+    alert("✅ Bill Completed");
+    window.location.reload();
+  };
 
   return (
-    <Container className="mt-4">
-      <h3 className="text-center mb-4">🧾 Billing Management</h3>
+    <div style={{ padding: 20, maxWidth: 700, margin: "auto" }}>
+      <h2>🧾 Billing</h2>
 
-      {/* Create Bill */}
-      <Card className="mb-4">
-        <Card.Header>Create Bill</Card.Header>
-        <Card.Body>
-          <Row className="g-2">
-            <Col md={4}>
-              <Form.Control
-                type="number"
-                placeholder="Purchase ID"
-                value={purchaseId || ""}
-                onChange={e => setPurchaseId(+e.target.value)}
-              />
-            </Col>
-            <Col md={4}>
-              <Button onClick={handleCreateBill}>Generate Bill</Button>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
+      {/* USB Scanner Input */}
+      <input
+        ref={barcodeRef}
+        placeholder="Scan barcode"
+        autoFocus
+        onKeyDown={e => {
+          if (e.key === "Enter") {
+            console.log("manual Enter pressed, value:", e.currentTarget.value);
+            handleBarcode(e.currentTarget.value);
+          }
+        }}
+        style={{
+          fontSize: 22,
+          width: "100%",
+          height: 50
+        }}
+      />
 
-      {/* Search */}
-      <Card className="mb-3">
-        <Card.Header>Search Bills</Card.Header>
-        <Card.Body>
-          <Row className="g-2">
-            <Col md={4}>
-              <Form.Control
-                type="number"
-                placeholder="Purchase ID"
-                onChange={e => setPurchaseId(+e.target.value)}
-              />
-            </Col>
-            <Col md={4}>
-              <Button variant="secondary" onClick={searchByPurchaseId}>
-                Search by Purchase ID
-              </Button>
-            </Col>
-            <Col md={4}>
-              <Button variant="outline-dark" onClick={loadBillings}>
-                Load All Bills
-              </Button>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
+      <button
+        onClick={cameraOn ? stopCameraScan : startCameraScan}
+        style={{
+          width: "100%",
+          height: 45,
+          marginTop: 10
+        }}
+      >
+        {cameraOn ? "❌ Stop Camera" : "📷 Scan Using Mobile Camera"}
+      </button>
 
-      {/* Billing Table */}
-      <Table bordered hover responsive>
-        <thead className="table-dark">
+      {/* Camera Preview */}
+      {cameraOn && (
+        <video
+          id="video"
+          autoPlay
+          muted
+          playsInline
+          style={{
+            width: "100%",
+            marginTop: 10,
+            border: "2px solid #333"
+          }}
+        />
+      )}
+
+      {/* Cart */}
+      <table width="100%" style={{ marginTop: 20 }}>
+        <thead>
           <tr>
-            <th>Bill ID</th>
-            <th>Purchase ID</th>
-            <th>Sub Total</th>
-            <th>Tax</th>
+            <th align="left">Item</th>
+            <th>Qty</th>
+            <th>Price</th>
             <th>Total</th>
-            <th>Billed At</th>
           </tr>
         </thead>
         <tbody>
-          {billings.map(b => (
-            <tr key={b.id}>
-              <td>{b.id}</td>
-              <td>{b.purchaseId}</td>
-              <td>₹{b.subTotal}</td>
-              <td>₹{b.taxAmount.toFixed(2)}</td>
-              <td><strong>₹{b.totalAmount}</strong></td>
-              <td>{new Date(b.billedAt).toLocaleString()}</td>
+          {cart.map(i => (
+            <tr key={`${i.productId}-${i.batchNo}`}>
+              <td>{i.sku}</td>
+              <td align="left">{i.qty}</td>
+              <td align="left">₹{i.price}</td>
+              <td align="left">₹{i.price * i.qty}</td>
             </tr>
           ))}
         </tbody>
-      </Table>
-    </Container>
+      </table>
+
+      <h3 style={{ textAlign: "right" }}>Total: ₹{total}</h3>
+
+      <button
+        onClick={pay}
+        style={{
+          width: "100%",
+          height: 60,
+          fontSize: 22,
+          background: "green",
+          color: "white",
+          border: "none",
+          cursor: "pointer"
+        }}
+      >
+        PAY & PRINT
+      </button>
+    </div>
   );
 };
 
-export default BillingPage;
+export default Billing;
