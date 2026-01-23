@@ -28,5 +28,6 @@ export const addItem = (billId: string, payload: any) =>
 export const getSummary = (billId: string) =>
   api.get(`/billings/${billId}/summary`);
 
-export const finalizeBill = (billId: string) =>
-  api.post(`/billings/${billId}/finalize`);
+export const finalizeBill = (billId: string, payload?: any) =>
+  // If backend supports payment metadata, send it in the body. Payload is optional.
+  api.post(`/billings/${billId}/finalize`, payload);
