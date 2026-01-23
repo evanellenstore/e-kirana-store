@@ -391,6 +391,7 @@ const Billing = () => {
     setCameraOn(false);
   };
 
+
   
   /* =====================
      Pay & Finalize
