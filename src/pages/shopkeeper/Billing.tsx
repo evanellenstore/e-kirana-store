@@ -27,6 +27,7 @@ import {
 import { AuthContext } from "../../auth/AuthContext";
 
 const Billing = () => {
+  console.log("Billing component mounted");
   const [billId, setBillId] = useState<string>();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -39,6 +40,8 @@ const Billing = () => {
   const [cashReceived, setCashReceived] = useState<number | undefined>(undefined);
   const [customerMobile, setCustomerMobile] = useState<string>("");
   const [isPaying, setIsPaying] = useState(false);
+  const [reservedForBill, setReservedForBill] = useState(false);
+  const [isReserving, setIsReserving] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -398,12 +401,28 @@ const Billing = () => {
 
     setIsPaying(true);
     try {
-      for (const item of cart) {
-        await addItem(billId, {
-          productId: item.productId,
-          batchNo: item.batchNo,
-          quantity: item.qty
-        });
+      // If items are not reserved yet (maybe user skipped reserve step), add them now
+      if (!reservedForBill) {
+        const addPromises = cart.map(item =>
+          addItem(billId, {
+            productId: item.productId,
+            batchNo: item.batchNo,
+            quantity: item.qty,
+            price: item.price,
+            name: item.name,
+            sku: item.sku
+          })
+            .then(res => {
+              console.log('addItem response', item.productId, res?.data || res);
+              return res;
+            })
+            .catch(err => {
+              console.error('addItem failed for', item.productId, err);
+              throw err;
+            })
+        );
+
+        await Promise.all(addPromises);
       }
 
       // compute payable
@@ -435,12 +454,41 @@ const Billing = () => {
       const uname = auth?.user?.username ?? (() => { const s = localStorage.getItem('user'); if (!s) return 'guest'; try { return JSON.parse(s).username; } catch { return 'guest'; }})();
       const res = await startBill(uname);
       setBillId(res.data.billId);
+      // reset reserved flag for new bill
+      setReservedForBill(false);
     } catch (err: any) {
       console.error('Payment failed', err);
       const msg = err?.response?.data?.message || err?.message || String(err);
       alert(`❌ Payment failed: ${msg}`);
     } finally {
       setIsPaying(false);
+    }
+  };
+
+  const reserveItems = async () => {
+    if (!billId || cart.length === 0) return;
+    setIsReserving(true);
+    try {
+      const addPromises = cart.map(item =>
+        addItem(billId, {
+          productId: item.productId,
+          batchNo: item.batchNo,
+          quantity: item.qty,
+          price: item.price,
+          name: item.name,
+          sku: item.sku
+        })
+      );
+
+      await Promise.all(addPromises);
+      setReservedForBill(true);
+    } catch (e: any) {
+      console.error('Reserve failed', e);
+      alert('Failed to reserve items: ' + (e?.response?.data?.message || e?.message || String(e)));
+      setReservedForBill(false);
+      throw e;
+    } finally {
+      setIsReserving(false);
     }
   };
 
@@ -515,11 +563,21 @@ const Billing = () => {
 
                 <Button
                   variant="success"
-                  onClick={() => setShowPaymentModal(true)}
+                  onClick={async () => {
+                    if (!billId || cart.length === 0) return;
+                    // reserve items before showing payment modal
+                    try {
+                      await reserveItems();
+                    } catch (_) {
+                      // reservation failed, don't open modal
+                      return;
+                    }
+                    setShowPaymentModal(true);
+                  }}
                   className="flex-grow-1"
                   disabled={!billId || cart.length === 0}
                 >
-                  PAY
+                  {isReserving ? 'Reserving…' : 'PAY'}
                 </Button>
               </Col>
           </Row>
