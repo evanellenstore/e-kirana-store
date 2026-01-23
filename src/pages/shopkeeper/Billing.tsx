@@ -8,7 +8,8 @@ import {
   Table,
   Row,
   Col,
-  Badge
+  Badge,
+  Modal
 } from "react-bootstrap";
 import {
   startBill,
@@ -30,6 +31,14 @@ const Billing = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [total, setTotal] = useState(0);
   const [cameraOn, setCameraOn] = useState(false);
+  const [discount, setDiscount] = useState<number>(0);
+  const [discountIsPercent, setDiscountIsPercent] = useState<boolean>(false);
+  const [gstRate, setGstRate] = useState<number>(0); // 0 = no GST, set to 0.18 for 18%
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<string>("CASH");
+  const [cashReceived, setCashReceived] = useState<number | undefined>(undefined);
+  const [customerMobile, setCustomerMobile] = useState<string>("");
+  const [isPaying, setIsPaying] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -66,11 +75,13 @@ const Billing = () => {
     const onKeyDown = (e: KeyboardEvent) => {
       const k = e.key;
 
-      // If user is focused on an input (manual typing), don't intercept — let the input handler run.
-      const active = document.activeElement;
-      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
-        // allow normal Enter when focused in barcode input
-        return;
+      // If user is focused on an input/select/textarea (manual typing/interaction), don't intercept — let the element handle keys
+      const active = document.activeElement as HTMLElement | null;
+      if (active) {
+        const tag = active.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) {
+          return;
+        }
       }
 
       const now = Date.now();
@@ -118,9 +129,18 @@ const Billing = () => {
 
   /* Always keep focus for USB scanner */
   useEffect(() => {
-    const focus = () => barcodeRef.current?.focus();
-    window.addEventListener("click", focus);
-    return () => window.removeEventListener("click", focus);
+    const onClick = (e: MouseEvent) => {
+      // If clicking interactive controls, don't steal focus
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
+      // also if click inside a dropdown or modal control, avoid stealing
+      if (target.closest && (target.closest('.dropdown') || target.closest('.modal'))) return;
+      barcodeRef.current?.focus();
+    };
+    window.addEventListener("click", onClick);
+    return () => window.removeEventListener("click", onClick);
   }, []);
 
   /* =====================
@@ -168,9 +188,12 @@ const Billing = () => {
         ];
       });
 
-      // Play beep for feedback
-      const audio = new Audio("/beep.mp3"); // Add beep.mp3 in public folder
-      audio.play();
+      // Play beep for feedback (safe)
+      try {
+        await playBeep();
+      } catch (beepErr) {
+        console.warn('Beep failed', beepErr);
+      }
 
       if (barcodeRef.current) barcodeRef.current.value = "";
     } catch (e) {
@@ -187,6 +210,77 @@ const Billing = () => {
   useEffect(() => {
     setTotal(cart.reduce((s, i) => s + i.price * i.qty, 0));
   }, [cart]);
+
+  // Helper: compute discount, gst and grand total
+  const computeTotals = () => {
+    const discountAmt = discountIsPercent ? (total * discount) / 100 : discount;
+    const taxable = Math.max(0, total - discountAmt);
+    const gstAmt = taxable * gstRate;
+    const grandTotal = taxable + gstAmt;
+    return { discountAmt, taxable, gstAmt, grandTotal };
+  };
+
+  // Safe beep: try to play /beep.mp3, fallback to WebAudio tone if unavailable
+  const playBeep = async () => {
+    try {
+      const audio = new Audio('/beep.mp3');
+      await audio.play();
+      return;
+    } catch (err) {
+      console.warn('beep.mp3 play failed, using WebAudio fallback', err);
+      try {
+        const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        if (ctx.state === 'suspended') await ctx.resume();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = 1000;
+        g.gain.value = 0.05;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        await new Promise<void>(r => setTimeout(() => { try { o.stop(); } catch {} r(); }, 120));
+        try { ctx.close(); } catch (_) {}
+      } catch (e2) {
+        console.warn('WebAudio fallback failed', e2);
+      }
+    }
+  };
+
+  // Keyboard shortcut: press 'd' to apply discount
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "d" || e.key === "D") {
+        // don't trigger when typing in an input
+        const active = document.activeElement;
+        if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+        const val = window.prompt("Enter discount (append % for percent, e.g. 10 or 5%):");
+        if (!val) return;
+        const trimmed = val.trim();
+        if (trimmed.endsWith("%")) {
+          const n = parseFloat(trimmed.slice(0, -1));
+          if (!isNaN(n)) {
+            setDiscount(n);
+            setDiscountIsPercent(true);
+          }
+        } else {
+          const n = parseFloat(trimmed);
+          if (!isNaN(n)) {
+            setDiscount(n);
+            setDiscountIsPercent(false);
+          }
+        }
+      }
+      // open payment modal with 'p'
+      if (e.key === 'p' || e.key === 'P') {
+        setShowPaymentModal(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   /* =====================
      Start Camera Scan (Mobile)
@@ -300,17 +394,54 @@ const Billing = () => {
   const pay = async () => {
     if (!billId || cart.length === 0) return;
 
-    for (const item of cart) {
-      await addItem(billId, {
-        productId: item.productId,
-        batchNo: item.batchNo,
-        quantity: item.qty
-      });
-    }
+    console.log("Processing payment for bill:", billId);
 
-    await finalizeBill(billId);
-    alert("✅ Bill Completed");
-    window.location.reload();
+    setIsPaying(true);
+    try {
+      for (const item of cart) {
+        await addItem(billId, {
+          productId: item.productId,
+          batchNo: item.batchNo,
+          quantity: item.qty
+        });
+      }
+
+      // compute payable
+      const discountAmt = discountIsPercent ? (total * discount) / 100 : discount;
+      const taxable = Math.max(0, total - discountAmt);
+      const gstAmt = taxable * gstRate;
+      const grandTotal = taxable + gstAmt;
+
+      const paymentPayload = {
+        paymentMode,
+        amountPaid: paymentMode === 'CASH' ? (cashReceived ?? grandTotal) : grandTotal,
+        customerMobile: customerMobile || null,
+        discount: discountAmt,
+        gst: gstAmt,
+        grandTotal
+      };
+
+      await finalizeBill(billId, paymentPayload);
+      alert("✅ Bill Completed");
+      setShowPaymentModal(false);
+      // reset cart and state for new bill
+      setCart([]);
+      setDiscount(0);
+      setDiscountIsPercent(false);
+      setGstRate(0);
+      setCashReceived(undefined);
+      setCustomerMobile("");
+      // start new bill
+      const uname = auth?.user?.username ?? (() => { const s = localStorage.getItem('user'); if (!s) return 'guest'; try { return JSON.parse(s).username; } catch { return 'guest'; }})();
+      const res = await startBill(uname);
+      setBillId(res.data.billId);
+    } catch (err: any) {
+      console.error('Payment failed', err);
+      const msg = err?.response?.data?.message || err?.message || String(err);
+      alert(`❌ Payment failed: ${msg}`);
+    } finally {
+      setIsPaying(false);
+    }
   };
 
   /* =====================
@@ -373,24 +504,24 @@ const Billing = () => {
               </InputGroup>
             </Col>
 
-            <Col xs={12} md={4} className="d-flex gap-2">
-              <Button
-                variant={cameraOn ? "danger" : "primary"}
-                onClick={cameraOn ? stopCameraScan : startCameraScan}
-                className="flex-grow-1"
-              >
-                {cameraOn ? "❌ Stop Camera" : "📷 Scan Using Camera"}
-              </Button>
+              <Col xs={12} md={4} className="d-flex gap-2">
+                <Button
+                  variant={cameraOn ? "danger" : "primary"}
+                  onClick={cameraOn ? stopCameraScan : startCameraScan}
+                  className="flex-grow-1"
+                >
+                  {cameraOn ? "❌ Stop Camera" : "📷 Scan Using Camera"}
+                </Button>
 
-              <Button
-                variant="success"
-                onClick={pay}
-                className="flex-grow-1"
-                disabled={!billId || cart.length === 0}
-              >
-                PAY
-              </Button>
-            </Col>
+                <Button
+                  variant="success"
+                  onClick={() => setShowPaymentModal(true)}
+                  className="flex-grow-1"
+                  disabled={!billId || cart.length === 0}
+                >
+                  PAY
+                </Button>
+              </Col>
           </Row>
 
           {cameraOn && (
@@ -433,6 +564,35 @@ const Billing = () => {
             </tbody>
           </Table>
 
+          {/* Summary */}
+          <Row className="mt-2">
+            <Col md={{ span: 4, offset: 8 }}>
+              <div className="d-flex justify-content-between small">
+                <div>Subtotal</div>
+                <div>₹{total.toFixed(2)}</div>
+              </div>
+              <div className="d-flex justify-content-between small">
+                <div>Discount {discountIsPercent ? `(${discount}%)` : ''}</div>
+                <div>
+                  ₹{(discountIsPercent ? (total * discount) / 100 : discount).toFixed(2)}
+                </div>
+              </div>
+              <div className="d-flex justify-content-between small">
+                <div>GST</div>
+                <div>
+                  ₹{( (total - (discountIsPercent ? (total*discount)/100 : discount)) * gstRate ).toFixed(2)}
+                </div>
+              </div>
+              <hr />
+              <div className="d-flex justify-content-between fw-bold">
+                <div>Grand Total</div>
+                <div>
+                  ₹{( (total - (discountIsPercent ? (total*discount)/100 : discount)) * (1 + gstRate) ).toFixed(2)}
+                </div>
+              </div>
+            </Col>
+          </Row>
+
           <div className="text-end mt-3">
             <h4>
               Total: <Badge bg="dark">₹{total}</Badge>
@@ -440,6 +600,88 @@ const Billing = () => {
           </div>
         </Card.Body>
       </Card>
+      {/* Payment Modal */}
+      <Modal show={showPaymentModal} onHide={() => setShowPaymentModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Payment</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+            <div className="mb-2 small text-muted">Bill: {billId}</div>
+
+            {(() => {
+              const { discountAmt, gstAmt, grandTotal } = computeTotals();
+              return (
+                <>
+                  <div className="d-flex justify-content-between">
+                    <div>Subtotal</div>
+                    <div>₹{total.toFixed(2)}</div>
+                  </div>
+
+                  <div className="d-flex justify-content-between">
+                    <div>Discount {discountIsPercent ? `(${discount}%)` : ''}</div>
+                    <div>₹{discountAmt.toFixed(2)}</div>
+                  </div>
+
+                  <div className="d-flex justify-content-between">
+                    <div>GST</div>
+                    <div>₹{gstAmt.toFixed(2)}</div>
+                  </div>
+
+                  <hr />
+
+                  <div className="d-flex justify-content-between fw-bold mb-3">
+                    <div>Grand Total</div>
+                    <div>₹{grandTotal.toFixed(2)}</div>
+                  </div>
+                </>
+              );
+            })()}
+
+          <Form.Group className="mb-2">
+            <Form.Label>Payment Mode</Form.Label>
+            <Form.Select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
+              <option value="CASH">Cash</option>
+              <option value="UPI">UPI</option>
+              <option value="CARD">Card</option>
+              <option value="CREDIT">Credit</option>
+            </Form.Select>
+          </Form.Group>
+
+          {paymentMode === 'CASH' && (
+            <Form.Group className="mb-2">
+              <Form.Label>Cash Received</Form.Label>
+              <Form.Control type="number" value={cashReceived ?? ''} onChange={e => setCashReceived(Number(e.target.value))} />
+              <div className="small text-muted mt-1">Change: ₹{(() => {
+                const { grandTotal } = computeTotals();
+                const change = Math.max(0, (cashReceived ?? 0) - grandTotal);
+                return change.toFixed(2);
+              })()}</div>
+            </Form.Group>
+          )}
+
+          <Form.Group className="mb-2">
+            <Form.Label>Customer Mobile (optional)</Form.Label>
+            <Form.Control value={customerMobile} onChange={e => setCustomerMobile(e.target.value)} />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
+          <Button variant="primary" disabled={isPaying} onClick={async () => {
+            // validate cash
+            const { grandTotal } = computeTotals();
+            if (!billId) { alert('No active bill'); return; }
+            if (paymentMode === 'CASH' && (cashReceived ?? 0) < grandTotal) {
+              alert('Cash received is less than grand total');
+              return;
+            }
+            // log payload for debugging
+            console.log('Payment start', { paymentMode, cashReceived, customerMobile, totals: computeTotals() });
+            await pay();
+          }}>
+            {isPaying ? 'Processing…' : `Pay ₹${computeTotals().grandTotal.toFixed(2)}`}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 };
