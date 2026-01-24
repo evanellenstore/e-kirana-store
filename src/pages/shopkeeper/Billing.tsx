@@ -37,11 +37,13 @@ const Billing = () => {
   const [reservedForBill, setReservedForBill] = useState(false);
   const [discount, setDiscount] = useState<number>(0);
   const [discountIsPercent, setDiscountIsPercent] = useState<boolean>(false);
-  const [gstRate, setGstRate] = useState<number>(0);
+  const [gstRate] = useState<number>(0);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
   const [cashReceived, setCashReceived] = useState<number | undefined>(undefined);
   const [customerMobile, setCustomerMobile] = useState<string>("");
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptData, setReceiptData] = useState<any>(null);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -166,18 +168,35 @@ const Billing = () => {
       const product = productRes.data || {};
 
       const pid = product.productId ?? product.id ?? product.sku ?? "";
-      const batchRes = await getBatches(pid);
-      const batch = batchRes.data[0]; // FIFO
+  // Ask server for batches preferring ones that can satisfy qty=1
+  const batchRes = await getBatches(pid, 1);
+  const batch = batchRes.data[0]; // server returns suitable batches first
 
       setCart(prev => {
         const batchNo = batch.batchNo ?? batch.batchId ?? String(batch.batchId ?? batch.id ?? "");
         const idx = prev.findIndex(i => i.productId === pid && i.batchNo === batchNo);
 
         if (idx !== -1) {
-          if (prev[idx].qty + 1 > prev[idx].availableQty) return prev;
+          const available = prev[idx].availableQty ?? 0;
+          if (prev[idx].qty + 1 > available) {
+            const ok = window.confirm(`Only ${available} unit(s) available in inventory. Add one more anyway?`);
+            if (!ok) {
+              alert('Not enough stock to increase quantity');
+              return prev;
+            }
+          }
           const copy = [...prev];
           copy[idx].qty += 1;
           return copy;
+        }
+
+        const availableQty = batch.availableQty ?? batch.qty ?? 0;
+        if (availableQty <= 0) {
+          const allow = window.confirm('Product not available in inventory. Add to cart anyway?');
+          if (!allow) {
+            alert('Product not added');
+            return prev;
+          }
         }
 
         return [
@@ -189,7 +208,7 @@ const Billing = () => {
             sku: product.sku ?? product.skuCode ?? "",
             price: product.price ?? 0,
             qty: 1,
-            availableQty: batch.availableQty ?? batch.qty ?? 0,
+            availableQty: availableQty,
             expiryDate: batch.expiryDate ?? "",
           }
         ];
@@ -440,21 +459,18 @@ const Billing = () => {
       };
 
       await finalizeBill(billId, paymentPayload);
-      alert("✅ Bill Completed");
+      // show receipt modal with server response (if any) and cart snapshot
+      const finalizeRes = await finalizeBill(billId, paymentPayload);
+      const serverData = finalizeRes?.data ?? null;
+      setReceiptData({
+        billId,
+        items: cart.map(i => ({ ...i })),
+        payment: paymentPayload,
+        totals: computeTotals(),
+        server: serverData
+      });
       setShowPaymentModal(false);
-      // reset cart and state for new bill
-      setCart([]);
-      setDiscount(0);
-      setDiscountIsPercent(false);
-      setGstRate(0);
-      setCashReceived(undefined);
-      setCustomerMobile("");
-      // start new bill
-      const uname = auth?.user?.username ?? (() => { const s = localStorage.getItem('user'); if (!s) return 'guest'; try { return JSON.parse(s).username; } catch { return 'guest'; }})();
-      const res = await startBill(uname);
-      setBillId(res.data.billId);
-      // reset reserved flag for new bill
-      setReservedForBill(false);
+      setShowReceiptModal(true);
     } catch (err: any) {
       console.error('Payment failed', err);
       const msg = err?.response?.data?.message || err?.message || String(err);
@@ -468,6 +484,24 @@ const Billing = () => {
     if (!billId || cart.length === 0) return;
     setIsReserving(true);
     try {
+      // Final availability check: query server with required quantities for each product
+      const checks = await Promise.all(cart.map(i => getBatches(i.productId, i.qty)));
+      // reconcile availability - if any item cannot be fulfilled, ask user
+      for (let idx = 0; idx < cart.length; idx++) {
+        const i = cart[idx];
+        const res = checks[idx];
+        const cand = res.data[0];
+        const avail = (cand?.availableQty ?? cand?.qty) ?? 0;
+        if (avail < i.qty) {
+          const ok = window.confirm(`${i.name || i.sku} only ${avail} available, requested ${i.qty}. Reserve anyway?`);
+          if (!ok) {
+            alert('Reservation cancelled');
+            setIsReserving(false);
+            return;
+          }
+        }
+      }
+
       const payload = cart.map(item => ({
         productId: item.productId,
         batchNo: item.batchNo,
@@ -498,15 +532,29 @@ const Billing = () => {
     Cart item quantity controls
   ===================== */
   const increaseQty = (productId: string, batchNo: string) => {
-    setCart(prev => {
-      return prev.map(i => {
-        if (i.productId === productId && i.batchNo === batchNo) {
-          if (i.qty + 1 > i.availableQty) return i; // limit
-          return { ...i, qty: i.qty + 1 };
+    // perform optimistic UI update only after server check; keep current state while checking
+    const existing = cart.find(i => i.productId === productId && i.batchNo === batchNo);
+    if (!existing) return;
+    const newQty = existing.qty + 1;
+
+    (async () => {
+      try {
+        const res = await getBatches(productId, newQty);
+        const candidate = res.data[0];
+        const avail = (candidate?.availableQty ?? candidate?.qty) ?? 0;
+        if (avail < newQty) {
+          const ok = window.confirm(`Only ${avail} unit(s) available in inventory. Increase quantity anyway?`);
+          if (!ok) {
+            alert('Not enough stock');
+            return;
+          }
         }
-        return i;
-      });
-    });
+        setCart(prev => prev.map(i => i.productId === productId && i.batchNo === batchNo ? { ...i, qty: i.qty + 1 } : i));
+      } catch (err) {
+        console.error('Availability check failed', err);
+        alert('Could not verify stock; try again');
+      }
+    })();
   };
 
   const decreaseQty = (productId: string, batchNo: string) => {
@@ -737,6 +785,75 @@ const Billing = () => {
           }}>
             {isPaying ? 'Processing…' : `Pay ₹${computeTotals().grandTotal.toFixed(2)}`}
           </Button>
+        </Modal.Footer>
+      </Modal>
+      {/* Receipt Modal */}
+      <Modal show={showReceiptModal} onHide={() => setShowReceiptModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Receipt - {receiptData?.billId}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {receiptData ? (
+            <div id="receipt-content">
+              <h5>Store Receipt</h5>
+              <div className="small text-muted">Bill: {receiptData.billId}</div>
+              <Table size="sm" className="mt-2">
+                <thead>
+                  <tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+                </thead>
+                <tbody>
+                  {receiptData.items.map((it: any) => (
+                    <tr key={`${it.productId}-${it.batchNo}`}>
+                      <td>{it.sku || it.name}</td>
+                      <td>{it.qty}</td>
+                      <td>₹{it.price}</td>
+                      <td>₹{(it.price * it.qty).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+
+              <div className="mt-3">
+                <div className="d-flex justify-content-between"><div>Subtotal</div><div>₹{total.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>Discount</div><div>₹{computeTotals().discountAmt.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>GST</div><div>₹{computeTotals().gstAmt.toFixed(2)}</div></div>
+                <hr />
+                <div className="d-flex justify-content-between fw-bold"><div>Grand Total</div><div>₹{computeTotals().grandTotal.toFixed(2)}</div></div>
+              </div>
+            </div>
+          ) : (
+            <div>No receipt data</div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowReceiptModal(false)}>Close</Button>
+          <Button variant="primary" onClick={() => {
+            // print receipt
+            const content = document.getElementById('receipt-content');
+            if (!content) return;
+            const w = window.open('', '_blank', 'width=600,height=800');
+            if (!w) { alert('Unable to open print window'); return; }
+            w.document.write('<html><head><title>Receipt</title><style>body{font-family:sans-serif;padding:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}</style></head><body>');
+            w.document.write(content.innerHTML);
+            w.document.write('</body></html>');
+            w.document.close();
+            w.focus();
+            setTimeout(() => { w.print(); }, 300);
+          }}>Print</Button>
+          <Button variant="success" onClick={async () => {
+            // done: close receipt and start a new bill (server already finalized)
+            setShowReceiptModal(false);
+            setReceiptData(null);
+            setCart([]);
+            setDiscount(0);
+            setDiscountIsPercent(false);
+            setCashReceived(undefined);
+            setCustomerMobile('');
+            setReservedForBill(false);
+            const uname = auth?.user?.username ?? (() => { const s = localStorage.getItem('user'); if (!s) return 'guest'; try { return JSON.parse(s).username; } catch { return 'guest'; }})();
+            const res = await startBill(uname);
+            setBillId(res.data.billId);
+          }}>Done</Button>
         </Modal.Footer>
       </Modal>
     </Container>

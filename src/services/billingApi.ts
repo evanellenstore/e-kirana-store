@@ -20,8 +20,10 @@ export const startBill = (userName: string) =>
 export const getProductBySku = (sku: string) =>
   api.get(`/products/search/sku?sku=${sku}`);
 
-export const getBatches = (productId: string) =>
-  api.get(`/inventory/batches?productId=${productId}`);
+export const getBatches = (productId: string, requiredQty?: number) => {
+  const qs = requiredQty != null ? `?productId=${productId}&requiredQty=${requiredQty}` : `?productId=${productId}`;
+  return api.get(`/inventory/batches${qs}`);
+};
 
 export const addItem = (billId: string, payload: any) =>
   api.post(`/billings/${billId}/items`, payload);
