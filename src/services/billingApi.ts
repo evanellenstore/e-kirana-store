@@ -7,6 +7,7 @@ export type CartItem = {
   price: number;
   qty: number;
   availableQty: number;
+  expiryDate: string;
 };
 
 
@@ -23,6 +24,9 @@ export const getBatches = (productId: string) =>
   api.get(`/inventory/batches?productId=${productId}`);
 
 export const addItem = (billId: string, payload: any) =>
+  api.post(`/billings/${billId}/items`, payload);
+
+export const addItemsBatch = (billId: string, payload: any[]) =>
   api.post(`/billings/${billId}/items`, payload);
 
 export const getSummary = (billId: string) =>

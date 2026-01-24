@@ -15,7 +15,7 @@ import {
   startBill,
   getProductBySku,
   getBatches,
-  addItem,
+  addItemsBatch,
   finalizeBill,
   type CartItem
 } from "../../services/billingApi";
@@ -32,16 +32,16 @@ const Billing = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [total, setTotal] = useState(0);
   const [cameraOn, setCameraOn] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [isReserving, setIsReserving] = useState(false);
+  const [reservedForBill, setReservedForBill] = useState(false);
   const [discount, setDiscount] = useState<number>(0);
   const [discountIsPercent, setDiscountIsPercent] = useState<boolean>(false);
-  const [gstRate, setGstRate] = useState<number>(0); // 0 = no GST, set to 0.18 for 18%
+  const [gstRate, setGstRate] = useState<number>(0);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
   const [cashReceived, setCashReceived] = useState<number | undefined>(undefined);
   const [customerMobile, setCustomerMobile] = useState<string>("");
-  const [isPaying, setIsPaying] = useState(false);
-  const [reservedForBill, setReservedForBill] = useState(false);
-  const [isReserving, setIsReserving] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -53,6 +53,9 @@ const Billing = () => {
 
   const auth = useContext(AuthContext);
 
+  /* =====================
+     Start Bill
+  ===================== */
   /* =====================
      Start Bill
   ===================== */
@@ -186,7 +189,8 @@ const Billing = () => {
             sku: product.sku ?? product.skuCode ?? "",
             price: product.price ?? 0,
             qty: 1,
-            availableQty: batch.availableQty ?? batch.qty ?? 0
+            availableQty: batch.availableQty ?? batch.qty ?? 0,
+            expiryDate: batch.expiryDate ?? "",
           }
         ];
       });
@@ -403,28 +407,21 @@ const Billing = () => {
 
     setIsPaying(true);
     try {
-      // If items are not reserved yet (maybe user skipped reserve step), add them now
+      // If items are not reserved yet (maybe user skipped reserve step), add them now as a single batch
       if (!reservedForBill) {
-        const addPromises = cart.map(item =>
-          addItem(billId, {
-            productId: item.productId,
-            batchNo: item.batchNo,
-            quantity: item.qty,
-            price: item.price,
-            name: item.name,
-            sku: item.sku
-          })
-            .then(res => {
-              console.log('addItem response', item.productId, res?.data || res);
-              return res;
-            })
-            .catch(err => {
-              console.error('addItem failed for', item.productId, err);
-              throw err;
-            })
-        );
+        const payload = cart.map(item => ({
+          productId: item.productId,
+          batchNo: item.batchNo,
+          quantity: item.qty,
+          price: item.price,
+          name: item.name,
+          sku: item.sku,
+          expiryDate: item.expiryDate
+        }));
 
-        await Promise.all(addPromises);
+        const res = await addItemsBatch(billId, payload);
+        console.log('addItemsBatch response', res?.data || res);
+        setReservedForBill(true);
       }
 
       // compute payable
@@ -471,18 +468,18 @@ const Billing = () => {
     if (!billId || cart.length === 0) return;
     setIsReserving(true);
     try {
-      const addPromises = cart.map(item =>
-        addItem(billId, {
-          productId: item.productId,
-          batchNo: item.batchNo,
-          quantity: item.qty,
-          price: item.price,
-          name: item.name,
-          sku: item.sku
-        })
-      );
+      const payload = cart.map(item => ({
+        productId: item.productId,
+        batchNo: item.batchNo,
+        quantity: item.qty,
+        price: item.price,
+        name: item.name,
+        sku: item.sku,
+        expiryDate: item.expiryDate
+      }));
 
-      await Promise.all(addPromises);
+      const res = await addItemsBatch(billId, payload);
+      console.log('reserve addItemsBatch response', res?.data || res);
       setReservedForBill(true);
     } catch (e: any) {
       console.error('Reserve failed', e);
