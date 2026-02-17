@@ -1,7 +1,9 @@
-import React from "react";
-import { Navbar, Nav, Container, Button } from "react-bootstrap";
+import React, { useContext } from "react";
+import { Navbar, Container, Button } from "react-bootstrap";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { SidebarContext } from "./SidebarContext";
 
 const AppNavbar: React.FC = () => {
   const { user, logout } = useAuth(); // get user and logout from context
@@ -13,32 +15,35 @@ const AppNavbar: React.FC = () => {
   };
 
   return (
-    <Navbar bg="dark" variant="dark" expand="lg">
-      <Container>
-        <Navbar.Brand href="/">E-Kirana</Navbar.Brand>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="me-auto">
-            {user?.role === "ADMIN" && <Nav.Link href="/admin">Admin</Nav.Link>}
-            {user?.role === "SHOPKEEPER" && <Nav.Link href="/shopkeeper">Shopkeeper</Nav.Link>}
-            {user?.role === "CUSTOMER" && <Nav.Link href="/customer">Customer</Nav.Link>}
-          </Nav>
+    <>
+      <Navbar bg="dark" variant="dark" expand={false} className="mb-3">
+        <Container className="d-flex justify-content-between align-items-center">
+          <div className="d-flex align-items-center">
+            {/* sidebar toggle for mobile */}
+            <SidebarToggle />
+            <Navbar.Brand as={Link} to="/">E-Kirana</Navbar.Brand>
+          </div>
 
-          <Nav className="ms-auto">
+          <div>
             {user ? (
-              <>
-                <Navbar.Text className="me-2">Welcome, {user.username}</Navbar.Text>
-                <Button variant="outline-light" size="sm" onClick={handleLogout}>
-                  Logout
-                </Button>
-              </>
+              <div className="d-flex align-items-center">
+                <span className="text-light me-3">Welcome, {user.username}</span>
+                <Button variant="outline-light" size="sm" onClick={handleLogout}>Logout</Button>
+              </div>
             ) : (
-              <Nav.Link href="/login">Login</Nav.Link>
+              <Link to="/login" className="btn btn-outline-light btn-sm">Login</Link>
             )}
-          </Nav>
-        </Navbar.Collapse>
-      </Container>
-    </Navbar>
+          </div>
+        </Container>
+      </Navbar>
+    </>
+  );
+};
+
+const SidebarToggle: React.FC = () => {
+  const { setShow } = useContext(SidebarContext);
+  return (
+    <button className="btn btn-dark btn-sm d-md-none me-2" onClick={() => setShow(true)}>☰</button>
   );
 };
 

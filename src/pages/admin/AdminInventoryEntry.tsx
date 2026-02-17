@@ -12,7 +12,7 @@ import {
   getCategories,
   getBrandsByCategory,
   getNamesByBrand,
-  getProductByName
+  getProductBySku
 } from "../../services/productService";
 
 import type { Product } from "../../services/productService";
@@ -20,24 +20,68 @@ import { adjustInventory } from "../../services/adminInventoryService";
 
 const AdminInventoryEntry: React.FC = () => {
 
-  const [categories, setCategories] = useState<string[]>([]);
-  const [brands, setBrands] = useState<string[]>([]);
-  const [names, setNames] = useState<string[]>([]);
+  /* ======================
+     Dropdown data
+  ====================== */
+  const [categories, setCategories] = useState<unknown[]>([]);
+  const [brands, setBrands] = useState<unknown[]>([]);
+  const [names, setNames] = useState<unknown[]>([]);
 
+  /* ======================
+     Helper
+  ====================== */
+  const optionToString = (item: unknown) => {
+    if (item == null) return "";
+    if (typeof item === "string") return item;
+    if (typeof item === "number") return String(item);
+    if (typeof item === "object") {
+      const obj = item as Record<string, any>;
+      return (
+        obj.category ??
+        obj.brand ??
+        obj.name ??
+        obj.value ??
+        obj.label ??
+        obj.id ??
+        JSON.stringify(obj)
+      );
+    }
+    return String(item);
+  };
+
+  /* ======================
+     Selected values
+  ====================== */
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
-  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [supplierName, setSupplierName] = useState(""); // ✅ added
 
+  /* ======================
+     Product
+  ====================== */
   const [product, setProduct] = useState<Product | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
 
+  /* ======================
+     Inventory fields
+  ====================== */
   const [quantity, setQuantity] = useState(0);
   const [remarks, setRemarks] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [expiryDate, setExpiryDate] = useState<string | null>(null);
 
+  const presetQuantities = [1, 2, 5, 10, 25, 50, 100];
+
+  /* ======================
+     UI state
+  ====================== */
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
 
-  /* ---------- LOAD CATEGORIES ---------- */
+  /* ======================
+     LOAD CATEGORIES
+  ====================== */
   useEffect(() => {
     setLoading(true);
     getCategories()
@@ -45,12 +89,14 @@ const AdminInventoryEntry: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  /* ---------- LOAD BRANDS ---------- */
+  /* ======================
+     LOAD BRANDS
+  ====================== */
   useEffect(() => {
     if (!category) return;
 
     setBrand("");
-    setName("");
+    setSku("");
     setProduct(null);
 
     setLoading(true);
@@ -59,11 +105,13 @@ const AdminInventoryEntry: React.FC = () => {
       .finally(() => setLoading(false));
   }, [category]);
 
-  /* ---------- LOAD PRODUCT NAMES ---------- */
+  /* ======================
+     LOAD PRODUCT NAMES
+  ====================== */
   useEffect(() => {
     if (!brand) return;
 
-    setName("");
+    setSku("");
     setProduct(null);
 
     setLoading(true);
@@ -72,44 +120,77 @@ const AdminInventoryEntry: React.FC = () => {
       .finally(() => setLoading(false));
   }, [brand]);
 
-  /* ---------- LOAD PRODUCT DETAILS ---------- */
+  /* ======================
+     LOAD PRODUCT DETAILS
+  ====================== */
   useEffect(() => {
-    if (!name) return;
+    if (!sku) return;
 
     setLoading(true);
-    getProductByName(name)
-      .then(res => setProduct(res.data))
-      .finally(() => setLoading(false));
-  }, [name]);
+    setProductError(null);
+    getProductBySku(sku)
+      .then(res => {
+        // axios response usually in res.data — but backends sometimes wrap inside { data: ... } or return arrays
+        const body = (res as any).data ?? res;
+        const payload = body.data ?? body;
 
-  /* ---------- SUBMIT ---------- */
+        if (Array.isArray(payload)) {
+          if (payload.length > 0) setProduct(payload[0]);
+          else setProduct(null);
+        } else if (payload && typeof payload === "object") {
+          setProduct(payload as Product);
+        } else {
+          setProduct(null);
+        }
+
+        // debug log — remove later
+        // eslint-disable-next-line no-console
+        console.debug("getProductBySku response:", res);
+      })
+      .catch(err => {
+        setProduct(null);
+        setProductError(err?.message || "Failed to load product");
+        // eslint-disable-next-line no-console
+        console.error("getProductBySku error:", err);
+      })
+      .finally(() => setLoading(false));
+  }, [sku]);
+
+  /* ======================
+     SUBMIT
+  ====================== */
   const handleSubmit = () => {
     if (!product || product.id == null || !confirmed || quantity <= 0) return;
 
     adjustInventory(product.id, {
       quantity,
       type: "IN",
-      remarks
+      remarks,
+      supplierName,              // ✅ sent to backend
+      expiryDate: expiryDate ?? null
     }).then(() => {
       setSuccess("✅ Inventory updated successfully");
       resetForm();
     });
   };
 
-  /* ---------- RESET FORM ---------- */
+  /* ======================
+     RESET FORM
+  ====================== */
   const resetForm = () => {
     setCategory("");
     setBrand("");
-    setName("");
+    setSku("");
+    setSupplierName("");         // ✅ reset
     setProduct(null);
     setQuantity(0);
     setRemarks("");
     setConfirmed(false);
+    setExpiryDate(null);
   };
 
   return (
-    <Container className="mt-4" style={{ maxWidth: 520 }}>
-
+    <Container className="mt-4" style={{ maxWidth: 520, width: "100%" }}>
       <Card className="shadow">
         <Card.Body>
 
@@ -126,9 +207,10 @@ const AdminInventoryEntry: React.FC = () => {
               onChange={e => setCategory(e.target.value)}
             >
               <option value="">-- Select Category --</option>
-              {categories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {categories.map((c, idx) => {
+                const v = optionToString(c) || `cat-${idx}`;
+                return <option key={v} value={v}>{v}</option>;
+              })}
             </Form.Select>
           </Form.Group>
 
@@ -141,9 +223,10 @@ const AdminInventoryEntry: React.FC = () => {
               onChange={e => setBrand(e.target.value)}
             >
               <option value="">-- Select Brand --</option>
-              {brands.map(b => (
-                <option key={b} value={b}>{b}</option>
-              ))}
+              {brands.map((b, idx) => {
+                const v = optionToString(b) || `brand-${idx}`;
+                return <option key={v} value={v}>{v}</option>;
+              })}
             </Form.Select>
           </Form.Group>
 
@@ -151,14 +234,15 @@ const AdminInventoryEntry: React.FC = () => {
           <Form.Group className="mb-3">
             <Form.Label>Product Name</Form.Label>
             <Form.Select
-              value={name}
+              value={sku}
               disabled={!brand}
-              onChange={e => setName(e.target.value)}
+              onChange={e => setSku(e.target.value)}
             >
               <option value="">-- Select Product --</option>
-              {names.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+              {names.map((n, idx) => {
+                const v = optionToString(n) || `name-${idx}`;
+                return <option key={v} value={v}>{v}</option>;
+              })}
             </Form.Select>
           </Form.Group>
 
@@ -170,6 +254,19 @@ const AdminInventoryEntry: React.FC = () => {
               <strong>Unit:</strong> {product.unit}
             </Alert>
           )}
+          {productError && (
+            <Alert variant="danger">Failed to load product: {productError}</Alert>
+          )}
+
+          {/* SUPPLIER */}
+          <Form.Group className="mb-3">
+            <Form.Label>Supplier Name</Form.Label>
+            <Form.Control
+              placeholder="Enter supplier name"
+              value={supplierName}
+              onChange={e => setSupplierName(e.target.value)}
+            />
+          </Form.Group>
 
           {/* CONFIRM */}
           <Form.Check
@@ -183,10 +280,24 @@ const AdminInventoryEntry: React.FC = () => {
           {/* QUANTITY */}
           <Form.Group className="mb-3">
             <Form.Label>Quantity (IN)</Form.Label>
-            <Form.Control
-              type="number"
-              value={quantity}
+            <Form.Select
+              value={String(quantity || "")}
               onChange={e => setQuantity(Number(e.target.value))}
+            >
+              <option value="">-- Select Quantity --</option>
+              {presetQuantities.map(q => (
+                <option key={q} value={q}>{q}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          {/* EXPIRY DATE */}
+          <Form.Group className="mb-3">
+            <Form.Label>Expiry Date (optional)</Form.Label>
+            <Form.Control
+              type="date"
+              value={expiryDate ?? ""}
+              onChange={e => setExpiryDate(e.target.value || null)}
             />
           </Form.Group>
 
@@ -202,16 +313,15 @@ const AdminInventoryEntry: React.FC = () => {
 
           <Button
             variant="primary"
+            className="w-100"
             disabled={!product || !confirmed || quantity <= 0}
             onClick={handleSubmit}
-            className="w-100"
           >
             Update Inventory
           </Button>
 
         </Card.Body>
       </Card>
-
     </Container>
   );
 };
