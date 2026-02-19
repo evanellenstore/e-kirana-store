@@ -10,24 +10,36 @@ export interface Product {
   unit: string;
   price: number;
   status: "ACTIVE" | "INACTIVE";
+  barcode?: string;
 }
 
-// ✅ GET all products
-export const getAllProducts = () =>
-  api.get<Product[]>("/products");
+// GET all products
+export const getAllProducts = () => api.get<Product[]>("/products");
 
-// ✅ GET product by ID
-export const getProductById = (id: number) =>
-  api.get<Product>(`/products/${id}`);
+// GET categories → returns string[]
+export const getCategories = () => api.get<string[]>("/products/categories");
 
-// ✅ CREATE product  ← THIS MUST EXIST
+// GET brands by category → returns string[]
+export const getBrandsByCategory = (category: string) =>
+  api.get<string[]>("/products/search/category", { params: { category } });
+
+// GET product names by brand → returns string[]
+export const getNamesByBrand = (brand: string) =>
+  api.get<string[]>("/products/search/brand", { params: { brand } });
+
+
+// GET product by sku → returns Product
+export const getProductBySku = (sku: string) =>
+  api.get<Product>("/products/search/sku", { params: { sku } });
+
+// CREATE product
 export const createProduct = (product: Product) =>
   api.post("/products", product);
 
-// ✅ UPDATE product
+// UPDATE product
 export const updateProduct = (id: number, product: Product) =>
   api.put(`/products/${id}`, product);
 
-// ✅ DELETE product
+// DELETE product
 export const deleteProduct = (id: number) =>
   api.delete(`/products/${id}`);

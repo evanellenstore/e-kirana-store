@@ -12,10 +12,13 @@ import {
 } from "react-bootstrap";
 import {
   getAllProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
   type Product
 } from "../../services/productService";
 
-const Products: React.FC = () => {
+const AdminProducts: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -57,7 +60,23 @@ const Products: React.FC = () => {
     setShow(true);
   };
 
+  const saveProduct = () => {
+    const apiCall = editing
+      ? updateProduct(editing.id!, formData)
+      : createProduct(formData);
 
+    apiCall.then(() => {
+      loadProducts();
+      setShow(false);
+    });
+  };
+
+  const removeProduct = (id?: number) => {
+    if (!id) return;
+    if (window.confirm("Delete this product?")) {
+      deleteProduct(id).then(loadProducts);
+    }
+  };
 
   /* brand/category filters removed */
 
@@ -93,7 +112,24 @@ const Products: React.FC = () => {
             onChange={e => setSearch(e.target.value)}
           />
         </Col>
-       
+
+  {/* filters removed: Brand / Category / Unit */}
+
+        <Col xs={12} md={2} className="text-md-end">
+          <Button
+            variant="success"
+            className="w-100 w-md-auto d-flex align-items-center justify-content-center gap-2 py-2 shadow-sm rounded-3"
+            onClick={() => openModal()}
+          >
+            <span
+              className="bg-white text-success rounded-circle d-inline-flex align-items-center justify-content-center"
+              style={{ width: 28, height: 28, fontSize: 16 }}
+            >
+              +
+            </span>
+            <span className="fw-semibold">Add Product</span>
+          </Button>
+        </Col>
       </Row>
 
       {/* 📦 Product Table (desktop) */}
@@ -104,10 +140,11 @@ const Products: React.FC = () => {
             <th>ID</th>
             <th>SKU</th>
             <th>Name</th>
+            {/* Brand / Category / Unit removed */}
             <th>Price</th>
             <th>Barcode</th>
             <th>Status</th>
-           
+            <th>Actions</th>
           </tr>
         </thead>
 
@@ -136,7 +173,22 @@ const Products: React.FC = () => {
                   {p.status}
                 </span>
               </td>
-              
+              <td>
+                <Button
+                  size="sm"
+                  variant="warning"
+                  onClick={() => openModal(p)}
+                >
+                  Edit
+                </Button>{" "}
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => removeProduct(p.id)}
+                >
+                  Delete
+                </Button>
+              </td>
             </tr>
           ))}
 
@@ -195,7 +247,7 @@ const Products: React.FC = () => {
                 <Col xs={6} className="fw-bold">₹{p.price}</Col>
                 <Col xs={6} className="text-end">
                   <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
-                 
+                  <Button size="sm" variant="danger" onClick={() => removeProduct(p.id)}>Delete</Button>
                 </Col>
               </Row>
             </Card.Body>
@@ -235,7 +287,9 @@ const Products: React.FC = () => {
           </Form.Select>
         </Modal.Body>
 
-       
+        <Modal.Footer>
+          <Button onClick={saveProduct}>Save</Button>
+        </Modal.Footer>
       </Modal>
       {/* Barcode preview modal */}
       <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
@@ -259,4 +313,4 @@ const Products: React.FC = () => {
   );
 };
 
-export default Products;
+export default AdminProducts;

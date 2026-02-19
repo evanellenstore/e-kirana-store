@@ -28,7 +28,7 @@ const ReportPage: React.FC = () => {
           <Card className="text-white bg-primary mb-3">
             <Card.Body>
               <Card.Title>Total Revenue</Card.Title>
-              <Card.Text>${report.totalRevenue.toFixed(2)}</Card.Text>
+              <Card.Text>₹{report.totalRevenue.toFixed(2)}</Card.Text>
             </Card.Body>
           </Card>
         </Col>
@@ -36,7 +36,7 @@ const ReportPage: React.FC = () => {
           <Card className="text-white bg-success mb-3">
             <Card.Body>
               <Card.Title>Total Tax</Card.Title>
-              <Card.Text>${report.totalTax.toFixed(2)}</Card.Text>
+              <Card.Text>₹{report.totalTax.toFixed(2)}</Card.Text>
             </Card.Body>
           </Card>
         </Col>

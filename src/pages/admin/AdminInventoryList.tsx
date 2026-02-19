@@ -40,7 +40,7 @@ const EXPIRY_WARNING_DAYS = 30;
    Component
 ======================= */
 
-const Inventory: React.FC = () => {
+const InventoryList: React.FC = () => {
   const [data, setData] = useState<InventoryProduct[]>([]);
   const [filteredData, setFilteredData] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,53 +156,53 @@ const Inventory: React.FC = () => {
             {/* Batch Table (desktop) */}
             <div className="d-none d-md-block">
               <Table bordered hover responsive className="align-middle">
-                <thead className="table-light">
-                  <tr>
-                    <th>Batch No</th>
-                    <th>Expiry Date</th>
-                    <th className="text-center">Quantity</th>
-                    <th className="text-center">Expiry Status</th>
-                    <th className="text-center">Stock Status</th>
-                  </tr>
-                </thead>
+              <thead className="table-light">
+                <tr>
+                  <th>Batch No</th>
+                  <th>Expiry Date</th>
+                  <th className="text-center">Quantity</th>
+                  <th className="text-center">Expiry Status</th>
+                  <th className="text-center">Stock Status</th>
+                </tr>
+              </thead>
 
-                <tbody>
-                  {product.batches.map(batch => {
-                    const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
+              <tbody>
+                {product.batches.map(batch => {
+                  const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
 
-                    return (
-                      <tr
-                        key={batch.batchNo}
-                        className={isLowStock ? "table-warning" : ""}
-                      >
-                        <td className="fw-semibold">{batch.batchNo}</td>
-                        <td>
-                          {new Date(batch.expiry).toLocaleDateString()}
-                        </td>
+                  return (
+                    <tr
+                      key={batch.batchNo}
+                      className={isLowStock ? "table-warning" : ""}
+                    >
+                      <td className="fw-semibold">{batch.batchNo}</td>
+                      <td>
+                        {new Date(batch.expiry).toLocaleDateString()}
+                      </td>
 
-                        <td className="text-center fw-bold">
-                          {batch.qty}
-                        </td>
+                      <td className="text-center fw-bold">
+                        {batch.qty}
+                      </td>
 
-                        <td className="text-center">
-                          {getExpiryBadge(batch.expiry)}
-                        </td>
+                      <td className="text-center">
+                        {getExpiryBadge(batch.expiry)}
+                      </td>
 
-                        <td className="text-center">
-                          {isLowStock ? (
-                            <Badge bg="danger">Low Stock</Badge>
-                          ) : (
-                            <Badge bg="success">In Stock</Badge>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                      <td className="text-center">
+                        {isLowStock ? (
+                          <Badge bg="danger">Low Stock</Badge>
+                        ) : (
+                          <Badge bg="success">In Stock</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
               </Table>
             </div>
 
-            {/* Mobile stacked batches */}
+            {/* Batch stacked view (mobile) */}
             <div className="d-block d-md-none">
               {product.batches.map(batch => {
                 const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
@@ -243,4 +243,4 @@ const Inventory: React.FC = () => {
   );
 };
 
-export default Inventory;
+export default InventoryList;
