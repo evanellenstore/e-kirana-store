@@ -5,6 +5,7 @@ export type CartItem = {
   name: string;
   sku: string;
   price: number;
+  discountAmount?: number;
   qty: number;
   availableQty: number;
   expiryDate: string;

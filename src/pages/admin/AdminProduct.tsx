@@ -49,6 +49,7 @@ const AdminProducts: React.FC = () => {
     brandId: undefined,
     unit: "",
     price: 0,
+    discountAmount: 0,
     status: "ACTIVE"
   };
 
@@ -201,6 +202,7 @@ const AdminProducts: React.FC = () => {
             <th>Name</th>
             {/* Brand / Category / Unit removed */}
             <th>Price</th>
+            <th>Discount</th>
             <th>Barcode</th>
             <th>Status</th>
             <th>Actions</th>
@@ -215,6 +217,7 @@ const AdminProducts: React.FC = () => {
               <td>{p.name}</td>
               {/* Brand / Category / Unit removed */}
               <td>₹{p.price}</td>
+              <td>₹{p.discountAmount || 0}</td>
               <td className="text-center">
                 {p.barcode ? (
                   <img
@@ -302,8 +305,20 @@ const AdminProducts: React.FC = () => {
                 </Col>
               </Row>
 
+              <Row className="align-items-center mb-2">
+                <Col xs={6}>
+                  <div className="small text-muted">Price</div>
+                  <div className="fw-bold">₹{p.price}</div>
+                </Col>
+                <Col xs={6}>
+                  <div className="small text-muted">Discount</div>
+                  <div className="fw-bold">₹{p.discountAmount || 0}</div>
+                </Col>
+              </Row>
+
               <Row className="align-items-center">
-                <Col xs={6} className="fw-bold">₹{p.price}</Col>
+                <Col xs={6} className="text-start">
+                </Col>
                 <Col xs={6} className="text-end">
                   <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
                   <Button size="sm" variant="danger" onClick={() => removeProduct(p.id)}>Delete</Button>
@@ -420,6 +435,21 @@ const AdminProducts: React.FC = () => {
               value={formData.price}
               onChange={e =>
                 setFormData({ ...formData, price: parseFloat(e.target.value) })
+              }
+            />
+          </Form.Group>
+
+          {/* Discount Amount */}
+          <Form.Group className="mb-2">
+            <Form.Label>Discount (₹)</Form.Label>
+            <Form.Control
+              type="number"
+              placeholder="Enter discount amount in rupees"
+              min="0"
+              step="0.01"
+              value={formData.discountAmount || 0}
+              onChange={e =>
+                setFormData({ ...formData, discountAmount: parseFloat(e.target.value) || 0 })
               }
             />
           </Form.Group>

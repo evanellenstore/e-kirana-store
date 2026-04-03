@@ -32,6 +32,7 @@ const Billing = () => {
   const [billId, setBillId] = useState<string>();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [subtotalBeforeDiscount, setSubtotalBeforeDiscount] = useState(0);
   const [cameraOn, setCameraOn] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isReserving, setIsReserving] = useState(false);
@@ -225,6 +226,7 @@ const Billing = () => {
             name: product.name ?? product.title ?? "",
             sku: product.sku ?? product.skuCode ?? "",
             price: product.price ?? 0,
+            discountAmount: product.discountAmount ?? 0,
             qty: 1,
             availableQty: availableQty,
             expiryDate: batch.expiryDate ?? "",
@@ -252,13 +254,32 @@ const Billing = () => {
      Calculate Total
   ===================== */
   useEffect(() => {
-    setTotal(cart.reduce((s, i) => s + i.price * i.qty, 0));
+    // Calculate subtotal before product discounts (original prices)
+    const originalSubtotal = cart.reduce((s, i) => {
+      return s + ((i.price ?? 0) * (i.qty ?? 0));
+    }, 0);
+    setSubtotalBeforeDiscount(originalSubtotal);
+    
+    // Calculate total: (price - discount) * qty for each item
+    setTotal(cart.reduce((s, i) => {
+      const priceAfterDiscount = Math.max(0, (i.price ?? 0) - (i.discountAmount ?? 0));
+      return s + (priceAfterDiscount * (i.qty ?? 0));
+    }, 0));
   }, [cart]);
 
   // Helper: compute discount, gst and grand total
   const computeTotals = () => {
-    const discountAmt = discountIsPercent ? (total * discount) / 100 : discount;
-    const taxable = Math.max(0, total - discountAmt);
+    // Calculate total product discounts from cart items
+    const productDiscountTotal = cart.reduce((sum, item) => {
+      const discountPerUnit = item.discountAmount ?? 0;
+      return sum + (discountPerUnit * item.qty);
+    }, 0);
+    
+    // Add manual discount (if any)
+    const manualDiscount = discountIsPercent ? (subtotalBeforeDiscount * discount) / 100 : discount;
+    const discountAmt = productDiscountTotal + manualDiscount;
+    
+    const taxable = Math.max(0, subtotalBeforeDiscount - discountAmt);
     const gstAmt = taxable * gstRate;
     const grandTotal = taxable + gstAmt;
     return { discountAmt, taxable, gstAmt, grandTotal };
@@ -753,60 +774,69 @@ const Billing = () => {
                 <th>Item</th>
                 <th style={{ width: 180 }}>Qty</th>
                 <th style={{ width: 120 }}>Price</th>
+                <th style={{ width: 100 }}>Discount</th>
                 <th style={{ width: 140 }}>Total</th>
                 <th style={{ width: 100 }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {cart.map(i => (
-                <tr key={`${i.productId}-${i.batchNo}`}>
-                  <td style={{ maxWidth: 300 }}>{i.sku || i.name}</td>
-                  <td>
-                    <div className="d-flex align-items-center">
-                      <Button size="sm" variant="outline-secondary" onClick={() => decreaseQty(i.productId, i.batchNo)}>-</Button>
-                      <div className="px-3">{i.qty}</div>
-                      <Button size="sm" variant="outline-secondary" onClick={() => increaseQty(i.productId, i.batchNo)}>+</Button>
-                      <div className="ms-auto small text-muted">Avl: {i.availableQty}</div>
-                    </div>
-                  </td>
-                  <td>₹{i.price}</td>
-                  <td>₹{i.price * i.qty}</td>
-                  <td>
-                    <Button size="sm" variant="info" onClick={() => openBatchAllocModal(i)}>
-                      Split
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {cart.map(i => {
+                const discountPerUnit = i.discountAmount ?? 0;
+                const totalDiscount = discountPerUnit * i.qty;
+                const priceAfterDiscount = Math.max(0, (i.price ?? 0) - discountPerUnit);
+                const itemTotal = priceAfterDiscount * i.qty;
+                return (
+                  <tr key={`${i.productId}-${i.batchNo}`}>
+                    <td style={{ maxWidth: 300 }}>{i.sku || i.name}</td>
+                    <td>
+                      <div className="d-flex align-items-center">
+                        <Button size="sm" variant="outline-secondary" onClick={() => decreaseQty(i.productId, i.batchNo)}>-</Button>
+                        <div className="px-3">{i.qty}</div>
+                        <Button size="sm" variant="outline-secondary" onClick={() => increaseQty(i.productId, i.batchNo)}>+</Button>
+                        <div className="ms-auto small text-muted">Avl: {i.availableQty}</div>
+                      </div>
+                    </td>
+                    <td>₹{i.price.toFixed(2)}</td>
+                    <td>₹{totalDiscount.toFixed(2)}</td>
+                    <td>₹{itemTotal.toFixed(2)}</td>
+                    <td>
+                      <Button size="sm" variant="info" onClick={() => openBatchAllocModal(i)}>
+                        Split
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
 
           {/* Summary */}
           <Row className="mt-2">
             <Col md={{ span: 4, offset: 8 }}>
-              <div className="d-flex justify-content-between small">
-                <div>Subtotal</div>
-                <div>₹{total.toFixed(2)}</div>
-              </div>
-              <div className="d-flex justify-content-between small">
-                <div>Discount {discountIsPercent ? `(${discount}%)` : ''}</div>
-                <div>
-                  ₹{(discountIsPercent ? (total * discount) / 100 : discount).toFixed(2)}
-                </div>
-              </div>
-              <div className="d-flex justify-content-between small">
-                <div>GST</div>
-                <div>
-                  ₹{( (total - (discountIsPercent ? (total*discount)/100 : discount)) * gstRate ).toFixed(2)}
-                </div>
-              </div>
-              <hr />
-              <div className="d-flex justify-content-between fw-bold">
-                <div>Grand Total</div>
-                <div>
-                  ₹{( (total - (discountIsPercent ? (total*discount)/100 : discount)) * (1 + gstRate) ).toFixed(2)}
-                </div>
-              </div>
+              {(() => {
+                const { discountAmt, gstAmt, grandTotal } = computeTotals();
+                return (
+                  <>
+                    <div className="d-flex justify-content-between small">
+                      <div>Subtotal</div>
+                      <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
+                    </div>
+                    <div className="d-flex justify-content-between small">
+                      <div>Discount {discountIsPercent ? `(${discount}%)` : ''}</div>
+                      <div>₹{discountAmt.toFixed(2)}</div>
+                    </div>
+                    <div className="d-flex justify-content-between small">
+                      <div>GST</div>
+                      <div>₹{gstAmt.toFixed(2)}</div>
+                    </div>
+                    <hr />
+                    <div className="d-flex justify-content-between fw-bold">
+                      <div>Grand Total</div>
+                      <div>₹{grandTotal.toFixed(2)}</div>
+                    </div>
+                  </>
+                );
+              })()}
             </Col>
           </Row>
 
@@ -831,7 +861,7 @@ const Billing = () => {
                 <>
                   <div className="d-flex justify-content-between">
                     <div>Subtotal</div>
-                    <div>₹{total.toFixed(2)}</div>
+                    <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
                   </div>
 
                   <div className="d-flex justify-content-between">
@@ -911,26 +941,33 @@ const Billing = () => {
               <div className="small text-muted">Bill: {receiptData.billId}</div>
               <Table size="sm" className="mt-2">
                 <thead>
-                  <tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+                  <tr><th>Item</th><th>Qty</th><th>Price</th><th>Discount</th><th>Total</th></tr>
                 </thead>
                 <tbody>
-                  {receiptData.items.map((it: any) => (
-                    <tr key={`${it.productId}-${it.batchNo}`}>
-                      <td>{it.sku || it.name}</td>
-                      <td>{it.qty}</td>
-                      <td>₹{it.price}</td>
-                      <td>₹{(it.price * it.qty).toFixed(2)}</td>
-                    </tr>
-                  ))}
+                  {receiptData.items.map((it: any) => {
+                    const discountPerUnit = it.discountAmount ?? 0;
+                    const totalDiscount = discountPerUnit * it.qty;
+                    const priceAfterDiscount = Math.max(0, (it.price ?? 0) - discountPerUnit);
+                    const itemTotal = priceAfterDiscount * it.qty;
+                    return (
+                      <tr key={`${it.productId}-${it.batchNo}`}>
+                        <td>{it.sku || it.name}</td>
+                        <td>{it.qty}</td>
+                        <td>₹{it.price.toFixed(2)}</td>
+                        <td>₹{totalDiscount.toFixed(2)}</td>
+                        <td>₹{itemTotal.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </Table>
 
               <div className="mt-3">
-                <div className="d-flex justify-content-between"><div>Subtotal</div><div>₹{total.toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>Discount</div><div>₹{computeTotals().discountAmt.toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>GST</div><div>₹{computeTotals().gstAmt.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>Subtotal</div><div>₹{(receiptData.totals.discountAmt + receiptData.totals.taxable).toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>Discount</div><div>₹{receiptData.totals.discountAmt.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>GST</div><div>₹{receiptData.totals.gstAmt.toFixed(2)}</div></div>
                 <hr />
-                <div className="d-flex justify-content-between fw-bold"><div>Grand Total</div><div>₹{computeTotals().grandTotal.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between fw-bold"><div>Grand Total</div><div>₹{receiptData.totals.grandTotal.toFixed(2)}</div></div>
               </div>
             </div>
           ) : (

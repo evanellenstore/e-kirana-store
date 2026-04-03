@@ -10,6 +10,7 @@ export interface Product {
   brandName?: string;
   unit: string;
   price: number;
+  discountAmount?: number;
   status: "ACTIVE" | "INACTIVE";
   barcode?: string;
 }

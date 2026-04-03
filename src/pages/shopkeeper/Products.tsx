@@ -31,7 +31,7 @@ const Products: React.FC = () => {
     name: "",
     description: "",
     category: "",
-    brand: "",
+    brandName: "",
     unit: "",
     price: 0,
     status: "ACTIVE"
@@ -111,6 +111,7 @@ const Products: React.FC = () => {
             <th>Brand</th>
             <th>Unit</th>
             <th>Price</th>
+            <th>Discount</th>
             <th>Status</th>
            
           </tr>
@@ -122,9 +123,10 @@ const Products: React.FC = () => {
               <td className="fw-semibold">{p.sku}</td>
               <td>{p.name}</td>
               <td>{p.category}</td>
-              <td>{p.brand}</td>
+              <td>{p.brandName}</td>
               <td>{p.unit}</td>
               <td>₹{p.price}</td>
+              <td>₹{p.discountAmount || 0}</td>
               <td>
                 <span className={`badge bg-${p.status === "ACTIVE" ? "success" : "secondary"}`}>
                   {p.status}
@@ -170,7 +172,7 @@ const Products: React.FC = () => {
                   <div className="mb-2 text-truncate">{p.sku}</div>
 
                   <div className="small text-muted">Brand</div>
-                  <div className="mb-2 text-truncate">{p.brand}</div>
+                  <div className="mb-2 text-truncate">{p.brandName}</div>
                 </Col>
 
                 <Col xs={6} className="ps-2">
@@ -185,8 +187,20 @@ const Products: React.FC = () => {
                 </Col>
               </Row>
 
+              <Row className="align-items-center mb-2">
+                <Col xs={6}>
+                  <div className="small text-muted">Price</div>
+                  <div className="fw-bold">₹{p.price}</div>
+                </Col>
+                <Col xs={6}>
+                  <div className="small text-muted">Discount</div>
+                  <div className="fw-bold">₹{p.discountAmount || 0}</div>
+                </Col>
+              </Row>
+
               <Row className="align-items-center">
-                <Col xs={6} className="fw-bold">₹{p.price}</Col>
+                <Col xs={6} className="text-start">
+                </Col>
                 <Col xs={6} className="text-end">
                   <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
                  
