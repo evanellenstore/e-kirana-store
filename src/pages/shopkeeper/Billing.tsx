@@ -44,6 +44,10 @@ const Billing = () => {
   const [customerMobile, setCustomerMobile] = useState<string>("");
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
+  const [showBatchAllocModal, setShowBatchAllocModal] = useState(false);
+  const [batchAllocItem, setBatchAllocItem] = useState<any>(null);
+  const [batchAllocOptions, setBatchAllocOptions] = useState<any[]>([]);
+  const [batchAllocations, setBatchAllocations] = useState<Array<{ batchNo: string; qty: number; expiryDate: string }>>([]);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -168,9 +172,22 @@ const Billing = () => {
       const product = productRes.data || {};
 
       const pid = product.productId ?? product.id ?? product.sku ?? "";
+      
+      // Validate product ID
+      if (!pid) {
+        alert('Product not found');
+        return;
+      }
+      
   // Ask server for batches preferring ones that can satisfy qty=1
   const batchRes = await getBatches(pid, 1);
-  const batch = batchRes.data[0]; // server returns suitable batches first
+  const batch = batchRes.data?.[0]; // server returns suitable batches first
+  
+  // Check if batch data exists before proceeding
+  if (!batch || !batch.batchNo) {
+    alert('No batch information available for this product. Please check inventory.');
+    return;
+  }
 
       setCart(prev => {
         const batchNo = batch.batchNo ?? batch.batchId ?? String(batch.batchId ?? batch.id ?? "");
@@ -502,15 +519,47 @@ const Billing = () => {
         }
       }
 
-      const payload = cart.map(item => ({
-        productId: item.productId,
-        batchNo: item.batchNo,
-        quantity: item.qty,
-        price: item.price,
-        name: item.name,
-        sku: item.sku,
-        expiryDate: item.expiryDate
-      }));
+      // Group items by productId to detect multi-batch allocations
+      const itemsByProduct = new Map<string, typeof cart>();
+      for (const item of cart) {
+        if (!itemsByProduct.has(item.productId)) {
+          itemsByProduct.set(item.productId, []);
+        }
+        itemsByProduct.get(item.productId)!.push(item);
+      }
+
+      // Build payload: if product has multiple rows (batches), create multi-batch format
+      const payload: any[] = [];
+      for (const [_, items] of itemsByProduct) {
+        if (items.length > 1) {
+          // Multi-batch: combine into single entry with "batches" array
+          const firstItem = items[0];
+          const batchesArray = items.map(item => ({
+            batchNo: item.batchNo,
+            quantity: item.qty,
+            expiryDate: item.expiryDate
+          }));
+          payload.push({
+            productId: firstItem.productId,
+            name: firstItem.name,
+            sku: firstItem.sku,
+            price: firstItem.price,
+            batches: batchesArray
+          });
+        } else {
+          // Single-batch: use original format (backward compatible)
+          const item = items[0];
+          payload.push({
+            productId: item.productId,
+            batchNo: item.batchNo,
+            quantity: item.qty,
+            price: item.price,
+            name: item.name,
+            sku: item.sku,
+            expiryDate: item.expiryDate
+          });
+        }
+      }
 
       const res = await addItemsBatch(billId, payload);
       console.log('reserve addItemsBatch response', res?.data || res);
@@ -568,6 +617,58 @@ const Billing = () => {
         })
         .filter(i => i.qty > 0);
     });
+  };
+
+  /* =====================
+     Batch Allocation Modal Handler
+  ===================== */
+  const openBatchAllocModal = async (cartItem: CartItem) => {
+    try {
+      // Fetch available batches for this product
+      const res = await getBatches(cartItem.productId, cartItem.qty);
+      setBatchAllocOptions(res.data || []);
+      setBatchAllocItem(cartItem);
+      
+      // Initialize allocations with current cart item
+      setBatchAllocations([{ 
+        batchNo: cartItem.batchNo, 
+        qty: cartItem.qty, 
+        expiryDate: cartItem.expiryDate 
+      }]);
+      
+      setShowBatchAllocModal(true);
+    } catch (err) {
+      console.error('Failed to fetch batches', err);
+      alert('Failed to load batch options');
+    }
+  };
+
+  const saveBatchAllocations = () => {
+    if (!batchAllocItem) return;
+    
+    // Validate total quantity equals original quantity
+    const totalQty = batchAllocations.reduce((sum, b) => sum + b.qty, 0);
+    if (totalQty !== batchAllocItem.qty) {
+      alert(`Total quantity must equal ${batchAllocItem.qty}. Current total: ${totalQty}`);
+      return;
+    }
+
+    // Remove the old single-batch item(s) for this product
+    setCart(prev => prev.filter(i => !(i.productId === batchAllocItem.productId && i.sku === batchAllocItem.sku)));
+    
+    // Add new items, one per batch allocation
+    const newItems = batchAllocations.map((alloc) => ({
+      ...batchAllocItem,
+      batchNo: alloc.batchNo,
+      qty: alloc.qty,
+      expiryDate: alloc.expiryDate
+    }));
+    
+    setCart(prev => [...prev, ...newItems]);
+    
+    setShowBatchAllocModal(false);
+    setBatchAllocItem(null);
+    setBatchAllocations([]);
   };
 
   return (
@@ -648,6 +749,7 @@ const Billing = () => {
                 <th style={{ width: 180 }}>Qty</th>
                 <th style={{ width: 120 }}>Price</th>
                 <th style={{ width: 140 }}>Total</th>
+                <th style={{ width: 100 }}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -664,6 +766,11 @@ const Billing = () => {
                   </td>
                   <td>₹{i.price}</td>
                   <td>₹{i.price * i.qty}</td>
+                  <td>
+                    <Button size="sm" variant="info" onClick={() => openBatchAllocModal(i)}>
+                      Split
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -854,6 +961,114 @@ const Billing = () => {
             const res = await startBill(uname);
             setBillId(res.data.billId);
           }}>Done</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Batch Allocation Modal */}
+      <Modal show={showBatchAllocModal} onHide={() => setShowBatchAllocModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>
+            Allocate {batchAllocItem?.name} - {batchAllocItem?.qty} units
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="mb-3">
+            <p className="text-muted">
+              Total required: <strong>{batchAllocItem?.qty} units</strong>
+            </p>
+            <p className="text-muted">
+              Total allocated: <strong>{batchAllocations.reduce((sum, b) => sum + (b.qty || 0), 0)} units</strong>
+            </p>
+          </div>
+
+          <Table striped bordered hover size="sm" className="mb-3">
+            <thead>
+              <tr>
+                <th>Batch No</th>
+                <th>Expiry Date</th>
+                <th>Available Qty</th>
+                <th>Allocate Qty</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batchAllocations.map((alloc, idx) => {
+                const batchOption = batchAllocOptions.find(b => b.batchNo === alloc.batchNo);
+                return (
+                  <tr key={idx}>
+                    <td>
+                      <Form.Select
+                        size="sm"
+                        value={alloc.batchNo}
+                        onChange={(e) => {
+                          const newAllocs = [...batchAllocations];
+                          newAllocs[idx].batchNo = e.target.value;
+                          const selectedBatch = batchAllocOptions.find(b => b.batchNo === e.target.value);
+                          if (selectedBatch) {
+                            newAllocs[idx].expiryDate = selectedBatch.expiryDate;
+                          }
+                          setBatchAllocations(newAllocs);
+                        }}
+                      >
+                        <option value="">-- Select Batch --</option>
+                        {batchAllocOptions.map((batch, bidx) => (
+                          <option key={bidx} value={batch.batchNo}>
+                            {batch.batchNo}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    </td>
+                    <td className="text-muted">{alloc.expiryDate}</td>
+                    <td className="text-center">{batchOption?.availableQty || 0}</td>
+                    <td>
+                      <Form.Control
+                        type="number"
+                        size="sm"
+                        min="0"
+                        max={batchOption?.availableQty || 0}
+                        value={alloc.qty}
+                        onChange={(e) => {
+                          const newAllocs = [...batchAllocations];
+                          newAllocs[idx].qty = parseInt(e.target.value) || 0;
+                          setBatchAllocations(newAllocs);
+                        }}
+                      />
+                    </td>
+                    <td className="text-center">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          const newAllocs = batchAllocations.filter((_, i) => i !== idx);
+                          setBatchAllocations(newAllocs);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={() => {
+              setBatchAllocations([...batchAllocations, { batchNo: '', qty: 0, expiryDate: '' }]);
+            }}
+          >
+            + Add Another Batch
+          </Button>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowBatchAllocModal(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={saveBatchAllocations}>
+            Save Allocations
+          </Button>
         </Modal.Footer>
       </Modal>
     </Container>
