@@ -10,10 +10,9 @@ import {
 
 import {
   getActiveCategories,
-  getBrandsByCategory,
   getNamesByBrand,
   getProductBySku,
-  type Category,
+  getActiveBrands,
   type Product
 } from "../../services/productService";
 import { adjustInventory } from "../../services/adminInventoryService";
@@ -53,7 +52,7 @@ const AdminInventoryEntry: React.FC = () => {
      Selected values
   ====================== */
   const [category, setCategory] = useState("");
-  const [brand, setBrand] = useState("");
+  const [brand, setBrand] = useState<number | null>(null);
   const [sku, setSku] = useState("");
   const [supplierName, setSupplierName] = useState(""); // ✅ added
 
@@ -93,17 +92,11 @@ const AdminInventoryEntry: React.FC = () => {
      LOAD BRANDS
   ====================== */
   useEffect(() => {
-    if (!category) return;
-
-    setBrand("");
-    setSku("");
-    setProduct(null);
-
     setLoading(true);
-    getBrandsByCategory(category)
+    getActiveBrands()
       .then(res => setBrands(res.data))
       .finally(() => setLoading(false));
-  }, [category]);
+  }, []);
 
   /* ======================
      LOAD PRODUCT NAMES
@@ -160,14 +153,14 @@ const AdminInventoryEntry: React.FC = () => {
      SUBMIT
   ====================== */
   const handleSubmit = () => {
-    if (!product || product.id == null || !confirmed || quantity <= 0) return;
+    if (!product || product.id == null || !confirmed || quantity <= 0 || !expiryDate) return;
 
     adjustInventory(product.id, {
       quantity,
       type: "IN",
       remarks,
       supplierName,              // ✅ sent to backend
-      expiryDate: expiryDate ?? null
+      expiryDate: expiryDate
     }).then(() => {
       setSuccess("✅ Inventory updated successfully");
       resetForm();
@@ -179,7 +172,7 @@ const AdminInventoryEntry: React.FC = () => {
   ====================== */
   const resetForm = () => {
     setCategory("");
-    setBrand("");
+    setBrand(null);
     setSku("");
     setSupplierName("");         // ✅ reset
     setProduct(null);
@@ -218,14 +211,14 @@ const AdminInventoryEntry: React.FC = () => {
           <Form.Group className="mb-3">
             <Form.Label>Brand</Form.Label>
             <Form.Select
-              value={brand}
+              value={brand ?? ""}
               disabled={!category}
-              onChange={e => setBrand(e.target.value)}
+              onChange={e => setBrand(e.target.value ? Number(e.target.value) : null)}
             >
               <option value="">-- Select Brand --</option>
-              {brands.map((b, idx) => {
-                const v = optionToString(b) || `brand-${idx}`;
-                return <option key={v} value={v}>{v}</option>;
+              {brands.map((b) => {
+                const brandObj = b as any;
+                return <option key={brandObj.id} value={brandObj.id}>{brandObj.brand}</option>;
               })}
             </Form.Select>
           </Form.Group>
@@ -293,12 +286,16 @@ const AdminInventoryEntry: React.FC = () => {
 
           {/* EXPIRY DATE */}
           <Form.Group className="mb-3">
-            <Form.Label>Expiry Date (optional)</Form.Label>
+            <Form.Label>Expiry Date *</Form.Label>
             <Form.Control
               type="date"
               value={expiryDate ?? ""}
               onChange={e => setExpiryDate(e.target.value || null)}
+              isInvalid={!expiryDate && confirmed}
             />
+            <Form.Control.Feedback type="invalid">
+              Expiry Date is required
+            </Form.Control.Feedback>
           </Form.Group>
 
           {/* REMARKS */}
@@ -314,7 +311,7 @@ const AdminInventoryEntry: React.FC = () => {
           <Button
             variant="primary"
             className="w-100"
-            disabled={!product || !confirmed || quantity <= 0}
+            disabled={!product || !confirmed || quantity <= 0 || !expiryDate}
             onClick={handleSubmit}
           >
             Update Inventory

@@ -17,8 +17,9 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  getBrandsByCategory,
-  type Product
+  getActiveBrands,
+  type Product,
+  type Brand
 } from "../../services/productService";
 
 interface Category {
@@ -30,7 +31,7 @@ interface Category {
 const AdminProducts: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<string[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingBrands, setLoadingBrands] = useState(false);
 
@@ -45,7 +46,7 @@ const AdminProducts: React.FC = () => {
     name: "",
     description: "",
     category: "",
-    brand: "",
+    brandId: undefined,
     unit: "",
     price: 0,
     status: "ACTIVE"
@@ -71,15 +72,15 @@ const AdminProducts: React.FC = () => {
     }
   };
 
-  const loadBrandsByCategory = async (category: string) => {
+  const loadBrandsByCategory = async () => {
     try {
       setLoadingBrands(true);
-      console.log("Loading brands for category:", category);
-      const response = await getBrandsByCategory(category);
+      console.log("Loading all active brands");
+      const response = await getActiveBrands();
       console.log("Brands response:", response.data);
       setBrands(response.data || []);
     } catch (error) {
-      console.error("Failed to load brands for category:", category, error);
+      console.error("Failed to load brands:", error);
       setBrands([]);
     } finally {
       setLoadingBrands(false);
@@ -94,7 +95,7 @@ const AdminProducts: React.FC = () => {
   // Load brands when category changes in form
   useEffect(() => {
     if (formData.category) {
-      loadBrandsByCategory(formData.category);
+      loadBrandsByCategory();
     } else {
       setBrands([]);
     }
@@ -107,7 +108,7 @@ const AdminProducts: React.FC = () => {
     
     // Load brands for the selected category
     if (productToEdit.category) {
-      loadBrandsByCategory(productToEdit.category);
+      loadBrandsByCategory();
     } else {
       setBrands([]);
     }
@@ -286,7 +287,7 @@ const AdminProducts: React.FC = () => {
                   <div className="mb-2 text-truncate">{p.sku}</div>
 
                   <div className="small text-muted">Brand</div>
-                  <div className="mb-2 text-truncate">{p.brand}</div>
+                  <div className="mb-2 text-truncate">{p.brandName}</div>
                 </Col>
 
                 <Col xs={6} className="ps-2">
@@ -332,7 +333,7 @@ const AdminProducts: React.FC = () => {
                 console.log("Category selected:", selectedCategory);
                 setFormData({ ...formData, category: selectedCategory });
                 // Clear brand when category changes
-                setFormData(prev => ({ ...prev, category: selectedCategory, brand: "" }));
+                setFormData(prev => ({ ...prev, category: selectedCategory, brandId: undefined, brandName: undefined }));
               }}
             >
               <option value="">Select a category</option>
@@ -360,21 +361,28 @@ const AdminProducts: React.FC = () => {
               </div>
             ) : brands.length > 0 ? (
               <Form.Select
-                value={formData.brand}
-                onChange={e =>
-                  setFormData({ ...formData, brand: e.target.value })
+                value={formData.brandId ?? ""}
+                onChange={e => {
+                  const selectedId = e.target.value ? Number(e.target.value) : undefined;
+                  const selectedBrand = brands.find(b => b.id === selectedId);
+                  setFormData({ 
+                    ...formData, 
+                    brandId: selectedId,
+                    brandName: selectedBrand?.brand
+                  })
+                }
                 }
               >
                 <option value="">Select a brand</option>
-                {brands.map((brand, idx) => (
-                  <option key={idx} value={brand}>
-                    {brand}
+                {brands.map((brand) => (
+                  <option key={brand.id} value={brand.id}>
+                    {brand.brand}
                   </option>
                 ))}
               </Form.Select>
             ) : (
               <div className="alert alert-warning mb-0" role="alert">
-                No brands available for this category
+                No brands available
               </div>
             )}
           </Form.Group>

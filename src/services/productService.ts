@@ -6,7 +6,8 @@ export interface Product {
   name: string;
   description: string;
   category: string;
-  brand: string;
+  brandId?: number;
+  brandName?: string;
   unit: string;
   price: number;
   status: "ACTIVE" | "INACTIVE";
@@ -19,6 +20,12 @@ export interface Category {
   isActive: boolean;
 }
 
+export interface Brand {
+  id: number;
+  brand: string;
+  isActive: boolean;
+}
+
 // GET all products
 export const getAllProducts = () => api.get<Product[]>("/products");
 
@@ -28,13 +35,16 @@ export const getCategories = () => api.get<Category[]>("/products/categories");
 // GET only active categories → returns Category[] (for dropdowns)
 export const getActiveCategories = () => api.get<Category[]>("/products/categories/active");
 
+// GET all active brands → returns Brand[] (for dropdowns)
+export const getActiveBrands = () => api.get<Brand[]>("/products/brands/active");
+
 // GET brands by category → returns string[]
 export const getBrandsByCategory = (category: string) =>
-  api.get<string[]>("/products/search/category", { params: { category } });
+  api.get<string[]>(`/products/brands/category/${category}`);
 
-// GET product names by brand → returns string[]
-export const getNamesByBrand = (brand: string) =>
-  api.get<string[]>("/products/search/brand", { params: { brand } });
+// GET product names by brand ID → returns string[]
+export const getNamesByBrand = (brandId: number) =>
+  api.get<string[]>("/products/search/brand", { params: { brandId } });
 
 
 // GET product by sku → returns Product
