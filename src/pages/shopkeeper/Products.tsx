@@ -10,6 +10,7 @@ import {
   Col,
   Card
 } from "react-bootstrap";
+import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import {
   getAllProducts,
   type Product
@@ -82,7 +83,10 @@ const Products: React.FC = () => {
 
   return (
     <Container className="mt-4">
-      <h3 className="text-center mb-4">🛒 Product Management</h3>
+      <ShopkeeperHeader 
+        title="🛒 Product Management"
+        description="Browse and manage products"
+      />
 
       {/* 🔍 Filters - responsive */}
       <Row className="mb-3 g-2">

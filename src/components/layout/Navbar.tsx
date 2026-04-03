@@ -1,9 +1,8 @@
-import React, { useContext } from "react";
+import React from "react";
 import { Navbar, Container, Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
-import { SidebarContext } from "./SidebarContext";
 
 const AppNavbar: React.FC = () => {
   const { user, logout } = useAuth(); // get user and logout from context
@@ -19,8 +18,6 @@ const AppNavbar: React.FC = () => {
       <Navbar bg="dark" variant="dark" expand={false} className="mb-3">
         <Container className="d-flex justify-content-between align-items-center">
           <div className="d-flex align-items-center">
-            {/* sidebar toggle for mobile */}
-            <SidebarToggle />
             <Navbar.Brand as={Link} to="/">E-Kirana</Navbar.Brand>
           </div>
 
@@ -37,13 +34,6 @@ const AppNavbar: React.FC = () => {
         </Container>
       </Navbar>
     </>
-  );
-};
-
-const SidebarToggle: React.FC = () => {
-  const { setShow } = useContext(SidebarContext);
-  return (
-    <button className="btn btn-dark btn-sm d-md-none me-2" onClick={() => setShow(true)}>☰</button>
   );
 };
 

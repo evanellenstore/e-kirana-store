@@ -7,8 +7,10 @@ import {
   InputGroup,
   Table,
   Row,
-  Col
+  Col,
+  Container
 } from "react-bootstrap";
+import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import api from "../../services/api";
 
 /* =======================
@@ -113,10 +115,15 @@ const Inventory: React.FC = () => {
   ======================= */
 
   return (
-    <div className="mt-4">
+    <Container className="mt-4">
+      <ShopkeeperHeader 
+        title="📦 Inventory Overview"
+        description="Check stock levels and batch information"
+      />
+      <div className="mt-4">
 
-      {/* 🔍 Search Header */}
-      <Card className="mb-4 shadow-sm">
+        {/* 🔍 Search Header */}
+        <Card className="mb-4 shadow-sm">
         <Card.Body className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
           <Card.Title className="mb-2 mb-md-0">📦 Inventory Overview</Card.Title>
 
@@ -239,7 +246,8 @@ const Inventory: React.FC = () => {
           No inventory items found
         </div>
       )}
-    </div>
+      </div>
+    </Container>
   );
 };
 

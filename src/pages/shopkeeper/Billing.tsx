@@ -11,6 +11,7 @@ import {
   Badge,
   Modal
 } from "react-bootstrap";
+import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import {
   startBill,
   getProductBySku,
@@ -673,10 +674,14 @@ const Billing = () => {
 
   return (
     <Container className="py-4" style={{ maxWidth: 900 }}>
+      <ShopkeeperHeader 
+        title="🧾 Billing & POS"
+        description="Create and manage bills"
+      />
       <Card>
         <Card.Header>
           <Row className="align-items-center">
-            <Col><h4 className="mb-0">🧾 Billing</h4></Col>
+            <Col><h5 className="mb-0">Bill Details</h5></Col>
             <Col className="text-end">{billId ? <Badge bg="secondary">Bill: {billId}</Badge> : null}</Col>
           </Row>
         </Card.Header>

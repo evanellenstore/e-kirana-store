@@ -15,16 +15,16 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
 }) => {
   return (
     <div className="admin-header-wrapper">
-      {showHomeButton && (
-        <div className="admin-top-nav">
-          <Link to="/admin" className="home-button-link">
-            <Button variant="outline-primary" className="home-button">
-              🏠 Dashboard
-            </Button>
-          </Link>
-        </div>
-      )}
       <div className="admin-header">
+        <div className="header-top">
+          {showHomeButton && (
+            <Link to="/admin" className="home-button-link">
+              <Button variant="outline-primary" className="home-button">
+                ← Back to Dashboard
+              </Button>
+            </Link>
+          )}
+        </div>
         <div className="header-content">
           <h1 className="admin-title">{title}</h1>
           {description && <p className="admin-description">{description}</p>}
