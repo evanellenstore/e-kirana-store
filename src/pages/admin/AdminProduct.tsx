@@ -11,17 +11,28 @@ import {
   Card
 } from "react-bootstrap";
 import AdminHeader from "../../components/AdminHeader";
+import api from "../../services/api";
 import {
   getAllProducts,
   createProduct,
   updateProduct,
   deleteProduct,
+  getBrandsByCategory,
   type Product
 } from "../../services/productService";
 
+interface Category {
+  id: number;
+  category: string;
+  isActive: boolean;
+}
+
 const AdminProducts: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingBrands, setLoadingBrands] = useState(false);
 
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -51,13 +62,56 @@ const AdminProducts: React.FC = () => {
       .finally(() => setLoading(false));
   };
 
+  const loadCategories = async () => {
+    try {
+      const response = await api.get("/products/categories");
+      setCategories(response.data);
+    } catch (error) {
+      console.error("Failed to load categories", error);
+    }
+  };
+
+  const loadBrandsByCategory = async (category: string) => {
+    try {
+      setLoadingBrands(true);
+      console.log("Loading brands for category:", category);
+      const response = await getBrandsByCategory(category);
+      console.log("Brands response:", response.data);
+      setBrands(response.data || []);
+    } catch (error) {
+      console.error("Failed to load brands for category:", category, error);
+      setBrands([]);
+    } finally {
+      setLoadingBrands(false);
+    }
+  };
+
   useEffect(() => {
     loadProducts();
+    loadCategories();
   }, []);
+
+  // Load brands when category changes in form
+  useEffect(() => {
+    if (formData.category) {
+      loadBrandsByCategory(formData.category);
+    } else {
+      setBrands([]);
+    }
+  }, [formData.category]);
 
   const openModal = (product?: Product) => {
     setEditing(product || null);
-    setFormData(product ?? emptyProduct);
+    const productToEdit = product ?? emptyProduct;
+    setFormData(productToEdit);
+    
+    // Load brands for the selected category
+    if (productToEdit.category) {
+      loadBrandsByCategory(productToEdit.category);
+    } else {
+      setBrands([]);
+    }
+    
     setShow(true);
   };
 
@@ -266,29 +320,129 @@ const AdminProducts: React.FC = () => {
         </Modal.Header>
 
         <Modal.Body>
-          {Object.keys(emptyProduct).map(key =>
-            key !== "status" ? (
-              <Form.Group className="mb-2" key={key}>
-                <Form.Control
-                  placeholder={key.toUpperCase()}
-                  value={(formData as any)[key]}
-                  onChange={e =>
-                    setFormData({ ...formData, [key]: e.target.value })
-                  }
-                />
-              </Form.Group>
-            ) : null
-          )}
+         
 
-          <Form.Select
-            value={formData.status}
-            onChange={e =>
-              setFormData({ ...formData, status: e.target.value as any })
-            }
-          >
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INACTIVE">INACTIVE</option>
-          </Form.Select>
+          {/* Category - Dynamic Dropdown */}
+          <Form.Group className="mb-2">
+            <Form.Label>Category *</Form.Label>
+            <Form.Select
+              value={formData.category}
+              onChange={e => {
+                const selectedCategory = e.target.value;
+                console.log("Category selected:", selectedCategory);
+                setFormData({ ...formData, category: selectedCategory });
+                // Clear brand when category changes
+                setFormData(prev => ({ ...prev, category: selectedCategory, brand: "" }));
+              }}
+            >
+              <option value="">Select a category</option>
+              {categories
+                .filter(cat => cat.isActive)
+                .map(cat => (
+                  <option key={cat.id} value={cat.category}>
+                    {cat.category}
+                  </option>
+                ))}
+            </Form.Select>
+          </Form.Group>
+
+          {/* Brand - Dynamic Dropdown (shows with dummy value, then loads real values) */}
+          <Form.Group className="mb-2">
+            <Form.Label>Brand *</Form.Label>
+            {!formData.category ? (
+              <Form.Select disabled>
+                <option value="">Select category first</option>
+              </Form.Select>
+            ) : loadingBrands ? (
+              <div className="alert alert-info mb-0" role="alert">
+                <Spinner animation="border" size="sm" className="me-2" />
+                Loading brands...
+              </div>
+            ) : brands.length > 0 ? (
+              <Form.Select
+                value={formData.brand}
+                onChange={e =>
+                  setFormData({ ...formData, brand: e.target.value })
+                }
+              >
+                <option value="">Select a brand</option>
+                {brands.map((brand, idx) => (
+                  <option key={idx} value={brand}>
+                    {brand}
+                  </option>
+                ))}
+              </Form.Select>
+            ) : (
+              <div className="alert alert-warning mb-0" role="alert">
+                No brands available for this category
+              </div>
+            )}
+          </Form.Group>
+
+           {/* Product Name */}
+          <Form.Group className="mb-2">
+            <Form.Label>Product Name *</Form.Label>
+            <Form.Control
+              placeholder="Enter product name"
+              value={formData.name}
+              onChange={e =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+            />
+          </Form.Group>
+
+          {/* Unit */}
+          <Form.Group className="mb-2">
+            <Form.Label>Unit *</Form.Label>
+            <Form.Control
+              placeholder="e.g., kg, liters, pieces"
+              value={formData.unit}
+              onChange={e =>
+                setFormData({ ...formData, unit: e.target.value })
+              }
+            />
+          </Form.Group>
+
+          {/* Price */}
+          <Form.Group className="mb-2">
+            <Form.Label>Price *</Form.Label>
+            <Form.Control
+              type="number"
+              placeholder="Enter price"
+              value={formData.price}
+              onChange={e =>
+                setFormData({ ...formData, price: parseFloat(e.target.value) })
+              }
+            />
+          </Form.Group>
+
+          {/* Description */}
+          <Form.Group className="mb-2">
+            <Form.Label>Description</Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={3}
+              placeholder="Enter product description"
+              value={formData.description}
+              onChange={e =>
+                setFormData({ ...formData, description: e.target.value })
+              }
+            />
+          </Form.Group>
+
+          {/* Status */}
+          <Form.Group className="mb-2">
+            <Form.Label>Status</Form.Label>
+            <Form.Select
+              value={formData.status}
+              onChange={e =>
+                setFormData({ ...formData, status: e.target.value as any })
+              }
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+            </Form.Select>
+          </Form.Group>
         </Modal.Body>
 
         <Modal.Footer>

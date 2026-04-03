@@ -19,6 +19,13 @@ const AdminDashboard = () => {
       badge: 'Organize'
     },
     {
+      title: 'Brands',
+      description: 'Manage product brands',
+      icon: '🏷️',
+      link: '/admin/brands',
+      badge: 'Organize'
+    },
+    {
       title: 'Inventory',
       description: 'Manage inventory stock',
       icon: '📊',

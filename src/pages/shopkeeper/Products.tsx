@@ -105,11 +105,12 @@ const Products: React.FC = () => {
         <Table bordered hover responsive>
         <thead className="table-dark">
           <tr>
-            <th>ID</th>
             <th>SKU</th>
             <th>Name</th>
+            <th>Category</th>
+            <th>Brand</th>
+            <th>Unit</th>
             <th>Price</th>
-            <th>Barcode</th>
             <th>Status</th>
            
           </tr>
@@ -118,23 +119,12 @@ const Products: React.FC = () => {
         <tbody>
           {filteredProducts.map(p => (
             <tr key={p.id}>
-              <td>{p.id}</td>
               <td className="fw-semibold">{p.sku}</td>
               <td>{p.name}</td>
-              {/* Brand / Category / Unit removed */}
+              <td>{p.category}</td>
+              <td>{p.brand}</td>
+              <td>{p.unit}</td>
               <td>₹{p.price}</td>
-              <td className="text-center">
-                {p.barcode ? (
-                  <img
-                    src={`data:image/png;base64,${p.barcode}`}
-                    alt="barcode"
-                    style={{ width: 220, height: 'auto', cursor: 'pointer' }}
-                    onClick={() => { setBarcodePreview(p.barcode || null); setShowBarcodeModal(true); }}
-                  />
-                ) : (
-                  <small className="text-muted">—</small>
-                )}
-              </td>
               <td>
                 <span className={`badge bg-${p.status === "ACTIVE" ? "success" : "secondary"}`}>
                   {p.status}
