@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Container, Table, Spinner, Card, Row, Col } from "react-bootstrap";
+import AdminHeader from "../../components/AdminHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 
 const ReportPage: React.FC = () => {
@@ -20,6 +21,11 @@ const ReportPage: React.FC = () => {
 
   return (
     <Container className="mt-4">
+      <AdminHeader 
+        title="Reports & Analytics" 
+        description="View inventory and sales reports"
+      />
+
       <h2 className="mb-4 text-center">📊 Inventory & Sales Report</h2>
 
       {/* Totals */}

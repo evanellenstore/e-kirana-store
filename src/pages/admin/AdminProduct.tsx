@@ -10,6 +10,7 @@ import {
   Col,
   Card
 } from "react-bootstrap";
+import AdminHeader from "../../components/AdminHeader";
 import {
   getAllProducts,
   createProduct,
@@ -101,7 +102,10 @@ const AdminProducts: React.FC = () => {
 
   return (
     <Container className="mt-4">
-      <h3 className="text-center mb-4">🛒 Product Management</h3>
+      <AdminHeader 
+        title="Product Management" 
+        description="Create, edit, and manage your products"
+      />
 
       {/* 🔍 Filters - responsive */}
       <Row className="mb-3 g-2">

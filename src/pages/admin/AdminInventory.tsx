@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Container, Button, Card } from "react-bootstrap";
+import AdminHeader from "../../components/AdminHeader";
 import InventoryEntry from "./AdminInventoryEntry";
 import InventoryList from "./AdminInventoryList";
 import InventoryEdit from "./AdminInventoryEdit";
@@ -11,6 +12,11 @@ const AdminInventory: React.FC = () => {
 
   return (
     <Container className="mt-4" style={{ maxWidth: 900 }}>
+      <AdminHeader 
+        title="Inventory Management" 
+        description="Manage stock levels and batch information"
+      />
+
       {/* HEADER */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>📦 Admin Inventory</h4>

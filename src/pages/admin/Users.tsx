@@ -11,6 +11,7 @@ import {
   Row,
   Col,
 } from "react-bootstrap";
+import AdminHeader from "../../components/AdminHeader";
 import {
   getUsers,
   createUser,
@@ -96,6 +97,11 @@ const Users: React.FC = () => {
 
   return (
     <Container className="mt-4">
+      <AdminHeader 
+        title="User Management" 
+        description="Create and manage system users and roles"
+      />
+
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
         <h3 className="mb-2 mb-md-0">Admin Users</h3>
         <Button className="w-100 w-md-auto" onClick={handleAdd}>+ Add User</Button>

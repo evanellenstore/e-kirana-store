@@ -13,11 +13,20 @@ export interface Product {
   barcode?: string;
 }
 
+export interface Category {
+  id: number;
+  category: string;
+  isActive: boolean;
+}
+
 // GET all products
 export const getAllProducts = () => api.get<Product[]>("/products");
 
-// GET categories → returns string[]
-export const getCategories = () => api.get<string[]>("/products/categories");
+// GET categories → returns Category[] (includes inactive for admin)
+export const getCategories = () => api.get<Category[]>("/products/categories");
+
+// GET only active categories → returns Category[] (for dropdowns)
+export const getActiveCategories = () => api.get<Category[]>("/products/categories/active");
 
 // GET brands by category → returns string[]
 export const getBrandsByCategory = (category: string) =>

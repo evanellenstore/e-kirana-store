@@ -9,6 +9,7 @@ import Users from '../pages/admin/Users';
 import FromPurchase from '../pages/admin/FromPurchase';
 import AdminProduct from '../pages/admin/AdminProduct';
 import AdminInventory from '../pages/admin/AdminInventory';
+import AdminCategory from '../pages/admin/AdminCategory';
 
 import ShopkeeperDashboard from '../pages/shopkeeper/ShopkeeperDashboard';
 import Products from '../pages/shopkeeper/Products';
@@ -76,6 +77,14 @@ const AppRoutes: React.FC = () => (
       element={
         <RequireAuth roles={['ADMIN']}>
           <AdminInventory />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/categories"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminCategory />
         </RequireAuth>
       }
     />

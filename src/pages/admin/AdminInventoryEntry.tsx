@@ -9,13 +9,13 @@ import {
 } from "react-bootstrap";
 
 import {
-  getCategories,
+  getActiveCategories,
   getBrandsByCategory,
   getNamesByBrand,
-  getProductBySku
+  getProductBySku,
+  type Category,
+  type Product
 } from "../../services/productService";
-
-import type { Product } from "../../services/productService";
 import { adjustInventory } from "../../services/adminInventoryService";
 
 const AdminInventoryEntry: React.FC = () => {
@@ -84,8 +84,8 @@ const AdminInventoryEntry: React.FC = () => {
   ====================== */
   useEffect(() => {
     setLoading(true);
-    getCategories()
-      .then(res => setCategories(res.data))
+    getActiveCategories()
+      .then((res: any) => setCategories(res.data))
       .finally(() => setLoading(false));
   }, []);
 
