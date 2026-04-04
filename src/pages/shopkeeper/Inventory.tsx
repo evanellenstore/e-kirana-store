@@ -1,17 +1,13 @@
 import React, { useEffect, useState } from "react";
 import {
-  Card,
-  Spinner,
   Badge,
   Form,
   InputGroup,
-  Table,
-  Row,
-  Col,
   Container
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import api from "../../services/api";
+import "./Inventory.css";
 
 /* =======================
    Interfaces
@@ -103,9 +99,9 @@ const Inventory: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="text-center mt-5">
-        <Spinner animation="border" />
-        <div className="text-muted mt-2">Loading inventory...</div>
+      <div className="inventory-loading-container">
+        <div className="inventory-spinner"></div>
+        <p>Loading inventory...</p>
       </div>
     );
   }
@@ -115,139 +111,97 @@ const Inventory: React.FC = () => {
   ======================= */
 
   return (
-    <Container className="mt-4">
+    <div className="inventory-page-container">
       <ShopkeeperHeader 
         title="📦 Inventory Overview"
         description="Check stock levels and batch information"
       />
-      <div className="mt-4">
-
-        {/* 🔍 Search Header */}
-        <Card className="mb-4 shadow-sm">
-        <Card.Body className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
-          <Card.Title className="mb-2 mb-md-0">📦 Inventory Overview</Card.Title>
-
-          <InputGroup className="w-100 w-md-auto" style={{ maxWidth: 320 }}>
-            <Form.Control
-              placeholder="Search SKU / Product Name"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </InputGroup>
-        </Card.Body>
-      </Card>
-
-      {/* 🧾 Product Cards */}
-      {filteredData.map(product => (
-        <Card key={product.productId} className="mb-4 shadow-sm">
-          <Card.Body>
-
-            {/* Product Header */}
-            <Row className="align-items-center mb-3">
-              <Col>
-                <h5 className="mb-1">{product.productName}</h5>
-                <div className="text-muted">
-                  SKU: <strong>{product.productSku}</strong>
-                </div>
-              </Col>
-
-              <Col xs="auto">
-                <h5>
-                  <Badge bg="primary">
-                    Total Qty: {product.totalQty}
-                  </Badge>
-                </h5>
-              </Col>
-            </Row>
-
-            {/* Batch Table (desktop) */}
-            <div className="d-none d-md-block">
-              <Table bordered hover responsive className="align-middle">
-                <thead className="table-light">
-                  <tr>
-                    <th>Batch No</th>
-                    <th>Expiry Date</th>
-                    <th className="text-center">Quantity</th>
-                    <th className="text-center">Expiry Status</th>
-                    <th className="text-center">Stock Status</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {product.batches.map(batch => {
-                    const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
-
-                    return (
-                      <tr
-                        key={batch.batchNo}
-                        className={isLowStock ? "table-warning" : ""}
-                      >
-                        <td className="fw-semibold">{batch.batchNo}</td>
-                        <td>
-                          {new Date(batch.expiry).toLocaleDateString()}
-                        </td>
-
-                        <td className="text-center fw-bold">
-                          {batch.qty}
-                        </td>
-
-                        <td className="text-center">
-                          {getExpiryBadge(batch.expiry)}
-                        </td>
-
-                        <td className="text-center">
-                          {isLowStock ? (
-                            <Badge bg="danger">Low Stock</Badge>
-                          ) : (
-                            <Badge bg="success">In Stock</Badge>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </div>
-
-            {/* Mobile stacked batches */}
-            <div className="d-block d-md-none">
-              {product.batches.map(batch => {
-                const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
-                return (
-                  <div key={batch.batchNo} className="border rounded p-2 mb-2">
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <div className="fw-semibold">{batch.batchNo}</div>
-                      <div className="text-muted">{new Date(batch.expiry).toLocaleDateString()}</div>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <div className="fw-bold">Qty: {batch.qty}</div>
-                      </div>
-                      <div className="text-end">
-                        <div className="mb-1">{getExpiryBadge(batch.expiry)}</div>
-                        {isLowStock ? (
-                          <Badge bg="danger">Low Stock</Badge>
-                        ) : (
-                          <Badge bg="success">In Stock</Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card.Body>
-        </Card>
-      ))}
-
-      {/* Empty State */}
-      {filteredData.length === 0 && (
-        <div className="text-center text-muted mt-5">
-          No inventory items found
+      
+      <Container className="inventory-content">
+        {/* Search Header */}
+        <div className="inventory-search-card">
+          <div className="inventory-search-header">
+            <h3 className="inventory-search-title">Inventory Search</h3>
+          </div>
+          <div className="inventory-search-body">
+            <InputGroup className="inventory-search-input-group">
+              <Form.Control
+                placeholder="Search by SKU or Product Name"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="inventory-input"
+              />
+              <span className="inventory-search-icon">🔍</span>
+            </InputGroup>
+          </div>
         </div>
-      )}
-      </div>
-    </Container>
+
+        {/* Products Grid */}
+        <div className="inventory-products">
+          {filteredData.map(product => (
+            <div key={product.productId} className="inventory-product-card">
+              <div className="inventory-product-header">
+                <div className="inventory-product-info">
+                  <h4 className="inventory-product-name">{product.productName}</h4>
+                  <div className="inventory-product-sku">SKU: {product.productSku}</div>
+                </div>
+                <Badge className="inventory-total-qty-badge">
+                  Total Qty: {product.totalQty}
+                </Badge>
+              </div>
+
+              {/* Batch Table */}
+              <div className="inventory-batches-wrapper">
+                <table className="inventory-batches-table">
+                  <thead>
+                    <tr>
+                      <th>Batch No</th>
+                      <th>Expiry Date</th>
+                      <th className="inventory-th-center">Quantity</th>
+                      <th className="inventory-th-center">Expiry Status</th>
+                      <th className="inventory-th-center">Stock Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {product.batches.map(batch => {
+                      const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
+
+                      return (
+                        <tr key={batch.batchNo} className={isLowStock ? "inventory-low-stock-row" : ""}>
+                          <td className="inventory-batch-no">{batch.batchNo}</td>
+                          <td className="inventory-expiry-date">
+                            {new Date(batch.expiry).toLocaleDateString()}
+                          </td>
+                          <td className="inventory-quantity">{batch.qty}</td>
+                          <td className="inventory-td-center">
+                            {getExpiryBadge(batch.expiry)}
+                          </td>
+                          <td className="inventory-td-center">
+                            {isLowStock ? (
+                              <Badge className="inventory-badge-danger">Low Stock</Badge>
+                            ) : (
+                              <Badge className="inventory-badge-success">In Stock</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Empty State */}
+        {filteredData.length === 0 && (
+          <div className="inventory-empty-state">
+            <div className="inventory-empty-icon">📭</div>
+            <p className="inventory-empty-text">No inventory items found</p>
+          </div>
+        )}
+      </Container>
+    </div>
   );
 };
 

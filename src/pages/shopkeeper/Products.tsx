@@ -1,20 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Container,
-  Table,
-  Button,
-  Modal,
+  Badge,
   Form,
-  Spinner,
-  Row,
-  Col,
-  Card
+  Modal
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import {
   getAllProducts,
   type Product
 } from "../../services/productService";
+import "./Products.css";
 
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -23,8 +18,10 @@ const Products: React.FC = () => {
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
 
-  /* 🔍 Filters */
+  /* 🔍 Filters & Pagination */
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12);
 
   const emptyProduct: Product = {
     sku: "",
@@ -58,10 +55,6 @@ const Products: React.FC = () => {
     setShow(true);
   };
 
-
-
-  /* brand/category filters removed */
-
   /* 🔎 Filter logic */
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -73,145 +66,170 @@ const Products: React.FC = () => {
     });
   }, [products, search]);
 
+  /* 📄 Pagination logic */
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredProducts.slice(startIndex, endIndex);
+  }, [filteredProducts, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
   if (loading) {
     return (
-      <div className="text-center mt-5">
-        <Spinner />
+      <div className="products-loading-container">
+        <div className="products-spinner"></div>
+        <p>Loading products...</p>
       </div>
     );
   }
 
   return (
-    <Container className="mt-4">
-      <ShopkeeperHeader 
-        title="🛒 Product Management"
-        description="Browse and manage products"
-      />
+    <div className="products-page-container">
+      <div className="products-content">
+        <ShopkeeperHeader 
+          title="Product Management"
+          description="Browse and manage all products in your store"
+        />
 
-      {/* 🔍 Filters - responsive */}
-      <Row className="mb-3 g-2">
-        <Col xs={12} md={4}>
-          <Form.Control
-            placeholder="Search by SKU or Name"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </Col>
-       
-      </Row>
+        {/* Search Card */}
+        <div className="products-search-card">
+          <div className="products-search-header">
+            <h3 className="products-search-title">🔍 Search Products</h3>
+            <div className="products-count-badge">
+              Showing {paginatedProducts.length} of {filteredProducts.length}
+            </div>
+          </div>
+          <div className="products-search-body">
+            <div className="products-search-input-group">
+              <Form.Control
+                placeholder="Search by SKU or Product Name"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="products-input"
+              />
+              <span className="products-search-icon">🔎</span>
+            </div>
+          </div>
+        </div>
 
-      {/* 📦 Product Table (desktop) */}
-      <div className="d-none d-md-block">
-        <Table bordered hover responsive>
-        <thead className="table-dark">
-          <tr>
-            <th>SKU</th>
-            <th>Name</th>
-            <th>Category</th>
-            <th>Brand</th>
-            <th>Unit</th>
-            <th>Price</th>
-            <th>Discount</th>
-            <th>Status</th>
-           
-          </tr>
-        </thead>
-
-        <tbody>
-          {filteredProducts.map(p => (
-            <tr key={p.id}>
-              <td className="fw-semibold">{p.sku}</td>
-              <td>{p.name}</td>
-              <td>{p.category}</td>
-              <td>{p.brandName}</td>
-              <td>{p.unit}</td>
-              <td>₹{p.price}</td>
-              <td>₹{p.discountAmount || 0}</td>
-              <td>
-                <span className={`badge bg-${p.status === "ACTIVE" ? "success" : "secondary"}`}>
-                  {p.status}
-                </span>
-              </td>
-              
-            </tr>
-          ))}
-
-          {filteredProducts.length === 0 && (
-            <tr>
-              <td colSpan={9} className="text-center text-muted py-4">
-                No products found
-              </td>
-            </tr>
-          )}
-        </tbody>
-        </Table>
-      </div>
-
-      {/* 📱 Product list (mobile) */}
-      <div className="d-block d-md-none">
-        {filteredProducts.map(p => (
-          <Card className="mb-3" key={p.id}>
-            <Card.Header className="fw-semibold py-2">{p.name}</Card.Header>
-            <Card.Body className="p-2">
-              {p.barcode && (
-                <div className="text-center mb-2">
-                  <img
-                    src={`data:image/png;base64,${p.barcode}`}
-                    alt="barcode"
-                    style={{ maxWidth: 260, cursor: 'pointer' }}
-                    onClick={() => { setBarcodePreview(p.barcode || null); setShowBarcodeModal(true); }}
-                  />
+        {/* Products Grid */}
+        <div className="products-grid">
+          {paginatedProducts.map(p => (
+            <div key={p.id} className="product-card">
+              <div className="product-card-header">
+                <div className="product-card-title-section">
+                  <h4 className="product-name">{p.name}</h4>
+                  <div className="product-sku">SKU: {p.sku}</div>
                 </div>
-              )}
-              <Row>
-                <Col xs={6} className="pe-2">
-                  <div className="small text-muted">ID</div>
-                  <div className="mb-2 text-truncate">{p.id}</div>
+                <Badge 
+                  className={`product-status-badge ${p.status === "ACTIVE" ? "badge-active" : "badge-inactive"}`}
+                >
+                  {p.status}
+                </Badge>
+              </div>
 
-                  <div className="small text-muted">SKU</div>
-                  <div className="mb-2 text-truncate">{p.sku}</div>
+              <div className="product-card-body">
+                <div className="product-info-grid">
+                  <div className="product-info-item">
+                    <span className="info-label">Category</span>
+                    <span className="info-value">{p.category || "N/A"}</span>
+                  </div>
+                  <div className="product-info-item">
+                    <span className="info-label">Brand</span>
+                    <span className="info-value">{p.brandName || "N/A"}</span>
+                  </div>
+                  <div className="product-info-item">
+                    <span className="info-label">Unit</span>
+                    <span className="info-value">{p.unit || "N/A"}</span>
+                  </div>
+                  <div className="product-info-item">
+                    <span className="info-label">Price</span>
+                    <span className="info-value price">₹{p.price}</span>
+                  </div>
+                </div>
 
-                  <div className="small text-muted">Brand</div>
-                  <div className="mb-2 text-truncate">{p.brandName}</div>
-                </Col>
+                {p.discountAmount ? (
+                  <div className="product-discount-section">
+                    <span className="discount-label">Discount</span>
+                    <span className="discount-value">₹{p.discountAmount}</span>
+                  </div>
+                ) : null}
 
-                <Col xs={6} className="ps-2">
-                  <div className="small text-muted">Category</div>
-                  <div className="mb-2 text-truncate">{p.category}</div>
+                {p.barcode && (
+                  <div className="product-barcode-section">
+                    <img
+                      src={`data:image/png;base64,${p.barcode}`}
+                      alt="barcode"
+                      className="product-barcode-img"
+                      onClick={() => { setBarcodePreview(p.barcode || null); setShowBarcodeModal(true); }}
+                    />
+                  </div>
+                )}
 
-                  <div className="small text-muted">Unit</div>
-                  <div className="mb-2 text-truncate">{p.unit}</div>
+                {p.description && (
+                  <div className="product-description">
+                    <p>{p.description}</p>
+                  </div>
+                )}
+              </div>
 
-                  <div className="small text-muted">Status</div>
-                  <div className="mb-2"><span className={`badge bg-${p.status === "ACTIVE" ? "success" : "secondary"}`}>{p.status}</span></div>
-                </Col>
-              </Row>
+              <div className="product-card-footer">
+                <button 
+                  className="product-btn product-btn-edit"
+                  onClick={() => openModal(p)}
+                >
+                  ✏️ Edit
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
 
-              <Row className="align-items-center mb-2">
-                <Col xs={6}>
-                  <div className="small text-muted">Price</div>
-                  <div className="fw-bold">₹{p.price}</div>
-                </Col>
-                <Col xs={6}>
-                  <div className="small text-muted">Discount</div>
-                  <div className="fw-bold">₹{p.discountAmount || 0}</div>
-                </Col>
-              </Row>
+        {/* Empty State */}
+        {filteredProducts.length === 0 && (
+          <div className="products-empty-state">
+            <div className="products-empty-icon">📭</div>
+            <p className="products-empty-text">No products found</p>
+          </div>
+        )}
 
-              <Row className="align-items-center">
-                <Col xs={6} className="text-start">
-                </Col>
-                <Col xs={6} className="text-end">
-                  <Button size="sm" variant="warning" className="me-1" onClick={() => openModal(p)}>Edit</Button>
-                 
-                </Col>
-              </Row>
-            </Card.Body>
-          </Card>
-        ))}
+        {/* Pagination */}
+        {filteredProducts.length > itemsPerPage && (
+          <div className="products-pagination">
+            <button
+              className="products-pagination-btn"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
+              ← Previous
+            </button>
+            
+            <div className="products-pagination-info">
+              <span className="pagination-page-number">
+                Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+              </span>
+              <span className="pagination-total">
+                Total: <strong>{filteredProducts.length}</strong> products
+              </span>
+            </div>
+            
+            <button
+              className="products-pagination-btn"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
 
-  {/* 🧾 Modal */}
+      {/* Edit Product Modal */}
       <Modal show={show} onHide={() => setShow(false)}>
         <Modal.Header closeButton>
           <Modal.Title>{editing ? "Edit Product" : "Add Product"}</Modal.Title>
@@ -242,9 +260,8 @@ const Products: React.FC = () => {
             <option value="INACTIVE">INACTIVE</option>
           </Form.Select>
         </Modal.Body>
-
-       
       </Modal>
+
       {/* Barcode preview modal */}
       <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
         <Modal.Header closeButton>
@@ -263,7 +280,7 @@ const Products: React.FC = () => {
           )}
         </Modal.Body>
       </Modal>
-    </Container>
+    </div>
   );
 };
 
