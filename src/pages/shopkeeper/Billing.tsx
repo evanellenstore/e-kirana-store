@@ -22,7 +22,9 @@ import {
 } from "../../services/billingApi";
 import {
   getOrCreateCustomer,
+  getCustomerByMobile,
   addToWallet,
+  deductFromWallet,
   type Customer
 } from "../../services/customerApi";
 
@@ -56,6 +58,8 @@ const Billing = () => {
   const [batchAllocItem, setBatchAllocItem] = useState<any>(null);
   const [batchAllocOptions, setBatchAllocOptions] = useState<any[]>([]);
   const [batchAllocations, setBatchAllocations] = useState<Array<{ batchNo: string; qty: number; expiryDate: string }>>([]);
+  const [useWallet, setUseWallet] = useState<boolean>(false);
+  const [adjustedAmount, setAdjustedAmount] = useState<number | undefined>(undefined);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -498,28 +502,51 @@ const Billing = () => {
         customerId = cust?.id;
       }
 
-      // Pay full amount (subtotalBeforeDiscount) since discount goes to wallet
-      const fullAmount = subtotalBeforeDiscount;
+      // Determine amount to charge with wallet deduction
+      let amountToCharge = adjustedAmount ?? subtotalBeforeDiscount;
+      let walletDeduction = 0;
+      
+      // If using wallet, deduct wallet balance
+      if (useWallet && customer) {
+        const walletBalance = customer.walletBalance || 0;
+        walletDeduction = Math.min(walletBalance, amountToCharge);
+        amountToCharge = Math.max(0, amountToCharge - walletDeduction);
+      }
 
       const paymentPayload = {
         paymentMode,
-        amountPaid: paymentMode === 'CASH' ? (cashReceived ?? fullAmount) : fullAmount,
+        amountPaid: paymentMode === 'CASH' ? (cashReceived ?? amountToCharge) : amountToCharge,
         customerMobile: customerMobile || null,
         customerId: customerId || null,
         discount: discountAmt,
+        walletUsed: walletDeduction,
+        adjustedAmount: adjustedAmount,
         gst: gstAmt,
-        grandTotal: fullAmount
+        grandTotal: subtotalBeforeDiscount
       };
 
       // Finalize bill with payment details
       const finalizeRes = await finalizeBill(billId, paymentPayload);
       const serverData = finalizeRes?.data ?? null;
+
+      // Deduct from customer wallet if wallet was used
+      if (walletDeduction > 0 && customerId) {
+        try {
+          await deductFromWallet(customerId, walletDeduction, `Payment for Bill ${billId}`);
+          console.log(`Wallet deducted: ₹${walletDeduction} for customer ${customerId}`);
+        } catch (error) {
+          console.error('Error deducting from wallet:', error);
+        }
+      }
+
       setReceiptData({
         billId,
         items: cart.map(i => ({ ...i })),
         payment: paymentPayload,
         totals: computeTotals(),
-        server: serverData
+        server: serverData,
+        walletUsed: walletDeduction,
+        amountToCharge: amountToCharge
       });
       setShowPaymentModal(false);
       setShowReceiptModal(true);
@@ -890,46 +917,91 @@ const Billing = () => {
           <Modal.Title>Payment</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-            <div className="mb-2 small text-muted">Bill: {billId}</div>
+            <div className="mb-3 small text-muted">Bill: {billId}</div>
 
+            {/* STEP 1: Customer Mobile Input - MOVED TO TOP */}
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-bold">👤 Customer Mobile (optional)</Form.Label>
+              <Form.Control 
+                placeholder="Enter 10-digit mobile number"
+                maxLength={10}
+                value={customerMobile} 
+                onChange={async (e) => {
+                  const mobile = e.target.value;
+                  setCustomerMobile(mobile);
+                  
+                  if (mobile.length === 10) {
+                    try {
+                      const response = await getCustomerByMobile(mobile);
+                      if (response?.data) {
+                        setCustomer(response.data);
+                      }
+                    } catch (err) {
+                      setCustomer(null);
+                    }
+                  } else if (mobile.length === 0) {
+                    setCustomer(null);
+                  }
+                }}
+              />
+              {customerMobile.length === 10 && !customer && (
+                <small className="d-block mt-2 text-info">
+                  ℹ️ New customer - wallet will be created on payment
+                </small>
+              )}
+            </Form.Group>
+
+            <hr className="my-3" />
+
+            {/* STEP 2: Bill Summary */}
             {(() => {
               const { discountAmt, gstAmt } = computeTotals();
+              const walletBalance = customer?.walletBalance || 0;
+              const walletToUse = Math.min(walletBalance, subtotalBeforeDiscount);
+              const amountAfterWallet = Math.max(0, subtotalBeforeDiscount - walletToUse);
+              
               return (
                 <>
-                  <div className="d-flex justify-content-between">
+                  <div className="fw-bold mb-3 text-primary">📋 Bill Summary</div>
+                  
+                  <div className="d-flex justify-content-between small mb-1">
                     <div>Subtotal</div>
                     <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
                   </div>
 
-                  <div className="d-flex justify-content-between">
+                  <div className="d-flex justify-content-between small mb-1">
                     <div>Discount {discountIsPercent ? `(${discount}%)` : ''}</div>
                     <div>₹{discountAmt.toFixed(2)}</div>
                   </div>
 
-                  <div className="d-flex justify-content-between">
+                  <div className="d-flex justify-content-between small mb-3">
                     <div>GST</div>
                     <div>₹{gstAmt.toFixed(2)}</div>
                   </div>
 
-                  <hr />
-
-                  <div className="d-flex justify-content-between fw-bold mb-3">
+                  <div className="d-flex justify-content-between fw-bold p-2 bg-light rounded mb-3">
                     <div>Grand Total</div>
                     <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
                   </div>
+
+                  {/* Wallet Option */}
+                  {customer && walletBalance > 0 && (
+                    <div className="bg-success bg-opacity-10 p-3 rounded mb-3 border border-success">
+                      <div className="small fw-bold text-success mb-2">💳 Wallet Available: ₹{walletBalance.toFixed(2)}</div>
+                      <Form.Check 
+                        type="checkbox"
+                        id="useWallet"
+                        label={`Use ₹${walletToUse.toFixed(2)} → Pay ₹${amountAfterWallet.toFixed(2)}`}
+                        onChange={(e) => setUseWallet(e.target.checked)}
+                        className="fw-bold small"
+                      />
+                    </div>
+                  )}
+
+                  <hr className="my-3" />
                 </>
               );
             })()}
-
-          {customer && (
-            <div className="bg-light p-2 rounded mb-3">
-              <div className="small fw-bold">💳 Customer Wallet</div>
-              <div className="d-flex justify-content-between">
-                <div className="small">Mobile: {customer.mobileNo || 'N/A'}</div>
-                <div className="small fw-semibold text-success">Balance: ₹{(customer.walletBalance || 0).toFixed(2)}</div>
-              </div>
-            </div>
-          )}
 
           <Form.Group className="mb-2">
             <Form.Label>Payment Mode</Form.Label>
@@ -952,25 +1024,59 @@ const Billing = () => {
             </Form.Group>
           )}
 
-          <Form.Group className="mb-2">
-            <Form.Label>Customer Mobile (optional)</Form.Label>
-            <Form.Control value={customerMobile} onChange={e => setCustomerMobile(e.target.value)} />
+          {/* Adjust Payment Amount - Optional */}
+          <Form.Group className="mb-2 p-2 bg-light rounded">
+            <Form.Label className="fw-bold small">💰 Adjust Amount (Optional)</Form.Label>
+            <Form.Control 
+              type="number" 
+              placeholder="Leave empty for full amount"
+              value={adjustedAmount ?? ''}
+              onChange={e => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                setAdjustedAmount(val);
+              }}
+              min="0"
+              step="0.01"
+              size="sm"
+            />
+            {adjustedAmount !== undefined && (
+              <div className="small text-muted mt-1">
+                Difference: <strong className={adjustedAmount >= subtotalBeforeDiscount ? 'text-success' : 'text-danger'}>
+                  {adjustedAmount >= subtotalBeforeDiscount 
+                    ? `+₹${(adjustedAmount - subtotalBeforeDiscount).toFixed(2)} (Advance)`
+                    : `-₹${(subtotalBeforeDiscount - adjustedAmount).toFixed(2)} (Partial)`
+                  }
+                </strong>
+              </div>
+            )}
           </Form.Group>
+
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
           <Button variant="primary" disabled={isPaying} onClick={async () => {
-            // validate cash
+            // validate payment
             if (!billId) { alert('No active bill'); return; }
-            if (paymentMode === 'CASH' && (cashReceived ?? 0) < subtotalBeforeDiscount) {
-              alert('Cash received is less than grand total');
+            
+            const amountToPay = adjustedAmount ?? subtotalBeforeDiscount;
+            let finalAmount = amountToPay;
+            
+            // Deduct wallet if using
+            if (useWallet && customer) {
+              const walletBalance = customer.walletBalance || 0;
+              const walletToUse = Math.min(walletBalance, finalAmount);
+              finalAmount = Math.max(0, finalAmount - walletToUse);
+            }
+            
+            if (paymentMode === 'CASH' && (cashReceived ?? 0) < finalAmount) {
+              alert(`Cash received is less than amount due (₹${finalAmount.toFixed(2)})`);
               return;
             }
             // log payload for debugging
-            console.log('Payment start', { paymentMode, cashReceived, customerMobile, totals: computeTotals() });
+            console.log('Payment start', { paymentMode, cashReceived, customerMobile, adjustedAmount, useWallet, totals: computeTotals() });
             await pay();
           }}>
-            {isPaying ? 'Processing…' : `Pay ₹${subtotalBeforeDiscount.toFixed(2)}`}
+            {isPaying ? 'Processing…' : `Pay ₹${(adjustedAmount ?? subtotalBeforeDiscount).toFixed(2)}`}
           </Button>
         </Modal.Footer>
       </Modal>
@@ -1013,6 +1119,25 @@ const Billing = () => {
                 <div className="d-flex justify-content-between"><div>GST</div><div>₹{receiptData.totals.gstAmt.toFixed(2)}</div></div>
                 <hr />
                 <div className="d-flex justify-content-between fw-bold"><div>Grand Total</div><div>₹{receiptData.totals.grandTotal.toFixed(2)}</div></div>
+                
+                {/* Show wallet usage if applicable */}
+                {receiptData.walletUsed && receiptData.walletUsed > 0 && (
+                  <>
+                    <hr className="my-2" />
+                    <div className="d-flex justify-content-between p-2 text-success fw-bold">
+                      <div className="small">💳 Wallet Used</div>
+                      <div className="small">-₹{receiptData.walletUsed.toFixed(2)}</div>
+                    </div>
+                  </>
+                )}
+                
+                {/* Show final amount due */}
+                {receiptData.amountToCharge !== undefined && (
+                  <div className="d-flex justify-content-between bg-warning bg-opacity-10 p-2 rounded mt-2">
+                    <div className="fw-bold">Amount Due</div>
+                    <div className="fw-bold">₹{receiptData.amountToCharge.toFixed(2)}</div>
+                  </div>
+                )}
               </div>
 
               {receiptData.payment?.customerMobile && (
