@@ -1,14 +1,6 @@
 import { useState } from "react";
 import {
   Container,
-  Card,
-  Row,
-  Col,
-  Badge,
-  Table,
-  Spinner,
-  Alert,
-  Button,
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import "./ShopkeeperRewards.css";
@@ -36,6 +28,9 @@ const ShopkeeperRewards = () => {
   const [error, setError] = useState<string | null>(null);
   const [mobileInput, setMobileInput] = useState<string>("");
   const [searched, setSearched] = useState(false);
+  const [walletCurrentPage, setWalletCurrentPage] = useState(1);
+  const [billingCurrentPage, setBillingCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const loadCustomerData = async (mobileNo: string) => {
     if (!mobileNo.trim()) {
@@ -97,211 +92,275 @@ const ShopkeeperRewards = () => {
   if (loading && searched) {
     return (
       <Container className="mt-5 text-center">
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </Spinner>
+        <div className="rewards-loading">
+          <div className="rewards-spinner"></div>
+          <p>Loading customer data...</p>
+        </div>
       </Container>
     );
   }
 
   return (
-    <Container fluid className="shopkeeper-rewards-container py-4">
+    <div className="rewards-page-container">
       <ShopkeeperHeader 
-        title="Customer Wallet & Rewards" 
+        title="💳 Customer Wallet & Rewards" 
         description="Quick access to customer wallet balance and billing history for POS"
       />
-      <div className="rewards-header mb-4">
-        <h2>💳 Customer Rewards</h2>
-      </div>
+      
+      <Container className="rewards-content">
+        {/* Search Section */}
+        <div className="rewards-search-card">
+          <div className="rewards-search-header">
+            <h3 className="rewards-search-title">Find Customer</h3>
+          </div>
+          <div className="rewards-search-body">
+            <form onSubmit={handleSearch} className="rewards-search-form">
+              <div className="rewards-search-input-group">
+                <input
+                  type="text"
+                  placeholder="Enter customer mobile number"
+                  value={mobileInput}
+                  onChange={(e) => setMobileInput(e.target.value)}
+                  className="rewards-input"
+                />
+                <button type="submit" className="rewards-search-btn">
+                  🔍 Search
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
 
-      {/* Search Section */}
-      <Card className="mb-4 shadow-sm">
-        <Card.Body>
-          <form onSubmit={handleSearch} className="d-flex gap-2">
-            <input
-              type="text"
-              placeholder="Enter customer mobile number"
-              value={mobileInput}
-              onChange={(e) => setMobileInput(e.target.value)}
-              className="form-control"
-            />
-            <Button variant="success" type="submit">
-              🔍 Search
-            </Button>
-          </form>
-        </Card.Body>
-      </Card>
+        {error && (
+          <div className="rewards-error-alert">
+            <span className="rewards-error-icon">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
 
-      {error && <Alert variant="danger">⚠️ {error}</Alert>}
+        {loading && searched && (
+          <div className="rewards-loading">
+            <div className="rewards-spinner"></div>
+            <p>Loading customer data...</p>
+          </div>
+        )}
 
-      {customer ? (
-        <>
-          {/* Customer Info Cards */}
-          <Row className="mb-4">
-            <Col md={6}>
-              <Card className="text-center bg-success text-white shadow-sm">
-                <Card.Body>
-                  <Card.Title>Wallet Balance</Card.Title>
-                  <h1 className="mb-0">₹{(customer.walletBalance || 0).toFixed(2)}</h1>
-                  <small className="mt-2 d-block">Available to use</small>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col md={6}>
-              <Card className="text-center bg-info text-white shadow-sm">
-                <Card.Body>
-                  <Card.Title>Customer Details</Card.Title>
-                  <div className="fs-6">Mobile: <strong>{customer.mobileNo}</strong></div>
-                  <small className="mt-2 d-block text-white-50">ID: {customer.id?.substring(0, 12)}</small>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
-
-          {/* Wallet Details Card */}
-          <Card className="mb-4 shadow-sm">
-            <Card.Header className="bg-light">
-              <h5 className="mb-0">📊 Wallet Details</h5>
-            </Card.Header>
-            <Card.Body>
-              <Row>
-                <Col md={4} className="border-end">
-                  <div className="text-center">
-                    <label className="fw-bold text-muted d-block mb-2">Current Balance</label>
-                    <h3 className="text-success">₹{(customer.walletBalance || 0).toFixed(2)}</h3>
-                  </div>
-                </Col>
-                <Col md={4} className="border-end">
-                  <div className="text-center">
-                    <label className="fw-bold text-muted d-block mb-2">Member Since</label>
-                    <p className="mb-0">
-                      {new Date(customer.createdAt || "").toLocaleDateString()}
-                    </p>
-                  </div>
-                </Col>
-                <Col md={4}>
-                  <div className="text-center">
-                    <label className="fw-bold text-muted d-block mb-2">Total Transactions</label>
-                    <h3 className="text-info">{transactions.length}</h3>
-                  </div>
-                </Col>
-              </Row>
-            </Card.Body>
-          </Card>
-
-          {/* Transaction History */}
-          <Card className="shadow-sm">
-            <Card.Header className="bg-light">
-              <h5 className="mb-0">📋 Recent Transactions</h5>
-            </Card.Header>
-            <Card.Body>
-              {transactions.length > 0 ? (
-                <div className="table-responsive">
-                  <Table striped hover size="sm">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Type</th>
-                        <th>Amount</th>
-                        <th>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {transactions.slice(0, 10).map((txn, idx) => (
-                        <tr key={idx}>
-                          <td className="small">
-                            {new Date(txn.createdAt || "").toLocaleDateString()}
-                          </td>
-                          <td>
-                            <Badge bg={txn.type === "CREDIT" ? "success" : "danger"}>
-                              {txn.type === "CREDIT" ? "✅ CREDIT" : "❌ DEBIT"}
-                            </Badge>
-                          </td>
-                          <td className="fw-bold text-end">
-                            <span className={txn.type === "CREDIT" ? "text-success" : "text-danger"}>
-                              {txn.type === "CREDIT" ? "+" : "-"}₹{txn.amount.toFixed(2)}
-                            </span>
-                          </td>
-                          <td className="small">{txn.description}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                  {transactions.length > 10 && (
-                    <Alert variant="info" className="mt-3 mb-0">
-                      Showing 10 of {transactions.length} transactions
-                    </Alert>
-                  )}
+        {customer && !loading ? (
+          <div className="rewards-customer-section">
+            {/* Customer Info Cards */}
+            <div className="rewards-stats-grid">
+              <div className="rewards-stat-card rewards-stat-primary">
+                <div className="rewards-stat-icon">💰</div>
+                <div className="rewards-stat-content">
+                  <div className="rewards-stat-label">Wallet Balance</div>
+                  <div className="rewards-stat-value">₹{(customer.walletBalance || 0).toFixed(2)}</div>
+                  <div className="rewards-stat-subtitle">Available to use</div>
                 </div>
-              ) : (
-                <Alert variant="info" className="mb-0">
-                  No wallet transactions found.
-                </Alert>
-              )}
-            </Card.Body>
-          </Card>
+              </div>
 
-          {/* Billing Transactions Tab */}
-          <Card className="shadow-sm mt-4">
-            <Card.Header className="bg-warning text-dark">
-              <strong>🧾 Recent Billing Transactions</strong>
-            </Card.Header>
-            <Card.Body>
-              {billTransactions && billTransactions.length > 0 ? (
-                <div className="table-responsive">
-                  <Table striped bordered hover size="sm">
-                    <thead className="table-light">
-                      <tr>
-                        <th>Bill ID</th>
-                        <th>Date</th>
-                        <th>Items</th>
-                        <th>Amount</th>
-                        <th>Discount/Reward</th>
-                        <th>Net Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {billTransactions.map((bill) => (
-                        <tr key={bill.billId}>
-                          <td>
-                            <Badge bg="info">{bill.billId}</Badge>
-                          </td>
-                          <td>{bill.date}</td>
-                          <td>
-                            <Badge bg="secondary">{bill.itemCount}</Badge>
-                          </td>
-                          <td>₹{bill.amount.toFixed(2)}</td>
-                          <td>
-                            <span className="text-success fw-bold">₹{bill.discount.toFixed(2)}</span>
-                          </td>
-                          <td className="fw-bold">₹{(bill.amount - bill.discount).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
+              <div className="rewards-stat-card rewards-stat-secondary">
+                <div className="rewards-stat-icon">📱</div>
+                <div className="rewards-stat-content">
+                  <div className="rewards-stat-label">Mobile Number</div>
+                  <div className="rewards-stat-value">{customer.mobileNo}</div>
+                  <div className="rewards-stat-subtitle">ID: {customer.id?.substring(0, 12)}</div>
                 </div>
-              ) : (
-                <Alert variant="info" className="mb-0">
-                  No billing transactions found.
-                </Alert>
-              )}
-            </Card.Body>
-          </Card>
+              </div>
 
-          {/* Tips */}
-          <Alert variant="success" className="mt-4">
-            <strong>💡 Tip:</strong> Share customer's wallet balance with them during billing. 
-            They can use it to get discounts on their purchases!
-          </Alert>
-        </>
-      ) : (
-        !searched && (
-          <Alert variant="info">
-            🔍 Search for a customer by mobile number to view their wallet and rewards.
-          </Alert>
-        )
-      )}
-    </Container>
+              <div className="rewards-stat-card rewards-stat-accent">
+                <div className="rewards-stat-icon">📅</div>
+                <div className="rewards-stat-content">
+                  <div className="rewards-stat-label">Member Since</div>
+                  <div className="rewards-stat-value">{new Date(customer.createdAt || "").toLocaleDateString()}</div>
+                  <div className="rewards-stat-subtitle">Customer ID</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Wallet Details Card */}
+            <div className="rewards-details-card">
+              <div className="rewards-details-header">
+                <h4 className="rewards-details-title">📊 Wallet Summary</h4>
+              </div>
+              <div className="rewards-details-body">
+                <div className="rewards-details-grid">
+                  <div className="rewards-detail-item">
+                    <div className="rewards-detail-label">Current Balance</div>
+                    <div className="rewards-detail-value rewards-value-primary">₹{(customer.walletBalance || 0).toFixed(2)}</div>
+                  </div>
+                  <div className="rewards-detail-item">
+                    <div className="rewards-detail-label">Total Transactions</div>
+                    <div className="rewards-detail-value rewards-value-secondary">{transactions.length}</div>
+                  </div>
+                  <div className="rewards-detail-item">
+                    <div className="rewards-detail-label">Total Billing Txns</div>
+                    <div className="rewards-detail-value rewards-value-accent">{billTransactions.length}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Wallet Transactions */}
+            <div className="rewards-transactions-card">
+              <div className="rewards-transactions-header">
+                <h4 className="rewards-transactions-title">📋 Wallet Transactions</h4>
+              </div>
+              <div className="rewards-transactions-body">
+                {transactions.length > 0 ? (
+                  <>
+                    <div className="rewards-table-wrapper">
+                      <table className="rewards-table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Description</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {transactions
+                            .slice((walletCurrentPage - 1) * itemsPerPage, walletCurrentPage * itemsPerPage)
+                            .map((txn, idx) => (
+                            <tr key={idx}>
+                              <td className="rewards-table-date">
+                                {new Date(txn.createdAt || "").toLocaleDateString()}
+                              </td>
+                              <td>
+                                <span className={`rewards-badge ${txn.type === "CREDIT" ? "rewards-badge-credit" : "rewards-badge-debit"}`}>
+                                  {txn.type === "CREDIT" ? "✅ CREDIT" : "❌ DEBIT"}
+                                </span>
+                              </td>
+                              <td className="rewards-table-amount">
+                                <span className={txn.type === "CREDIT" ? "rewards-amount-credit" : "rewards-amount-debit"}>
+                                  {txn.type === "CREDIT" ? "+" : "-"}₹{txn.amount.toFixed(2)}
+                                </span>
+                              </td>
+                              <td className="rewards-table-description">{txn.description}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {transactions.length > itemsPerPage && (
+                      <div className="rewards-pagination">
+                        <button 
+                          className="rewards-pagination-btn"
+                          onClick={() => setWalletCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={walletCurrentPage === 1}
+                        >
+                          ← Previous
+                        </button>
+                        <div className="rewards-pagination-info">
+                          Page {walletCurrentPage} of {Math.ceil(transactions.length / itemsPerPage)} 
+                          <span className="rewards-pagination-total">({transactions.length} total)</span>
+                        </div>
+                        <button 
+                          className="rewards-pagination-btn"
+                          onClick={() => setWalletCurrentPage(prev => Math.min(Math.ceil(transactions.length / itemsPerPage), prev + 1))}
+                          disabled={walletCurrentPage === Math.ceil(transactions.length / itemsPerPage)}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rewards-empty-state">
+                    <span className="rewards-empty-icon">📭</span>
+                    <p>No wallet transactions found.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Billing Transactions */}
+            <div className="rewards-billing-card">
+              <div className="rewards-billing-header">
+                <h4 className="rewards-billing-title">🧾 Billing Transactions</h4>
+              </div>
+              <div className="rewards-billing-body">
+                {billTransactions && billTransactions.length > 0 ? (
+                  <>
+                    <div className="rewards-table-wrapper">
+                      <table className="rewards-table">
+                        <thead>
+                          <tr>
+                            <th>Bill ID</th>
+                            <th>Date</th>
+                            <th>Items</th>
+                            <th>Amount</th>
+                            <th>Reward</th>
+                            <th>Net Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {billTransactions
+                            .slice((billingCurrentPage - 1) * itemsPerPage, billingCurrentPage * itemsPerPage)
+                            .map((bill) => (
+                            <tr key={bill.billId}>
+                              <td><span className="rewards-badge rewards-badge-info">{bill.billId}</span></td>
+                              <td>{bill.date}</td>
+                              <td><span className="rewards-badge rewards-badge-secondary">{bill.itemCount}</span></td>
+                              <td>₹{bill.amount.toFixed(2)}</td>
+                              <td><span className="rewards-amount-credit">₹{bill.discount.toFixed(2)}</span></td>
+                              <td className="rewards-table-net">₹{(bill.amount - bill.discount).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {billTransactions.length > itemsPerPage && (
+                      <div className="rewards-pagination">
+                        <button 
+                          className="rewards-pagination-btn"
+                          onClick={() => setBillingCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={billingCurrentPage === 1}
+                        >
+                          ← Previous
+                        </button>
+                        <div className="rewards-pagination-info">
+                          Page {billingCurrentPage} of {Math.ceil(billTransactions.length / itemsPerPage)}
+                          <span className="rewards-pagination-total">({billTransactions.length} total)</span>
+                        </div>
+                        <button 
+                          className="rewards-pagination-btn"
+                          onClick={() => setBillingCurrentPage(prev => Math.min(Math.ceil(billTransactions.length / itemsPerPage), prev + 1))}
+                          disabled={billingCurrentPage === Math.ceil(billTransactions.length / itemsPerPage)}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rewards-empty-state">
+                    <span className="rewards-empty-icon">📭</span>
+                    <p>No billing transactions found.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tips Section */}
+            <div className="rewards-tip-card">
+              <div className="rewards-tip-icon">💡</div>
+              <div className="rewards-tip-content">
+                <div className="rewards-tip-title">Pro Tip</div>
+                <div className="rewards-tip-text">
+                  Share the customer's wallet balance with them during billing. They can use it to get discounts on their purchases!
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : !searched ? (
+          <div className="rewards-empty-search">
+            <div className="rewards-empty-icon-lg">🔍</div>
+            <p className="rewards-empty-text">Search for a customer by mobile number to view their wallet and rewards.</p>
+          </div>
+        ) : null}
+      </Container>
+    </div>
   );
 };
 

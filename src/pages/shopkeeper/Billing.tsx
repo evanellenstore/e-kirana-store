@@ -1,7 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import {
   Container,
-  Card,
   InputGroup,
   Form,
   Button,
@@ -33,6 +32,7 @@ import {
 } from "@zxing/browser";
 
 import { AuthContext } from "../../auth/AuthContext";
+import "./Billing.css";
 
 const Billing = () => {
   console.log("Billing component mounted");
@@ -756,20 +756,25 @@ const Billing = () => {
   };
 
   return (
-    <Container className="py-4" style={{ maxWidth: 900 }}>
+    <div className="billing-page-container">
       <ShopkeeperHeader 
         title="🧾 Billing & POS"
         description="Create and manage bills"
       />
-      <Card>
-        <Card.Header>
-          <Row className="align-items-center">
-            <Col><h5 className="mb-0">Bill Details</h5></Col>
-            <Col className="text-end">{billId ? <Badge bg="secondary">Bill: {billId}</Badge> : null}</Col>
-          </Row>
-        </Card.Header>
+      
+      <Container className="billing-content" style={{ maxWidth: 1100 }}>
+        {/* Main Billing Section */}
+        <div className="billing-main-card">
+          <div className="billing-header-section">
+            <div className="billing-title-area">
+              <h4 className="billing-title">
+                Bill Details
+                {billId && <Badge className="billing-badge bg-primary ms-3">Bill: {billId}</Badge>}
+              </h4>
+            </div>
+          </div>
 
-        <Card.Body>
+          <div className="billing-body">
           <Row className="g-2">
             <Col xs={12} md={8}>
               <InputGroup>
@@ -902,13 +907,15 @@ const Billing = () => {
             </Col>
           </Row>
 
-          <div className="text-end mt-3">
-            <h4>
-              Total: <Badge bg="dark">₹{total}</Badge>
+          <div className="billing-total-section">
+            <h4 className="billing-total-label">
+              Total: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
             </h4>
           </div>
-        </Card.Body>
-      </Card>
+          </div>
+        </div>
+      </Container>
+
       {/* Payment Modal */}
       <Modal show={showPaymentModal} onHide={() => setShowPaymentModal(false)}>
         <Modal.Header closeButton>
@@ -1263,7 +1270,7 @@ const Billing = () => {
           </Button>
         </Modal.Footer>
       </Modal>
-    </Container>
+    </div>
   );
 };
 
