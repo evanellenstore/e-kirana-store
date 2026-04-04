@@ -20,6 +20,11 @@ import {
   finalizeBill,
   type CartItem
 } from "../../services/billingApi";
+import {
+  getOrCreateCustomer,
+  addToWallet,
+  type Customer
+} from "../../services/customerApi";
 
 import {
   BrowserMultiFormatReader
@@ -33,6 +38,7 @@ const Billing = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [total, setTotal] = useState(0);
   const [subtotalBeforeDiscount, setSubtotalBeforeDiscount] = useState(0);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isReserving, setIsReserving] = useState(false);
@@ -483,10 +489,12 @@ const Billing = () => {
       }
 
       // compute payable
-      const discountAmt = discountIsPercent ? (total * discount) / 100 : discount;
-      const taxable = Math.max(0, total - discountAmt);
-      const gstAmt = taxable * gstRate;
-      const grandTotal = taxable + gstAmt;
+      const { discountAmt, gstAmt, grandTotal } = computeTotals();
+
+      // Create/update customer and add discount to wallet
+      if (customerMobile) {
+        await handleCustomerCreation(customerMobile, discountAmt, billId);
+      }
 
       const paymentPayload = {
         paymentMode,
@@ -639,6 +647,30 @@ const Billing = () => {
         })
         .filter(i => i.qty > 0);
     });
+  };
+
+  // Handle customer creation and wallet credit
+  const handleCustomerCreation = async (mobileNo: string, discountAmount: number, billId?: string) => {
+    try {
+      if (!mobileNo.trim()) return null;
+      
+      // Get or create customer with billing ID
+      const res = await getOrCreateCustomer(mobileNo, billId);
+      const cust = res.data;
+      setCustomer(cust);
+      
+      // Add discount to wallet if this is a new customer
+      if (discountAmount > 0 && cust) {
+        await addToWallet(cust.id || '', discountAmount, 'Discount credited');
+        setCustomer({...cust, walletBalance: (cust.walletBalance || 0) + discountAmount});
+      }
+      
+      return cust;
+    } catch (err) {
+      console.error('Customer creation failed', err);
+      alert('⚠️ Could not create customer account, but billing will continue');
+      return null;
+    }
   };
 
   /* =====================
@@ -884,6 +916,16 @@ const Billing = () => {
               );
             })()}
 
+          {customer && (
+            <div className="bg-light p-2 rounded mb-3">
+              <div className="small fw-bold">💳 Customer Wallet</div>
+              <div className="d-flex justify-content-between">
+                <div className="small">Mobile: {customer.mobileNo || 'N/A'}</div>
+                <div className="small fw-semibold text-success">Balance: ₹{(customer.walletBalance || 0).toFixed(2)}</div>
+              </div>
+            </div>
+          )}
+
           <Form.Group className="mb-2">
             <Form.Label>Payment Mode</Form.Label>
             <Form.Select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
@@ -969,6 +1011,15 @@ const Billing = () => {
                 <hr />
                 <div className="d-flex justify-content-between fw-bold"><div>Grand Total</div><div>₹{receiptData.totals.grandTotal.toFixed(2)}</div></div>
               </div>
+
+              {receiptData.payment?.customerMobile && (
+                <div className="mt-3 p-2 bg-light rounded">
+                  <div className="small text-success fw-bold">✓ Customer Wallet Created</div>
+                  <div className="small">Mobile: {receiptData.payment.customerMobile}</div>
+                  <div className="small">Discount Credited: ₹{receiptData.payment.discount?.toFixed(2) || '0.00'}</div>
+                  <div className="small text-muted">Use wallet balance in future purchases</div>
+                </div>
+              )}
             </div>
           ) : (
             <div>No receipt data</div>
