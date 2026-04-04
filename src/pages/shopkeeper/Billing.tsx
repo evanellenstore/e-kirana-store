@@ -59,7 +59,6 @@ const Billing = () => {
   const [batchAllocOptions, setBatchAllocOptions] = useState<any[]>([]);
   const [batchAllocations, setBatchAllocations] = useState<Array<{ batchNo: string; qty: number; expiryDate: string }>>([]);
   const [useWallet, setUseWallet] = useState<boolean>(false);
-  const [adjustedAmount, setAdjustedAmount] = useState<number | undefined>(undefined);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -503,7 +502,7 @@ const Billing = () => {
       }
 
       // Determine amount to charge with wallet deduction
-      let amountToCharge = adjustedAmount ?? subtotalBeforeDiscount;
+      let amountToCharge = subtotalBeforeDiscount;
       let walletDeduction = 0;
       
       // If using wallet, deduct wallet balance
@@ -520,7 +519,6 @@ const Billing = () => {
         customerId: customerId || null,
         discount: discountAmt,
         walletUsed: walletDeduction,
-        adjustedAmount: adjustedAmount,
         gst: gstAmt,
         grandTotal: subtotalBeforeDiscount
       };
@@ -1024,33 +1022,6 @@ const Billing = () => {
             </Form.Group>
           )}
 
-          {/* Adjust Payment Amount - Optional */}
-          <Form.Group className="mb-2 p-2 bg-light rounded">
-            <Form.Label className="fw-bold small">💰 Adjust Amount (Optional)</Form.Label>
-            <Form.Control 
-              type="number" 
-              placeholder="Leave empty for full amount"
-              value={adjustedAmount ?? ''}
-              onChange={e => {
-                const val = e.target.value ? Number(e.target.value) : undefined;
-                setAdjustedAmount(val);
-              }}
-              min="0"
-              step="0.01"
-              size="sm"
-            />
-            {adjustedAmount !== undefined && (
-              <div className="small text-muted mt-1">
-                Difference: <strong className={adjustedAmount >= subtotalBeforeDiscount ? 'text-success' : 'text-danger'}>
-                  {adjustedAmount >= subtotalBeforeDiscount 
-                    ? `+₹${(adjustedAmount - subtotalBeforeDiscount).toFixed(2)} (Advance)`
-                    : `-₹${(subtotalBeforeDiscount - adjustedAmount).toFixed(2)} (Partial)`
-                  }
-                </strong>
-              </div>
-            )}
-          </Form.Group>
-
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
@@ -1058,7 +1029,7 @@ const Billing = () => {
             // validate payment
             if (!billId) { alert('No active bill'); return; }
             
-            const amountToPay = adjustedAmount ?? subtotalBeforeDiscount;
+            const amountToPay = subtotalBeforeDiscount;
             let finalAmount = amountToPay;
             
             // Deduct wallet if using
@@ -1073,10 +1044,10 @@ const Billing = () => {
               return;
             }
             // log payload for debugging
-            console.log('Payment start', { paymentMode, cashReceived, customerMobile, adjustedAmount, useWallet, totals: computeTotals() });
+            console.log('Payment start', { paymentMode, cashReceived, customerMobile, useWallet, totals: computeTotals() });
             await pay();
           }}>
-            {isPaying ? 'Processing…' : `Pay ₹${(adjustedAmount ?? subtotalBeforeDiscount).toFixed(2)}`}
+            {isPaying ? 'Processing…' : `Pay ₹${subtotalBeforeDiscount.toFixed(2)}`}
           </Button>
         </Modal.Footer>
       </Modal>
