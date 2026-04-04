@@ -44,4 +44,8 @@ export const deductFromWallet = (customerId: string, amount: number, description
 
 // Get wallet transactions
 export const getWalletTransactions = (customerId: string) =>
-  api.get<WalletTransaction[]>(`/customers/${customerId}/wallet/transactions`);
+  api.get<WalletTransaction[]>(`/users/customers/${customerId}/wallet/transactions`);
+
+// Get billing transactions (from billing service)
+export const getBillingTransactions = (customerId: string) =>
+  api.get<any[]>(`/billings/customer/${customerId}`);

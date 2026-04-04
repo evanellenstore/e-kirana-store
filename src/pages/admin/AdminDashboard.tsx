@@ -1,8 +1,13 @@
 import { Container, Row, Col, Card, Button, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
+import { useContext } from 'react';
+import { AuthContext } from '../../auth/AuthContext';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
+  const auth = useContext(AuthContext);
+  const username = auth?.user?.username || 'Admin';
+  
   const menuItems = [
     {
       title: 'Products',
@@ -52,6 +57,13 @@ const AdminDashboard = () => {
       icon: '🛒',
       link: '/admin/from-purchase',
       badge: 'Process'
+    },
+    {
+      title: 'Customer Rewards',
+      description: 'Manage customer rewards & wallet',
+      icon: '💰',
+      link: '/admin/rewards',
+      badge: 'Rewards'
     }
   ];
 
@@ -60,7 +72,7 @@ const AdminDashboard = () => {
       {/* Header Section */}
       <div className="text-white text-center mb-5">
         <h1 className="display-4 fw-bold mb-2">⚙️ Admin Dashboard</h1>
-        <p className="lead mb-0">Complete control of your e-commerce platform</p>
+        <p className="lead mb-0">Welcome, {username}! Complete control of your e-commerce platform</p>
       </div>
 
       {/* Menu Cards Grid */}
@@ -109,7 +121,7 @@ const AdminDashboard = () => {
         </Col>
         <Col md={3} className="text-center mb-3 mb-md-0">
           <h5 className="text-white-50">Modules</h5>
-          <p className="text-white fs-5 fw-semibold">6 Available</p>
+          <p className="text-white fs-5 fw-semibold">8 Available</p>
         </Col>
         <Col md={3} className="text-center mb-3 mb-md-0">
           <h5 className="text-white-50">Admin Level</h5>

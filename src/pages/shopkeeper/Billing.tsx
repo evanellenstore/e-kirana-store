@@ -489,24 +489,29 @@ const Billing = () => {
       }
 
       // compute payable
-      const { discountAmt, gstAmt, grandTotal } = computeTotals();
+      const { discountAmt, gstAmt } = computeTotals();
 
       // Create/update customer and add discount to wallet
+      let customerId: string | undefined;
       if (customerMobile) {
-        await handleCustomerCreation(customerMobile, discountAmt, billId);
+        const cust = await handleCustomerCreation(customerMobile, discountAmt, billId);
+        customerId = cust?.id;
       }
+
+      // Pay full amount (subtotalBeforeDiscount) since discount goes to wallet
+      const fullAmount = subtotalBeforeDiscount;
 
       const paymentPayload = {
         paymentMode,
-        amountPaid: paymentMode === 'CASH' ? (cashReceived ?? grandTotal) : grandTotal,
+        amountPaid: paymentMode === 'CASH' ? (cashReceived ?? fullAmount) : fullAmount,
         customerMobile: customerMobile || null,
+        customerId: customerId || null,
         discount: discountAmt,
         gst: gstAmt,
-        grandTotal
+        grandTotal: fullAmount
       };
 
-      await finalizeBill(billId, paymentPayload);
-      // show receipt modal with server response (if any) and cart snapshot
+      // Finalize bill with payment details
       const finalizeRes = await finalizeBill(billId, paymentPayload);
       const serverData = finalizeRes?.data ?? null;
       setReceiptData({
@@ -888,7 +893,7 @@ const Billing = () => {
             <div className="mb-2 small text-muted">Bill: {billId}</div>
 
             {(() => {
-              const { discountAmt, gstAmt, grandTotal } = computeTotals();
+              const { discountAmt, gstAmt } = computeTotals();
               return (
                 <>
                   <div className="d-flex justify-content-between">
@@ -910,7 +915,7 @@ const Billing = () => {
 
                   <div className="d-flex justify-content-between fw-bold mb-3">
                     <div>Grand Total</div>
-                    <div>₹{grandTotal.toFixed(2)}</div>
+                    <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
                   </div>
                 </>
               );
@@ -941,8 +946,7 @@ const Billing = () => {
               <Form.Label>Cash Received</Form.Label>
               <Form.Control type="number" value={cashReceived ?? ''} onChange={e => setCashReceived(Number(e.target.value))} />
               <div className="small text-muted mt-1">Change: ₹{(() => {
-                const { grandTotal } = computeTotals();
-                const change = Math.max(0, (cashReceived ?? 0) - grandTotal);
+                const change = Math.max(0, (cashReceived ?? 0) - subtotalBeforeDiscount);
                 return change.toFixed(2);
               })()}</div>
             </Form.Group>
@@ -957,9 +961,8 @@ const Billing = () => {
           <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
           <Button variant="primary" disabled={isPaying} onClick={async () => {
             // validate cash
-            const { grandTotal } = computeTotals();
             if (!billId) { alert('No active bill'); return; }
-            if (paymentMode === 'CASH' && (cashReceived ?? 0) < grandTotal) {
+            if (paymentMode === 'CASH' && (cashReceived ?? 0) < subtotalBeforeDiscount) {
               alert('Cash received is less than grand total');
               return;
             }
@@ -967,7 +970,7 @@ const Billing = () => {
             console.log('Payment start', { paymentMode, cashReceived, customerMobile, totals: computeTotals() });
             await pay();
           }}>
-            {isPaying ? 'Processing…' : `Pay ₹${computeTotals().grandTotal.toFixed(2)}`}
+            {isPaying ? 'Processing…' : `Pay ₹${subtotalBeforeDiscount.toFixed(2)}`}
           </Button>
         </Modal.Footer>
       </Modal>

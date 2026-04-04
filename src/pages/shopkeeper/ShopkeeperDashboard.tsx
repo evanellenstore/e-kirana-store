@@ -1,8 +1,13 @@
 import { Container, Row, Col, Card, Button, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
+import { useContext } from 'react';
+import { AuthContext } from '../../auth/AuthContext';
 import './ShopkeeperDashboard.css';
 
 const ShopkeeperDashboard = () => {
+  const auth = useContext(AuthContext);
+  const username = auth?.user?.username || 'Shopkeeper';
+  
   const menuItems = [
     {
       title: 'Products',
@@ -24,6 +29,13 @@ const ShopkeeperDashboard = () => {
       icon: '💳',
       link: '/shopkeeper/billing',
       badge: 'Create'
+    },
+    {
+      title: 'Customer Rewards',
+      description: 'View customer wallet & rewards',
+      icon: '🎁',
+      link: '/shopkeeper/rewards',
+      badge: 'Rewards'
     }
   ];
 
@@ -32,7 +44,7 @@ const ShopkeeperDashboard = () => {
       {/* Header Section */}
       <div className="text-white text-center mb-5">
         <h1 className="display-4 fw-bold mb-2">🏪 Shopkeeper Dashboard</h1>
-        <p className="lead mb-0">Manage your store operations efficiently</p>
+        <p className="lead mb-0">Welcome, {username}! Manage your store operations efficiently</p>
       </div>
 
       {/* Menu Cards Grid */}
@@ -81,7 +93,7 @@ const ShopkeeperDashboard = () => {
         </Col>
         <Col md={4} className="text-center mb-3 mb-md-0">
           <h5 className="text-white-50">Quick Access</h5>
-          <p className="text-white fs-5 fw-semibold">3 Modules</p>
+          <p className="text-white fs-5 fw-semibold">4 Modules</p>
         </Col>
         <Col md={4} className="text-center">
           <h5 className="text-white-50">Last Updated</h5>

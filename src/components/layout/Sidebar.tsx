@@ -31,6 +31,7 @@ const Sidebar = () => {
           <Nav.Link as={Link} to="/admin/from-purchase" onClick={close}>From Purchase</Nav.Link>
           <Nav.Link as={Link} to="/admin/admin-products" onClick={close}>Admin Products</Nav.Link>
           <Nav.Link as={Link} to="/admin/admin-inventory" onClick={close}>Admin Inventory</Nav.Link>
+          <Nav.Link as={Link} to="/admin/rewards" onClick={close}>💰 Customer Rewards</Nav.Link>
         </>
       )}
 
@@ -40,6 +41,7 @@ const Sidebar = () => {
           <Nav.Link as={Link} to="/shopkeeper/products" onClick={close}>Products</Nav.Link>
           <Nav.Link as={Link} to="/shopkeeper/inventory" onClick={close}>Inventory</Nav.Link>
           <Nav.Link as={Link} to="/shopkeeper/billing" onClick={close}>Billing</Nav.Link>
+          <Nav.Link as={Link} to="/shopkeeper/rewards" onClick={close}>💳 Rewards</Nav.Link>
         </>
       )}
 
@@ -49,6 +51,7 @@ const Sidebar = () => {
           <Nav.Link as={Link} to="/customer/products" onClick={close}>Products</Nav.Link>
           <Nav.Link as={Link} to="/customer/cart" onClick={close}>Cart</Nav.Link>
           <Nav.Link as={Link} to="/customer/orders" onClick={close}>Orders</Nav.Link>
+          <Nav.Link as={Link} to="/customer/rewards" onClick={close}>💰 Rewards & Wallet</Nav.Link>
         </>
       )}
     </Nav>

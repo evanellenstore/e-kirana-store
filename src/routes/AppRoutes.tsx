@@ -11,16 +11,19 @@ import AdminProduct from '../pages/admin/AdminProduct';
 import AdminInventory from '../pages/admin/AdminInventory';
 import AdminCategory from '../pages/admin/AdminCategory';
 import AdminBrand from '../pages/admin/AdminBrand';
+import AdminRewards from '../pages/admin/AdminRewards';
 
 import ShopkeeperDashboard from '../pages/shopkeeper/ShopkeeperDashboard';
 import Products from '../pages/shopkeeper/Products';
 import Inventory from '../pages/shopkeeper/Inventory';
 import Billing from '../pages/shopkeeper/Billing';
+import ShopkeeperRewards from '../pages/shopkeeper/ShopkeeperRewards';
 
 import CustomerDashboard from '../pages/customer/CustomerDashboard';
 import ProductList from '../pages/customer/ProductList';
 import Cart from '../pages/customer/Cart';
 import Orders from '../pages/customer/Orders';
+import Rewards from '../pages/customer/Rewards';
 
 import LoginPage from '../pages/LoginPage';
 
@@ -97,6 +100,14 @@ const AppRoutes: React.FC = () => (
         </RequireAuth>
       }
     />
+    <Route
+      path="/admin/rewards"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminRewards />
+        </RequireAuth>
+      }
+    />
 
     {/* Shopkeeper */}
     <Route
@@ -131,6 +142,14 @@ const AppRoutes: React.FC = () => (
         </RequireAuth>
       }
     />
+    <Route
+      path="/shopkeeper/rewards"
+      element={
+        <RequireAuth roles={['SHOPKEEPER']}>
+          <ShopkeeperRewards />
+        </RequireAuth>
+      }
+    />
 
     {/* Customer */}
     <Route
@@ -162,6 +181,14 @@ const AppRoutes: React.FC = () => (
       element={
         <RequireAuth roles={['CUSTOMER']}>
           <Orders />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/customer/rewards"
+      element={
+        <RequireAuth roles={['CUSTOMER']}>
+          <Rewards />
         </RequireAuth>
       }
     />
