@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Container, Table, Button, Modal, Form, Alert, Badge, Spinner, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 import AdminHeader from '../../components/AdminHeader';
+import './AdminBrand.css';
 
 interface Brand {
   id: number;
@@ -164,173 +164,215 @@ const AdminBrand: React.FC = () => {
 
   if (loading && brands.length === 0) {
     return (
-      <div className="text-center mt-5">
-        <Spinner />
+      <div className="admin-brand-container">
+        <div className="loading-container">
+          <div className="spinner">
+            <div className="spinner-ring"></div>
+          </div>
+          <p className="loading-text">Loading brands...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <Container fluid className="py-4">
+    <div className="admin-brand-container">
       <AdminHeader 
         title="Brand Management" 
         description="Manage product brands and control availability"
       />
+      
+      <div className="brand-wrapper">
+        <div className="brand-controls">
+          <div className="controls-header">
+            <div className="header-content">
+              <h1 className="page-title">Brands</h1>
+              <p className="page-subtitle">Manage all product brands</p>
+            </div>
+            <button onClick={openCreateModal} className="add-brand-btn">
+              <span className="btn-icon">➕</span>
+              Add Brand
+            </button>
+          </div>
 
-      <Row className="mb-4 align-items-center">
-        <Col>
-          <h2>Brands</h2>
-        </Col>
-        <Col className="text-end">
-          <Button variant="success" onClick={openCreateModal} className="d-flex align-items-center gap-2 ms-auto">
-            <span>➕</span>
-            <span>Add Brand</span>
-          </Button>
-        </Col>
-      </Row>
-
-      {/* Search Bar */}
-      <div className="mb-4">
-        <Form.Group>
-          <Form.Control
-            type="text"
-            placeholder="🔍 Search by brand name or ID..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
-          />
-        </Form.Group>
-      </div>
-
-      {error && (
-        <Alert variant="danger" onClose={() => setError(null)} dismissible>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert variant="success" onClose={() => setSuccess(null)} dismissible>
-          {success}
-        </Alert>
-      )}
-
-      {/* Brands Table */}
-      <div className="table-responsive mb-4">
-        <Table striped bordered hover>
-          <thead className="table-dark">
-            <tr>
-              <th>ID</th>
-              <th>Brand Name</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentBrands.length > 0 ? (
-              currentBrands.map((brand) => (
-                <tr key={brand.id}>
-                  <td>{brand.id}</td>
-                  <td className="fw-semibold">{brand.brand}</td>
-                  <td>
-                    <Badge bg={brand.isActive ? 'success' : 'secondary'}>
-                      {brand.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </td>
-                  <td>
-                    <Button
-                      variant="outline-primary"
-                      size="sm"
-                      className="me-2"
-                      onClick={() => openEditModal(brand)}
-                    >
-                      ✏️ Edit
-                    </Button>
-                    <Button
-                      variant={brand.isActive ? 'outline-warning' : 'outline-success'}
-                      size="sm"
-                      className="me-2"
-                      onClick={() => handleToggleStatus(brand.id, brand.isActive)}
-                    >
-                      {brand.isActive ? '❌ Deactivate' : '✅ Activate'}
-                    </Button>
-                    <Button
-                      variant="outline-danger"
-                      size="sm"
-                      onClick={() => handleDelete(brand.id)}
-                    >
-                      🗑️ Delete
-                    </Button>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4} className="text-center text-muted py-4">
-                  No brands found
-                </td>
-              </tr>
+          {/* Search Bar */}
+          <div className="search-container">
+            <div className="search-input-wrapper">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Search by brand name or ID..."
+                value={searchTerm}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="search-input"
+              />
+            </div>
+            {searchTerm && (
+              <div className="search-results-info">
+                Found {filteredBrands.length} result{filteredBrands.length !== 1 ? 's' : ''}
+              </div>
             )}
-          </tbody>
-        </Table>
+          </div>
+        </div>
+
+        {/* Alert Messages */}
+        {error && (
+          <div className="alert-message alert-danger">
+            <span className="alert-icon">⚠️</span>
+            <span className="alert-text">{error}</span>
+            <button className="alert-close" onClick={() => setError(null)}>×</button>
+          </div>
+        )}
+
+        {success && (
+          <div className="alert-message alert-success">
+            <span className="alert-icon">✓</span>
+            <span className="alert-text">{success}</span>
+            <button className="alert-close" onClick={() => setSuccess(null)}>×</button>
+          </div>
+        )}
+
+        {/* Brands Grid */}
+        <div className="brands-container">
+          {currentBrands.length > 0 ? (
+            <>
+              <div className="brands-count">
+                Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to <strong>{Math.min(currentPage * itemsPerPage, filteredBrands.length)}</strong> of <strong>{filteredBrands.length}</strong> brands
+              </div>
+              <div className="brands-grid">
+                {currentBrands.map((brand) => (
+                  <div key={brand.id} className="brand-card">
+                    <div className="card-header">
+                      <h3 className="brand-name">{brand.brand}</h3>
+                      <span className={`status-badge ${brand.isActive ? 'active' : 'inactive'}`}>
+                        {brand.isActive ? '✓ Active' : '✗ Inactive'}
+                      </span>
+                    </div>
+                    <div className="card-body">
+                      <div className="brand-info">
+                        <span className="info-label">ID:</span>
+                        <span className="info-value">#{brand.id}</span>
+                      </div>
+                    </div>
+                    <div className="card-footer">
+                      <button
+                        onClick={() => openEditModal(brand)}
+                        className="edit-btn"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleToggleStatus(brand.id, brand.isActive)}
+                        className={`toggle-status-btn ${brand.isActive ? 'active' : ''}`}
+                      >
+                        {brand.isActive ? '🔒 Deactivate' : '🔓 Activate'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(brand.id)}
+                        className="delete-btn"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">🏷️</div>
+              <h3 className="empty-title">No Brands Found</h3>
+              <p className="empty-message">
+                {searchTerm ? `No brands match "${searchTerm}"` : 'Start by adding your first brand'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pagination-container">
+            <button
+              onClick={() => setCurrentPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="pagination-btn pagination-prev"
+            >
+              ← Previous
+            </button>
+            <div className="pagination-info">
+              Page <span className="current-page">{currentPage}</span> of <span className="total-pages">{totalPages}</span>
+            </div>
+            <button
+              onClick={() => setCurrentPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="pagination-btn pagination-next"
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="d-flex justify-content-center gap-2 mb-4">
-          <Button
-            variant="outline-secondary"
-            size="sm"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(currentPage - 1)}
-          >
-            Previous
-          </Button>
-          <span className="align-self-center">
-            Page {currentPage} of {totalPages}
-          </span>
-          <Button
-            variant="outline-secondary"
-            size="sm"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(currentPage + 1)}
-          >
-            Next
-          </Button>
+      {/* Modal for Create/Edit */}
+      {showModal && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">
+                {isEditing ? '✏️ Edit Brand' : '➕ Add New Brand'}
+              </h2>
+              <button className="modal-close" onClick={closeModal}>×</button>
+            </div>
+            <form onSubmit={handleSubmit} className="modal-form">
+              <div className="form-group">
+                <label htmlFor="brand-name" className="form-label">Brand Name *</label>
+                <input
+                  id="brand-name"
+                  type="text"
+                  placeholder="Enter brand name"
+                  value={formData.brand}
+                  onChange={(e) => setFormData({ brand: e.target.value })}
+                  className="form-input"
+                  required
+                  autoFocus
+                />
+                {formData.brand === '' && (
+                  <span className="form-error">Brand name is required</span>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="btn-cancel"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || formData.brand === ''}
+                  className="btn-submit"
+                >
+                  {loading ? (
+                    <>
+                      <span className="spinner-mini"></span>
+                      Saving...
+                    </>
+                  ) : isEditing ? (
+                    'Update Brand'
+                  ) : (
+                    'Add Brand'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-
-      {/* Modal */}
-      <Modal show={showModal} onHide={closeModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>{isEditing ? 'Edit Brand' : 'Add New Brand'}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Brand Name *</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Enter brand name"
-                value={formData.brand}
-                onChange={(e) => setFormData({ brand: e.target.value })}
-                autoFocus
-              />
-            </Form.Group>
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={closeModal}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-            {loading ? <Spinner size="sm" className="me-2" /> : null}
-            {isEditing ? 'Update Brand' : 'Add Brand'}
-          </Button>
-        </Modal.Footer>
-      </Modal>
-    </Container>
+    </div>
   );
 };
 

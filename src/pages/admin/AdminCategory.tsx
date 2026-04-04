@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Container, Table, Button, Modal, Form, Alert, Badge, Spinner } from 'react-bootstrap';
 import api from '../../services/api';
 import AdminHeader from '../../components/AdminHeader';
 import './AdminCategory.css';
@@ -163,170 +162,214 @@ const AdminCategory: React.FC = () => {
   const totalPages = Math.ceil(filteredCategories.length / itemsPerPage);
 
   return (
-    <Container fluid className="admin-category-container py-4">
+    <div className="admin-category-container">
       <AdminHeader 
         title="Category Management" 
         description="Manage product categories and control visibility"
       />
-      <div className="category-header mb-4">
-        <h2>Categories</h2>
-        <Button variant="primary" onClick={openCreateModal} className="d-flex align-items-center gap-2">
-          ➕ Add Category
-        </Button>
-      </div>
-
-      {/* Search Bar */}
-      <div className="search-section mb-4">
-        <Form.Group>
-          <Form.Control
-            type="text"
-            placeholder="🔍 Search by category name or ID..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1); // Reset to first page on search
-            }}
-            className="search-input"
-          />
-        </Form.Group>
-      </div>
-
-      {error && (
-        <Alert variant="danger" onClose={() => setError(null)} dismissible>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert variant="success" onClose={() => setSuccess(null)} dismissible>
-          {success}
-        </Alert>
-      )}
-
-      {loading && currentCategories.length === 0 ? (
-        <div className="text-center py-5">
-          <Spinner animation="border" />
-          <p className="mt-2">Loading categories...</p>
-        </div>
-      ) : (
-        <>
-          <div className="table-responsive">
-            <Table striped bordered hover className="category-table">
-              <thead className="table-dark">
-                <tr>
-                  <th style={{ width: '10%' }}>ID</th>
-                  <th style={{ width: '50%' }}>Name</th>
-                  <th style={{ width: '20%' }}>Status</th>
-                  <th style={{ width: '20%' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentCategories.length > 0 ? (
-                  currentCategories.map((category) => (
-                    <tr key={category.id}>
-                      <td>{category.id}</td>
-                      <td>{category.category}</td>
-                      <td>
-                        <Badge
-                          bg={category.isActive ? 'success' : 'danger'}
-                          className="cursor-pointer"
-                          onClick={() => handleToggleStatus(category.id, category.isActive)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          {category.isActive ? '✓ Active' : '✗ Inactive'}
-                        </Badge>
-                      </td>
-                      <td>
-                        <div className="d-flex gap-2">
-                          <Button
-                            variant="warning"
-                            size="sm"
-                            onClick={() => openEditModal(category)}
-                            className="d-flex align-items-center gap-1"
-                          >
-                            ✏️ Edit
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => handleDelete(category.id)}
-                            className="d-flex align-items-center gap-1"
-                          >
-                            🗑️ Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="text-center text-muted py-4">
-                      {searchTerm ? `No categories found for "${searchTerm}"` : 'No categories found'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
+      
+      <div className="category-wrapper">
+        <div className="category-controls">
+          <div className="controls-header">
+            <div className="header-content">
+              <h1 className="page-title">Categories</h1>
+              <p className="page-subtitle">Manage all product categories</p>
+            </div>
+            <button onClick={openCreateModal} className="add-category-btn">
+              <span className="btn-icon">➕</span>
+              Add Category
+            </button>
           </div>
 
-          {totalPages > 1 && (
-            <nav aria-label="Page navigation" className="mt-4">
-              <ul className="pagination justify-content-center">
-                <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                  <button className="page-link" onClick={() => setCurrentPage(currentPage - 1)}>
-                    Previous
-                  </button>
-                </li>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <li key={page} className={`page-item ${currentPage === page ? 'active' : ''}`}>
-                    <button
-                      className="page-link"
-                      onClick={() => setCurrentPage(page)}
-                    >
-                      {page}
-                    </button>
-                  </li>
-                ))}
-                <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
-                  <button className="page-link" onClick={() => setCurrentPage(currentPage + 1)}>
-                    Next
-                  </button>
-                </li>
-              </ul>
-            </nav>
-          )}
-        </>
-      )}
+          {/* Search Bar */}
+          <div className="search-container">
+            <div className="search-input-wrapper">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Search by category name or ID..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="search-input"
+              />
+            </div>
+            {searchTerm && (
+              <div className="search-results-info">
+                Found {filteredCategories.length} result{filteredCategories.length !== 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Alert Messages */}
+        {error && (
+          <div className="alert-message alert-danger">
+            <span className="alert-icon">⚠️</span>
+            <span className="alert-text">{error}</span>
+            <button className="alert-close" onClick={() => setError(null)}>×</button>
+          </div>
+        )}
+
+        {success && (
+          <div className="alert-message alert-success">
+            <span className="alert-icon">✓</span>
+            <span className="alert-text">{success}</span>
+            <button className="alert-close" onClick={() => setSuccess(null)}>×</button>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && currentCategories.length === 0 ? (
+          <div className="loading-container">
+            <div className="spinner">
+              <div className="spinner-ring"></div>
+            </div>
+            <p className="loading-text">Loading categories...</p>
+          </div>
+        ) : (
+          <>
+            {/* Categories Grid/Table */}
+            <div className="categories-container">
+              {currentCategories.length > 0 ? (
+                <>
+                  <div className="categories-count">
+                    Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to <strong>{Math.min(currentPage * itemsPerPage, filteredCategories.length)}</strong> of <strong>{filteredCategories.length}</strong> categories
+                  </div>
+                  <div className="categories-grid">
+                    {currentCategories.map((category) => (
+                      <div key={category.id} className="category-card">
+                        <div className="card-header">
+                          <h3 className="category-name">{category.category}</h3>
+                          <span className={`status-badge ${category.isActive ? 'active' : 'inactive'}`}>
+                            {category.isActive ? '✓ Active' : '✗ Inactive'}
+                          </span>
+                        </div>
+                        <div className="card-body">
+                          <div className="category-info">
+                            <span className="info-label">ID:</span>
+                            <span className="info-value">#{category.id}</span>
+                          </div>
+                        </div>
+                        <div className="card-footer">
+                          <button
+                            onClick={() => handleToggleStatus(category.id, category.isActive)}
+                            className={`toggle-status-btn ${category.isActive ? 'active' : ''}`}
+                          >
+                            {category.isActive ? '🔒 Deactivate' : '🔓 Activate'}
+                          </button>
+                          <button
+                            onClick={() => openEditModal(category)}
+                            className="edit-btn"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(category.id)}
+                            className="delete-btn"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <div className="empty-icon">📦</div>
+                  <h3 className="empty-title">No Categories Found</h3>
+                  <p className="empty-message">
+                    {searchTerm ? `No categories match "${searchTerm}"` : 'Start by adding your first category'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="pagination-container">
+                <button
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="pagination-btn pagination-prev"
+                >
+                  ← Previous
+                </button>
+                <div className="pagination-info">
+                  Page <span className="current-page">{currentPage}</span> of <span className="total-pages">{totalPages}</span>
+                </div>
+                <button
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="pagination-btn pagination-next"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Modal for Create/Edit */}
-      <Modal show={showModal} onHide={closeModal} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>{isEditing ? 'Edit Category' : 'Add New Category'}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Category Name *</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Enter category name"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                isInvalid={formData.category === ''}
-              />
-              <Form.Control.Feedback type="invalid">
-                Category name is required
-              </Form.Control.Feedback>
-            </Form.Group>
-            <div className="d-grid gap-2">
-              <Button variant="primary" type="submit" disabled={loading}>
-                {loading ? 'Saving...' : isEditing ? 'Update Category' : 'Create Category'}
-              </Button>
+      {showModal && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">
+                {isEditing ? '✏️ Edit Category' : '➕ Add New Category'}
+              </h2>
+              <button className="modal-close" onClick={closeModal}>×</button>
             </div>
-          </Form>
-        </Modal.Body>
-      </Modal>
-    </Container>
+            <form onSubmit={handleSubmit} className="modal-form">
+              <div className="form-group">
+                <label htmlFor="category-name" className="form-label">Category Name *</label>
+                <input
+                  id="category-name"
+                  type="text"
+                  placeholder="Enter category name"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="form-input"
+                  required
+                />
+                {formData.category === '' && (
+                  <span className="form-error">Category name is required</span>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="btn-cancel"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || formData.category === ''}
+                  className="btn-submit"
+                >
+                  {loading ? (
+                    <>
+                      <span className="spinner-mini"></span>
+                      Saving...
+                    </>
+                  ) : isEditing ? (
+                    'Update Category'
+                  ) : (
+                    'Create Category'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

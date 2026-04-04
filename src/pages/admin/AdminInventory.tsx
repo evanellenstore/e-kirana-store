@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { Container, Button, Card } from "react-bootstrap";
 import AdminHeader from "../../components/AdminHeader";
 import InventoryEntry from "./AdminInventoryEntry";
 import InventoryList from "./AdminInventoryList";
 import InventoryEdit from "./AdminInventoryEdit";
+import "./AdminInventory.css";
 
 type ViewMode = "LIST" | "ADD" | "EDIT";
 
@@ -11,49 +11,55 @@ const AdminInventory: React.FC = () => {
   const [view, setView] = useState<ViewMode>("LIST");
 
   return (
-    <Container className="mt-4" style={{ maxWidth: 900 }}>
+    <div className="admin-inventory-container">
       <AdminHeader 
         title="Inventory Management" 
         description="Manage stock levels and batch information"
       />
 
-      {/* HEADER */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4>📦 Admin Inventory</h4>
+      <div className="inventory-wrapper">
+        <div className="inventory-header">
+          <div className="header-content">
+            <h1 className="page-title">📦 Inventory Management</h1>
+            <p className="page-subtitle">Manage stock levels, batches, and expiry dates</p>
+          </div>
+        </div>
 
-        <div className="d-flex gap-2">
-          <Button
-            variant={view === "LIST" ? "primary" : "outline-primary"}
+        {/* Navigation Tabs */}
+        <div className="inventory-tabs">
+          <button
+            className={`tab-btn ${view === "LIST" ? "active" : ""}`}
             onClick={() => setView("LIST")}
           >
-           👁️ Inventory Details
-          </Button>
+            <span className="tab-icon">👁️</span>
+            <span className="tab-label">Inventory Details</span>
+          </button>
 
-          <Button
-            variant={view === "ADD" ? "success" : "outline-success"}
+          <button
+            className={`tab-btn ${view === "ADD" ? "active" : ""}`}
             onClick={() => setView("ADD")}
           >
-            ➕ Add Inventory
-          </Button>
+            <span className="tab-icon">➕</span>
+            <span className="tab-label">Add Inventory</span>
+          </button>
 
-          <Button
-            variant={view === "EDIT" ? "success" : "outline-success"}
+          <button
+            className={`tab-btn ${view === "EDIT" ? "active" : ""}`}
             onClick={() => setView("EDIT")}
           >
-            ✏️ Edit Inventory
-          </Button>
+            <span className="tab-icon">✏️</span>
+            <span className="tab-label">Edit Inventory</span>
+          </button>
         </div>
-      </div>
 
-      {/* CONTENT */}
-      <Card className="shadow" style={{ minHeight: 620 }}>
-        <Card.Body>
+        {/* Content Area */}
+        <div className="inventory-content">
           {view === "LIST" && <InventoryList />}
           {view === "ADD" && <InventoryEntry />}
           {view === "EDIT" && <InventoryEdit />}
-        </Card.Body>
-      </Card>
-    </Container>
+        </div>
+      </div>
+    </div>
   );
 };
 
