@@ -3,9 +3,10 @@ import AdminHeader from "../../components/AdminHeader";
 import InventoryEntry from "./AdminInventoryEntry";
 import InventoryList from "./AdminInventoryList";
 import InventoryEdit from "./AdminInventoryEdit";
+import AdminInventoryRelease from "./AdminInventoryRelease";
 import "./AdminInventory.css";
 
-type ViewMode = "LIST" | "ADD" | "EDIT";
+type ViewMode = "LIST" | "ADD" | "EDIT" | "RELEASE";
 
 const AdminInventory: React.FC = () => {
   const [view, setView] = useState<ViewMode>("LIST");
@@ -50,6 +51,8 @@ const AdminInventory: React.FC = () => {
             <span className="tab-icon">✏️</span>
             <span className="tab-label">Edit Inventory</span>
           </button>
+
+         
         </div>
 
         {/* Content Area */}

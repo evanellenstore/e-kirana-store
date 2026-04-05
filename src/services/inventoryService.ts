@@ -6,9 +6,34 @@ export interface InventoryStatus {
   reservedQty: number;
 }
 
+export interface ReservedItem {
+  referenceId: string;
+  quantity: number;
+  reservedDate?: string;
+}
+
+export interface BatchInfo {
+  id?: number;
+  batchNo: string;
+  availableQty: number;
+  reservedQty: number;
+  expiryDate: string | Date;
+  manufacturingDate?: string | Date;
+  supplierName?: string;
+  productId?: number;
+}
+
 // GET inventory by product ID
 export const getInventory = (productId: number) =>
   api.get<InventoryStatus>(`/inventory/${productId}`);
+
+// GET reserved items for a product
+export const getReservedItems = (productId: number) =>
+  api.get<ReservedItem[]>(`/inventory/${productId}/reserved-items`);
+
+// GET available batches for a product
+export const getBatches = (productId: number) =>
+  api.get<BatchInfo[]>(`/inventory/batches?productId=${productId}`);
 
 // ADJUST inventory (IN / OUT)
 export const adjustInventory = (
@@ -23,13 +48,14 @@ export const adjustInventory = (
     remarks,
   });
 
-// RESERVE inventory
+// RESERVE inventory (with batchNo)
 export const reserveInventory = (
   productId: number,
   quantity: number,
-  referenceId: string
+  referenceId: string,
+  batchNo: string
 ) =>
-  api.put(`/inventory/${productId}/reserve`, {
+  api.put(`/inventory/${productId}/reserve?batchNo=${batchNo}`, {
     quantity,
     referenceId,
   });

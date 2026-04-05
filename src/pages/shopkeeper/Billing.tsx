@@ -26,6 +26,11 @@ import {
   deductFromWallet,
   type Customer
 } from "../../services/customerApi";
+import {
+  getReservedItems,
+  releaseInventory,
+  type ReservedItem
+} from "../../services/inventoryService";
 
 import {
   BrowserMultiFormatReader
@@ -59,6 +64,14 @@ const Billing = () => {
   const [batchAllocOptions, setBatchAllocOptions] = useState<any[]>([]);
   const [batchAllocations, setBatchAllocations] = useState<Array<{ batchNo: string; qty: number; expiryDate: string }>>([]);
   const [useWallet, setUseWallet] = useState<boolean>(false);
+
+  // Release/Refund state
+  const [showReleaseModal, setShowReleaseModal] = useState(false);
+  const [reservedItems, setReservedItems] = useState<ReservedItem[]>([]);
+  const [loadingReserved, setLoadingReserved] = useState(false);
+  const [selectedReservedItem, setSelectedReservedItem] = useState<ReservedItem | null>(null);
+  const [releaseQty, setReleaseQty] = useState<number>(1);
+  const [isReleasing, setIsReleasing] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
@@ -634,6 +647,76 @@ const Billing = () => {
     }
   };
 
+  // Load all reserved items from inventory
+  const loadReservedItemsList = async () => {
+    setLoadingReserved(true);
+    try {
+      // Get reserved items from all products
+      // Since we don't have a global reserved items endpoint, we'll need to get them per product
+      // For now, we'll fetch from a few common products or wait for backend to provide a global endpoint
+      console.log("Loading reserved items...");
+      
+      // Try to get reserved items (you may need to adjust product IDs or create a global endpoint)
+      const productIds = [1, 2, 3, 4, 5]; // Example product IDs
+      const allReserved: ReservedItem[] = [];
+      
+      for (const productId of productIds) {
+        try {
+          const res = await getReservedItems(productId);
+          if (res.data && Array.isArray(res.data)) {
+            allReserved.push(...res.data);
+          }
+        } catch (err) {
+          console.warn(`Failed to load reserved items for product ${productId}:`, err);
+        }
+      }
+      
+      setReservedItems(allReserved);
+      console.log("Reserved items loaded:", allReserved);
+    } catch (e: any) {
+      console.error('Failed to load reserved items', e);
+      alert('Failed to load reserved items: ' + (e?.message || String(e)));
+    } finally {
+      setLoadingReserved(false);
+    }
+  };
+
+  // Release a reserved item
+  const handleReleaseItem = async () => {
+    if (!selectedReservedItem) {
+      alert('Please select a reserved item');
+      return;
+    }
+
+    if (releaseQty <= 0 || releaseQty > selectedReservedItem.quantity) {
+      alert('Invalid quantity to release');
+      return;
+    }
+
+    setIsReleasing(true);
+    try {
+      console.log("Releasing item:", selectedReservedItem, "Qty:", releaseQty);
+      
+      // Assuming the release function takes productId, quantity, and referenceId
+      // You may need to adjust based on your actual API
+      await releaseInventory(
+        parseInt(selectedReservedItem.referenceId) || 1, // Using product ID or reference
+        releaseQty,
+        selectedReservedItem.referenceId
+      );
+      
+      alert('✅ Item released successfully!');
+      setSelectedReservedItem(null);
+      setReleaseQty(1);
+      await loadReservedItemsList(); // Refresh the list
+    } catch (e: any) {
+      console.error('Release failed', e);
+      alert('Failed to release item: ' + (e?.response?.data?.message || e?.message || String(e)));
+    } finally {
+      setIsReleasing(false);
+    }
+  };
+
   /* =====================
      Cart quantity helpers
   ===================== */
@@ -800,6 +883,17 @@ const Billing = () => {
                   className="flex-grow-1"
                 >
                   {cameraOn ? "❌ Stop Camera" : "📷 Scan Using Camera"}
+                </Button>
+
+                <Button
+                  variant="warning"
+                  onClick={() => {
+                    setShowReleaseModal(true);
+                    loadReservedItemsList();
+                  }}
+                  className="flex-grow-1"
+                >
+                  🔄 Refund
                 </Button>
 
                 <Button
@@ -1267,6 +1361,96 @@ const Billing = () => {
           </Button>
           <Button variant="primary" onClick={saveBatchAllocations}>
             Save Allocations
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Release/Refund Modal */}
+      <Modal show={showReleaseModal} onHide={() => setShowReleaseModal(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>🔄 Refund - Release Reserved Items</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {loadingReserved ? (
+            <div className="text-center p-4">
+              <p>Loading reserved items...</p>
+            </div>
+          ) : reservedItems.length === 0 ? (
+            <div className="alert alert-info">
+              No reserved items available for refund.
+            </div>
+          ) : (
+            <div>
+              <Form.Group className="mb-3">
+                <Form.Label>
+                  <strong>Select Reserved Item:</strong>
+                </Form.Label>
+                <Form.Select
+                  value={selectedReservedItem?.referenceId || ""}
+                  onChange={(e) => {
+                    const item = reservedItems.find(
+                      (item) => item.referenceId === e.target.value
+                    );
+                    setSelectedReservedItem(item || null);
+                    setReleaseQty(item ? item.quantity : 1);
+                  }}
+                >
+                  <option value="">-- Select an item --</option>
+                  {reservedItems.map((item, idx) => (
+                    <option key={idx} value={item.referenceId}>
+                      {item.referenceId} ({item.quantity} units) - Reserved:{" "}
+                      {new Date(item.reservedDate || "").toLocaleDateString()}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+
+              {selectedReservedItem && (
+                <div className="alert alert-light border">
+                  <h6>Selected Item Details:</h6>
+                  <ul className="mb-0">
+                    <li>
+                      <strong>Reference ID:</strong> {selectedReservedItem.referenceId}
+                    </li>
+                    <li>
+                      <strong>Total Reserved:</strong> {selectedReservedItem.quantity} units
+                    </li>
+                    <li>
+                      <strong>Reserved Date:</strong>{" "}
+                      {new Date(selectedReservedItem.reservedDate || "").toLocaleDateString()}
+                    </li>
+                  </ul>
+
+                  <Form.Group className="mt-3">
+                    <Form.Label>
+                      <strong>Quantity to Release:</strong>
+                    </Form.Label>
+                    <Form.Control
+                      type="number"
+                      min="1"
+                      max={selectedReservedItem.quantity}
+                      value={releaseQty}
+                      onChange={(e) => setReleaseQty(parseInt(e.target.value) || 1)}
+                    />
+                    <small className="text-muted">
+                      Max: {selectedReservedItem.quantity} units
+                    </small>
+                  </Form.Group>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowReleaseModal(false)}>
+            Close
+          </Button>
+          <Button
+            variant="warning"
+            onClick={handleReleaseItem}
+            disabled={!selectedReservedItem || isReleasing}
+          >
+            {isReleasing ? "Releasing..." : "🔄 Release Item"}
           </Button>
         </Modal.Footer>
       </Modal>
