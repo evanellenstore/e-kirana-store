@@ -10,6 +10,10 @@ export interface ReservedItem {
   referenceId: string;
   quantity: number;
   reservedDate?: string;
+  sku?: string;
+  productName?: string;
+  productId?: number;
+  batchNo?: string;
 }
 
 export interface BatchInfo {
@@ -30,6 +34,10 @@ export const getInventory = (productId: number) =>
 // GET reserved items for a product
 export const getReservedItems = (productId: number) =>
   api.get<ReservedItem[]>(`/inventory/${productId}/reserved-items`);
+
+// GET all reserved items (for all products)
+export const getAllReservedItems = () =>
+  api.get<ReservedItem[]>(`/inventory/reserved-items-all`);
 
 // GET available batches for a product
 export const getBatches = (productId: number) =>

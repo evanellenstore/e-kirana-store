@@ -47,6 +47,9 @@ export const getBrandsByCategory = (category: string) =>
 export const getNamesByBrand = (brandId: number) =>
   api.get<string[]>("/products/search/brand", { params: { brandId } });
 
+// GET products by category and brand → returns Product[]
+export const getProductsByBrand = (brand: string) =>
+  api.get<Product[]>("/products/search/brand-name", { params: { brand } });
 
 // GET product by sku → returns Product
 export const getProductBySku = (sku: string) =>
