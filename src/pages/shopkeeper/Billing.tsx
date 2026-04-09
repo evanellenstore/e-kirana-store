@@ -68,6 +68,21 @@ const Billing = () => {
   const [releaseQty, setReleaseQty] = useState<number>(1);
   const [isReleasing, setIsReleasing] = useState(false);
 
+  // Inventory Check Modal state
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [inventoryData, setInventoryData] = useState<any[]>([]);
+  const [loadingInventory, setLoadingInventory] = useState(false);
+  const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
+  const [showBarcodePreviewModal, setShowBarcodePreviewModal] = useState(false);
+  const [filterLoadingDelay, setFilterLoadingDelay] = useState(false);
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  
+  // Multi-level filter state
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedBrand, setSelectedBrand] = useState<string>("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+
   const barcodeRef = useRef<HTMLInputElement>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
   const scannerBufferRef = useRef<string>("");
@@ -363,6 +378,17 @@ const Billing = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Handle lazy loading effect when filters change
+  useEffect(() => {
+    if (selectedCategory || selectedBrand) {
+      setFilterLoadingDelay(true);
+      const timer = setTimeout(() => {
+        setFilterLoadingDelay(false);
+      }, 300); // 300ms delay for loading effect
+      return () => clearTimeout(timer);
+    }
+  }, [selectedCategory, selectedBrand]);
+
   
   /* =====================
      Pay & Finalize
@@ -608,6 +634,53 @@ const Billing = () => {
     }
   };
 
+  // Load inventory for modal display
+  const loadInventoryForModal = async () => {
+    setLoadingInventory(true);
+    try {
+      const res = await (await import("../../services/api")).default.get("/inventory");
+      const inventoryData = res.data || [];
+      
+      // Fetch product details including barcode for each product
+      const enrichedData = await Promise.all(
+        inventoryData.map(async (product: any) => {
+          try {
+            const productRes = await (await import("../../services/api")).default.get(`/products/${product.productId}`);
+            return {
+              ...product,
+              barcode: productRes.data?.barcode || undefined,
+              category: productRes.data?.category || undefined,
+              brandName: productRes.data?.brandName || undefined
+            };
+          } catch (error) {
+            console.error(`Failed to fetch product ${product.productId}`, error);
+            return product;
+          }
+        })
+      );
+      
+      setInventoryData(enrichedData);
+      
+      // Extract unique categories and brands
+      const uniqueCategories = [...new Set(enrichedData.map((p: any) => p.category).filter(Boolean))].sort();
+      const uniqueBrands = [...new Set(enrichedData.map((p: any) => p.brandName).filter(Boolean))].sort();
+      
+      setCategories(uniqueCategories);
+      setBrands(uniqueBrands);
+      setSelectedCategory("");
+      setSelectedBrand("");
+      
+      console.log("✅ Inventory loaded with barcodes, categories, and brands:", enrichedData);
+      setInventoryLoaded(true);
+    } catch (e: any) {
+      console.error('Failed to load inventory', e);
+      alert('Failed to load inventory: ' + (e?.response?.data?.message || e?.message || String(e)));
+      setInventoryData([]);
+    } finally {
+      setLoadingInventory(false);
+    }
+  };
+
   // Release a reserved item
   const handleReleaseItem = async () => {
     if (!selectedReservedItem) {
@@ -804,6 +877,17 @@ const Billing = () => {
             </Col>
 
               <Col xs={12} md={4} className="d-flex gap-2">
+                <Button
+                  variant="info"
+                  onClick={() => {
+                    setShowInventoryModal(true);
+                    setInventoryLoaded(false);
+                  }}
+                  className="flex-grow-1"
+                >
+                  📦 Check Inventory
+                </Button>
+
                 <Button
                   variant="warning"
                   onClick={() => {
@@ -1369,6 +1453,275 @@ const Billing = () => {
             {isReleasing ? "Releasing..." : "🔄 Release Item"}
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      {/* Inventory Check Modal */}
+      <Modal show={showInventoryModal} onHide={() => setShowInventoryModal(false)} size="lg" scrollable>
+        <Modal.Header closeButton>
+          <Modal.Title>📦 Inventory Check</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {!inventoryLoaded ? (
+            <div className="text-center py-5">
+              <p style={{ marginBottom: '1.5rem', fontSize: '1rem', color: '#666' }}>
+                Click the button below to load inventory data
+              </p>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={loadInventoryForModal}
+                disabled={loadingInventory}
+              >
+                {loadingInventory ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Loading Inventory...
+                  </>
+                ) : (
+                  '📦 Load Inventory Data'
+                )}
+              </Button>
+            </div>
+          ) : (
+            <>
+          {/* Filter Dropdowns */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {/* Category Dropdown */}
+            <div style={{ flex: 1, minWidth: '140px' }}>
+              <Form.Select
+                value={selectedCategory}
+                onChange={(e) => {
+                  setSelectedCategory(e.target.value);
+                  setSelectedBrand("");
+                }}
+                size="sm"
+              >
+                <option value="">All Categories</option>
+                {categories.map((cat: string) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </Form.Select>
+            </div>
+
+            {/* Brand Dropdown */}
+            <div style={{ flex: 1, minWidth: '140px' }}>
+              <Form.Select
+                value={selectedBrand}
+                onChange={(e) => {
+                  setSelectedBrand(e.target.value);
+                }}
+                size="sm"
+              >
+                <option value="">All Brands</option>
+                {brands
+                  .filter((brand: string) =>
+                    !selectedCategory ||
+                    inventoryData.some((p: any) => p.brandName === brand && p.category === selectedCategory)
+                  )
+                  .map((brand: string) => (
+                    <option key={brand} value={brand}>{brand}</option>
+                  ))}
+              </Form.Select>
+            </div>
+
+            {(selectedCategory || selectedBrand) && (
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                onClick={() => {
+                  setSelectedCategory("");
+                  setSelectedBrand("");
+                }}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                Clear Filters
+              </Button>
+            )}
+          </div>
+
+          {loadingInventory ? (
+            <div className="text-center py-5">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p className="mt-3">Loading inventory...</p>
+            </div>
+          ) : !selectedCategory || !selectedBrand ? (
+            <div className="text-center text-muted py-5">
+              <p style={{ fontSize: '0.95rem' }}>
+                {!selectedCategory ? '👈 Please select a Category' : '👈 Please select a Brand'}
+              </p>
+            </div>
+          ) : filterLoadingDelay ? (
+            <div className="text-center py-5">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p className="mt-3">Loading filtered results...</p>
+            </div>
+          ) : (() => {
+            const filteredInventory = inventoryData.filter((product: any) =>
+              product.category === selectedCategory &&
+              product.brandName === selectedBrand
+            );
+            
+            return filteredInventory.length === 0 ? (
+              <div className="text-center text-muted py-5">
+                <p>{inventoryData.length === 0 ? 'No inventory items found' : 'No matching items for selected filters'}</p>
+              </div>
+            ) : (
+              <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                {filteredInventory
+                  .map((product: any) => (
+                <div key={product.productId} style={{ 
+                  borderBottom: '1px solid #e0e0e0', 
+                  padding: '0.75rem',
+                  marginBottom: '0.5rem',
+                  borderRadius: '6px',
+                  backgroundColor: '#f9f9f9'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <h6 style={{ margin: '0 0 0.15rem 0', fontWeight: 'bold', fontSize: '0.95rem' }}>{product.productName}</h6>
+                      <small style={{ color: '#666', fontSize: '0.8rem' }}>SKU: {product.productSku}</small>
+                    </div>
+                    <Badge bg="primary" style={{ whiteSpace: 'nowrap', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+                      {product.totalQty}
+                    </Badge>
+                  </div>
+
+                  {/* Barcode Section */}
+                  {product.barcode && (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '0.4rem',
+                      backgroundColor: '#fff',
+                      borderRadius: '4px',
+                      marginBottom: '0.5rem',
+                      border: '1px solid #ddd'
+                    }}>
+                      <img
+                        src={`data:image/png;base64,${product.barcode}`}
+                        alt="barcode"
+                        style={{
+                          maxWidth: '100px',
+                          height: 'auto',
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s ease'
+                        }}
+                        onClick={() => { setBarcodePreview(product.barcode); setShowBarcodePreviewModal(true); }}
+                        title="Click to preview barcode"
+                        onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                      />
+                      <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '0.15rem' }}>
+                        Click to view
+                      </div>
+                    </div>
+                  )}
+                  
+                  {product.batches && product.batches.length > 0 ? (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <small style={{ fontWeight: '600', color: '#333', display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem' }}>Batches:</small>
+                      {product.batches.map((batch: any, idx: number) => {
+                        const today = new Date();
+                        const expiry = new Date(batch.expiry);
+                        const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                        let expiryStatus = 'Valid';
+                        let badgeColor = 'success';
+                        
+                        if (daysLeft < 0) {
+                          expiryStatus = 'Expired';
+                          badgeColor = 'danger';
+                        } else if (daysLeft <= 30) {
+                          expiryStatus = `Near Expiry (${daysLeft}d)`;
+                          badgeColor = 'warning';
+                        }
+                        
+                        const isLowStock = batch.qty <= 20;
+                        
+                        return (
+                          <div key={idx} style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '0.35rem 0.4rem',
+                            backgroundColor: '#fff',
+                            marginBottom: '0.3rem',
+                            borderRadius: '4px',
+                            border: '1px solid #ddd'
+                          }}>
+                            <div style={{ flex: 1 }}>
+                              <small style={{ fontWeight: '500', fontSize: '0.75rem' }}>Batch: {batch.batchNo}</small>
+                              <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.1rem' }}>
+                                Exp: {new Date(batch.expiry).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                              <Badge bg={isLowStock ? 'danger' : 'success'} style={{ padding: '0.25rem 0.4rem', fontSize: '0.65rem' }}>
+                                {batch.qty}
+                              </Badge>
+                              <Badge bg={badgeColor} style={{ padding: '0.25rem 0.4rem', fontSize: '0.65rem' }}>
+                                {expiryStatus}
+                              </Badge>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <small style={{ color: '#999', fontStyle: 'italic' }}>No batches available</small>
+                  )}
+                </div>
+                ))}
+              </div>
+            );
+          })()}
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowInventoryModal(false)}>
+            Close
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={() => {
+              loadInventoryForModal();
+            }}
+          >
+            🔄 Refresh
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Barcode Preview Modal */}
+      <Modal show={showBarcodePreviewModal} onHide={() => setShowBarcodePreviewModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Barcode Preview</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center">
+          {barcodePreview ? (
+            <>
+              <img 
+                src={`data:image/png;base64,${barcodePreview}`} 
+                alt="barcode" 
+                style={{ maxWidth: '100%', height: 'auto' }} 
+              />
+              <div style={{ marginTop: '1rem' }}>
+                <a 
+                  href={`data:image/png;base64,${barcodePreview}`} 
+                  download="barcode.png" 
+                  className="btn btn-outline-primary btn-sm"
+                >
+                  📥 Download
+                </a>
+              </div>
+            </>
+          ) : (
+            <div className="text-muted">No preview available</div>
+          )}
+        </Modal.Body>
       </Modal>
     </div>
   );
