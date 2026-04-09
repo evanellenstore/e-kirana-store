@@ -140,13 +140,17 @@ const Billing = () => {
         }
         scannerLastTimeRef.current = now;
 
-        // reset buffer after short timeout if Enter never comes
+        // reset buffer after longer timeout if Enter never comes (2000ms for barcode scanners)
         if (scannerTimerRef.current) window.clearTimeout(scannerTimerRef.current);
         scannerTimerRef.current = window.setTimeout(() => {
+          const code = scannerBufferRef.current;
           scannerBufferRef.current = "";
           scannerLastTimeRef.current = null;
           scannerTimerRef.current = null;
-        }, 800);
+          if (code) {
+            handleBarcode(code);
+          }
+        }, 2000);
       }
     };
 
@@ -351,10 +355,9 @@ const Billing = () => {
           }
         }
       }
-      // open payment modal with 'p'
-      if (e.key === 'p' || e.key === 'P') {
-        setShowPaymentModal(true);
-      }
+      // REMOVED: 'P' key no longer opens payment modal
+      // This was causing issues with barcodes containing 'P' character
+      // Users should click the PAY button instead
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
