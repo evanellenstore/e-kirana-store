@@ -564,71 +564,50 @@ const Billing = () => {
   const loadReservedItemsList = async () => {
     setLoadingReserved(true);
     try {
-      console.log("Loading reserved items...");
+      console.log("Loading reserved items from all products...");
       
       // Try to get reserved items from backend API
       const productIds = [1, 2, 3, 4, 5];
       const allReserved: ReservedItem[] = [];
-      let hasError = false;
+      let successCount = 0;
+      let failureCount = 0;
       
       for (const productId of productIds) {
         try {
           const res = await getReservedItems(productId);
           if (res.data && Array.isArray(res.data)) {
-            allReserved.push(...res.data);
-            console.log(`✅ Loaded ${res.data.length} items from product ${productId}`);
+            // Ensure each item has a referenceId
+            const itemsWithRef = res.data.map((item: any) => ({
+              ...item,
+              referenceId: item.referenceId || item.id || item.billId || `REF_${productId}_${Math.random()}`
+            }));
+            allReserved.push(...itemsWithRef);
+            successCount++;
+            console.log(`✅ Loaded ${res.data.length} items from product ${productId}`, itemsWithRef);
           }
         } catch (err: any) {
-          // If 404, endpoint doesn't exist yet - that's OK, try demo data
+          failureCount++;
+          // If 404, endpoint doesn't exist yet - that's OK, skip
           if (err?.response?.status === 404) {
             console.warn(`⚠️ API endpoint not available for product ${productId} (404)`);
-            hasError = true;
           } else {
             console.warn(`Failed to load reserved items for product ${productId}:`, err);
-            hasError = true;
           }
         }
       }
       
-      // If API has no data but backend is working, show demo data
-      if (allReserved.length === 0 && hasError) {
-        console.log("ℹ️ Using demo data (backend endpoint not implemented yet)");
-        allReserved.push({
-          referenceId: "DEMO_BILL_001",
-          quantity: 5,
-          reservedDate: new Date().toISOString(),
-          sku: "SKU-001",
-          productName: "Demo Product 1",
-          productId: 1
-        });
-        allReserved.push({
-          referenceId: "DEMO_BILL_002",
-          quantity: 3,
-          reservedDate: new Date(Date.now() - 86400000).toISOString(),
-          sku: "SKU-002",
-          productName: "Demo Product 2",
-          productId: 2
-        });
-        console.log("📌 NOTE: Using demo data - backend API endpoint needs to be implemented");
+      // If no items found from any product
+      if (allReserved.length === 0) {
+        console.log("ℹ️ No reserved items found in database. Refund feature requires actual reservations.");
+        console.log(`📌 API Status: ${successCount} successful, ${failureCount} failed`);
+        console.log("� To test refund: First reserve items via billing process, then release them");
       }
       
       setReservedItems(allReserved);
       console.log("Reserved items loaded:", allReserved);
     } catch (e: any) {
       console.error('Failed to load reserved items', e);
-      // Show demo data even on error for testing
-      const demoData: ReservedItem[] = [
-        {
-          referenceId: "DEMO_BILL_001",
-          quantity: 5,
-          reservedDate: new Date().toISOString(),
-          sku: "SKU-001",
-          productName: "Demo Product 1",
-          productId: 1
-        }
-      ];
-      setReservedItems(demoData);
-      console.log("ℹ️ Showing demo data due to error");
+      setReservedItems([]);
     } finally {
       setLoadingReserved(false);
     }
@@ -693,25 +672,45 @@ const Billing = () => {
       return;
     }
 
+    // Validate referenceId exists
+    if (!selectedReservedItem.referenceId) {
+      alert('❌ Error: Reference ID is missing. Cannot release item.');
+      console.error('Selected item:', selectedReservedItem);
+      return;
+    }
+
     setIsReleasing(true);
     try {
-      console.log("Releasing item:", selectedReservedItem, "Qty:", releaseQty);
+      const productId = selectedReservedItem.productId || 1;
+      const referenceId = selectedReservedItem.referenceId.trim();
       
-      // Assuming the release function takes productId, quantity, and referenceId
-      // You may need to adjust based on your actual API
-      await releaseInventory(
-        parseInt(selectedReservedItem.referenceId) || 1, // Using product ID or reference
+      console.log("🔄 Releasing item:", {
+        productId,
+        referenceId,
+        quantity: releaseQty,
+        selectedItem: selectedReservedItem
+      });
+      
+      if (!referenceId) {
+        throw new Error("Reference ID is empty");
+      }
+      
+      const response = await releaseInventory(
+        productId,
         releaseQty,
-        selectedReservedItem.referenceId
+        referenceId
       );
       
-      alert('✅ Item released successfully!');
+      console.log("✅ Release response:", response);
+      alert('✅ Item released successfully! Quantity: ' + releaseQty);
       setSelectedReservedItem(null);
       setReleaseQty(1);
       await loadReservedItemsList(); // Refresh the list
     } catch (e: any) {
-      console.error('Release failed', e);
-      alert('Failed to release item: ' + (e?.response?.data?.message || e?.message || String(e)));
+      console.error('❌ Release failed:', e);
+      const errorMsg = e?.response?.data?.message || e?.message || String(e);
+      console.error('Error details:', errorMsg);
+      alert('Failed to release item: ' + errorMsg);
     } finally {
       setIsReleasing(false);
     }
@@ -1367,8 +1366,18 @@ const Billing = () => {
               <p>Loading reserved items...</p>
             </div>
           ) : reservedItems.length === 0 ? (
-            <div className="alert alert-info">
-              No reserved items available for refund.
+            <div className="alert alert-warning">
+              <h6>📋 No Reserved Items Found</h6>
+              <p className="mb-2">There are currently no reserved items available for refund.</p>
+              <hr className="my-2" />
+              <p className="small mb-0">
+                <strong>How to Create Reservations:</strong><br/>
+                1. Add items to cart<br/>
+                2. Click "Pay" button<br/>
+                3. Complete the payment<br/>
+                4. Items will be reserved in the system<br/>
+                5. Then you can refund them here
+              </p>
             </div>
           ) : (
             <div>
@@ -1377,18 +1386,20 @@ const Billing = () => {
                   <strong>Select Reserved Item:</strong>
                 </Form.Label>
                 <Form.Select
-                  value={selectedReservedItem?.referenceId || ""}
+                  value={selectedReservedItem ? reservedItems.indexOf(selectedReservedItem) : ""}
                   onChange={(e) => {
-                    const item = reservedItems.find(
-                      (item) => item.referenceId === e.target.value
-                    );
-                    setSelectedReservedItem(item || null);
-                    setReleaseQty(item ? item.quantity : 1);
+                    const idx = parseInt(e.target.value);
+                    if (idx >= 0 && idx < reservedItems.length) {
+                      const item = reservedItems[idx];
+                      setSelectedReservedItem(item);
+                      setReleaseQty(item ? item.quantity : 1);
+                      console.log("Selected item:", item);
+                    }
                   }}
                 >
                   <option value="">-- Select an item --</option>
                   {reservedItems.map((item, idx) => (
-                    <option key={idx} value={item.referenceId}>
+                    <option key={idx} value={idx}>
                       {item.sku} - {item.productName} ({item.quantity} units)
                     </option>
                   ))}
