@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Modal } from "react-bootstrap";
 import api from "../../services/api";
 import "./AdminInventoryList.css";
 
@@ -18,6 +19,7 @@ interface InventoryProduct {
   productName: string;
   totalQty: number;
   batches: Batch[];
+  barcode?: string;
 }
 
 /* =======================
@@ -36,6 +38,8 @@ const InventoryList: React.FC = () => {
   const [filteredData, setFilteredData] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
   /* =======================
      Load Inventory
@@ -45,8 +49,26 @@ const InventoryList: React.FC = () => {
     const loadInventory = async () => {
       try {
         const res = await api.get("/inventory");
-        setData(res.data);
-        setFilteredData(res.data);
+        const inventoryData = res.data as InventoryProduct[];
+        
+        // Fetch product details including barcode for each product
+        const enrichedData = await Promise.all(
+          inventoryData.map(async (product) => {
+            try {
+              const productRes = await api.get(`/products/${product.productId}`);
+              return {
+                ...product,
+                barcode: productRes.data?.barcode || undefined
+              };
+            } catch (error) {
+              console.error(`Failed to fetch product ${product.productId}`, error);
+              return product;
+            }
+          })
+        );
+        
+        setData(enrichedData);
+        setFilteredData(enrichedData);
       } finally {
         setLoading(false);
       }
@@ -127,7 +149,20 @@ const InventoryList: React.FC = () => {
               <div className="product-header">
                 <div className="product-info">
                   <h3 className="product-name">{product.productName}</h3>
-                  <div className="product-sku">SKU: <strong>{product.productSku}</strong></div>
+                  <div className="product-sku-section">
+                    <div className="product-sku">SKU: <strong>{product.productSku}</strong></div>
+                    {product.barcode && (
+                      <div className="product-sku-barcode">
+                        <img
+                          src={`data:image/png;base64,${product.barcode}`}
+                          alt="barcode"
+                          className="product-sku-barcode-img"
+                          onClick={() => { setBarcodePreview(product.barcode || null); setShowBarcodeModal(true); }}
+                          title="Click to preview barcode"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="product-qty-badge">
                   Total Qty: <strong>{product.totalQty}</strong>
@@ -210,6 +245,25 @@ const InventoryList: React.FC = () => {
           </p>
         </div>
       )}
+
+      {/* Barcode Preview Modal */}
+      <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Barcode Preview</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center">
+          {barcodePreview ? (
+            <>
+              <img src={`data:image/png;base64,${barcodePreview}`} alt="barcode" style={{maxWidth: '100%'}} />
+              <div className="mt-3">
+                <a href={`data:image/png;base64,${barcodePreview}`} download="barcode.png" className="btn btn-outline-primary btn-sm">📥 Download</a>
+              </div>
+            </>
+          ) : (
+            <div className="text-muted">No preview available</div>
+          )}
+        </Modal.Body>
+      </Modal>
     </div>
   );
 };

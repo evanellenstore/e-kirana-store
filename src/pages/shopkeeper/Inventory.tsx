@@ -3,7 +3,8 @@ import {
   Badge,
   Form,
   InputGroup,
-  Container
+  Container,
+  Modal
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import api from "../../services/api";
@@ -25,6 +26,7 @@ interface InventoryProduct {
   productName: string;
   totalQty: number;
   batches: Batch[];
+  barcode?: string;
 }
 
 /* =======================
@@ -43,6 +45,8 @@ const Inventory: React.FC = () => {
   const [filteredData, setFilteredData] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
   /* =======================
      Load Inventory
@@ -52,8 +56,26 @@ const Inventory: React.FC = () => {
     const loadInventory = async () => {
       try {
         const res = await api.get("/inventory");
-        setData(res.data);
-        setFilteredData(res.data);
+        const inventoryData = res.data as InventoryProduct[];
+        
+        // Fetch product details including barcode for each product
+        const enrichedData = await Promise.all(
+          inventoryData.map(async (product) => {
+            try {
+              const productRes = await api.get(`/products/${product.productId}`);
+              return {
+                ...product,
+                barcode: productRes.data?.barcode || undefined
+              };
+            } catch (error) {
+              console.error(`Failed to fetch product ${product.productId}`, error);
+              return product;
+            }
+          })
+        );
+        
+        setData(enrichedData);
+        setFilteredData(enrichedData);
       } finally {
         setLoading(false);
       }
@@ -143,7 +165,20 @@ const Inventory: React.FC = () => {
               <div className="inventory-product-header">
                 <div className="inventory-product-info">
                   <h4 className="inventory-product-name">{product.productName}</h4>
-                  <div className="inventory-product-sku">SKU: {product.productSku}</div>
+                  <div className="inventory-product-sku-section">
+                    <div className="inventory-product-sku">SKU: {product.productSku}</div>
+                    {product.barcode && (
+                      <div className="inventory-product-barcode">
+                        <img
+                          src={`data:image/png;base64,${product.barcode}`}
+                          alt="barcode"
+                          className="inventory-product-barcode-img"
+                          onClick={() => { setBarcodePreview(product.barcode || null); setShowBarcodeModal(true); }}
+                          title="Click to preview barcode"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <Badge className="inventory-total-qty-badge">
                   Total Qty: {product.totalQty}
@@ -200,6 +235,25 @@ const Inventory: React.FC = () => {
             <p className="inventory-empty-text">No inventory items found</p>
           </div>
         )}
+
+        {/* Barcode Preview Modal */}
+        <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Barcode Preview</Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="text-center">
+            {barcodePreview ? (
+              <>
+                <img src={`data:image/png;base64,${barcodePreview}`} alt="barcode" style={{maxWidth: '100%'}} />
+                <div className="mt-3">
+                  <a href={`data:image/png;base64,${barcodePreview}`} download="barcode.png" className="btn btn-outline-primary btn-sm">📥 Download</a>
+                </div>
+              </>
+            ) : (
+              <div className="text-muted">No preview available</div>
+            )}
+          </Modal.Body>
+        </Modal>
       </Container>
     </div>
   );

@@ -213,10 +213,38 @@
   letter-spacing: -0.3px;
 }
 
+.inventory-product-sku-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .inventory-product-sku {
   font-size: 0.9rem;
   color: #999;
   font-weight: 500;
+}
+
+.inventory-product-barcode {
+  display: flex;
+  align-items: center;
+}
+
+.inventory-product-barcode-img {
+  max-width: 80px;
+  height: auto;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 4px;
+  padding: 2px;
+  background: white;
+  box-shadow: 0 2px 4px rgba(79, 184, 204, 0.2);
+}
+
+.inventory-product-barcode-img:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(79, 184, 204, 0.3);
 }
 
 .inventory-total-qty-badge {
@@ -495,6 +523,10 @@
     font-size: 0.8rem;
   }
 
+  .inventory-product-barcode-img {
+    max-width: 60px;
+  }
+
   .inventory-empty-icon {
     font-size: 3.5rem;
     margin-bottom: 0.5rem;
@@ -509,3 +541,4 @@
     font-size: 0.7rem;
   }
 }
+
