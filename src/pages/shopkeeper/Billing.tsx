@@ -660,22 +660,27 @@ const Billing = () => {
     }
   };
 
-  // Release a reserved item
+  // Release a reserved item - Enhanced with better error handling
   const handleReleaseItem = async () => {
     if (!selectedReservedItem) {
-      alert('Please select a reserved item');
+      alert('⚠️ Please select a reserved item to release');
       return;
     }
 
-    if (releaseQty <= 0 || releaseQty > selectedReservedItem.quantity) {
-      alert('Invalid quantity to release');
+    if (releaseQty <= 0) {
+      alert('⚠️ Please enter a valid quantity to release');
+      return;
+    }
+
+    if (releaseQty > selectedReservedItem.quantity) {
+      alert(`⚠️ Cannot release more than reserved quantity (${selectedReservedItem.quantity} units)`);
       return;
     }
 
     // Validate referenceId exists
-    if (!selectedReservedItem.referenceId) {
-      alert('❌ Error: Reference ID is missing. Cannot release item.');
+    if (!selectedReservedItem.referenceId || !selectedReservedItem.referenceId.trim()) {
       console.error('Selected item:', selectedReservedItem);
+      alert('❌ Error: Reference ID is missing. Cannot release item.');
       return;
     }
 
@@ -691,26 +696,35 @@ const Billing = () => {
         selectedItem: selectedReservedItem
       });
       
-      if (!referenceId) {
-        throw new Error("Reference ID is empty");
-      }
-      
       const response = await releaseInventory(
         productId,
         releaseQty,
         referenceId
       );
       
-      console.log("✅ Release response:", response);
-      alert('✅ Item released successfully! Quantity: ' + releaseQty);
+      console.log("✅ Release successful:", response);
+      
+      // Show success message with details
+      const successMsg = `✅ Refund Successful!\n\n📦 Product: ${selectedReservedItem.productName || selectedReservedItem.sku}\n📊 Quantity Released: ${releaseQty} units\n📝 Reference: ${referenceId}\n\n✓ Stock is now available for new orders`;
+      alert(successMsg);
+      
+      // Reset form
       setSelectedReservedItem(null);
       setReleaseQty(1);
-      await loadReservedItemsList(); // Refresh the list
+      
+      // Refresh the reserved items list
+      await loadReservedItemsList();
+      
+      // Close modal after brief delay for better UX
+      setTimeout(() => {
+        setShowReleaseModal(false);
+      }, 500);
+      
     } catch (e: any) {
       console.error('❌ Release failed:', e);
       const errorMsg = e?.response?.data?.message || e?.message || String(e);
       console.error('Error details:', errorMsg);
-      alert('Failed to release item: ' + errorMsg);
+      alert(`❌ Failed to release item:\n\n${errorMsg}`);
     } finally {
       setIsReleasing(false);
     }
@@ -1355,113 +1369,197 @@ const Billing = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Release/Refund Modal */}
-      <Modal show={showReleaseModal} onHide={() => setShowReleaseModal(false)} size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>🔄 Refund - Release Reserved Items</Modal.Title>
+      {/* Release/Refund Modal - Enhanced with AdminInventoryRelease Style */}
+      <Modal show={showReleaseModal} onHide={() => setShowReleaseModal(false)} size="lg" scrollable>
+        <Modal.Header closeButton className="bg-warning bg-opacity-10">
+          <Modal.Title className="fw-bold">🔄 Refund - Release Reserved Items</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {loadingReserved ? (
-            <div className="text-center p-4">
-              <p>Loading reserved items...</p>
+            <div className="text-center p-5">
+              <div className="spinner-border text-warning mb-3" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p className="text-muted">Loading reserved items...</p>
             </div>
           ) : reservedItems.length === 0 ? (
-            <div className="alert alert-warning">
-              <h6>📋 No Reserved Items Found</h6>
+            <div className="alert alert-warning border-warning">
+              <h6 className="mb-3">📋 No Reserved Items Found</h6>
               <p className="mb-2">There are currently no reserved items available for refund.</p>
-              <hr className="my-2" />
+              <hr className="my-3" />
               <p className="small mb-0">
                 <strong>How to Create Reservations:</strong><br/>
-                1. Add items to cart<br/>
-                2. Click "Pay" button<br/>
-                3. Complete the payment<br/>
-                4. Items will be reserved in the system<br/>
-                5. Then you can refund them here
+                ✓ Add items to cart<br/>
+                ✓ Click "Pay" button<br/>
+                ✓ Complete the payment<br/>
+                ✓ Items will be reserved in the system<br/>
+                ✓ Then you can refund them here
               </p>
             </div>
           ) : (
             <div>
-              <Form.Group className="mb-3">
-                <Form.Label>
-                  <strong>Select Reserved Item:</strong>
-                </Form.Label>
-                <Form.Select
-                  value={selectedReservedItem ? reservedItems.indexOf(selectedReservedItem) : ""}
-                  onChange={(e) => {
-                    const idx = parseInt(e.target.value);
-                    if (idx >= 0 && idx < reservedItems.length) {
-                      const item = reservedItems[idx];
-                      setSelectedReservedItem(item);
-                      setReleaseQty(item ? item.quantity : 1);
-                      console.log("Selected item:", item);
-                    }
-                  }}
-                >
-                  <option value="">-- Select an item --</option>
-                  {reservedItems.map((item, idx) => (
-                    <option key={idx} value={idx}>
-                      {item.sku} - {item.productName} ({item.quantity} units)
-                    </option>
+              {/* Reserved Items Grid - Similar to AdminInventoryRelease */}
+              <div className="mb-4">
+                <h6 className="fw-bold mb-3">📋 Reserved Items ({reservedItems.length})</h6>
+                <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                  {reservedItems.map((item, index) => (
+                    <div
+                      key={index}
+                      onClick={() => {
+                        setSelectedReservedItem(item);
+                        setReleaseQty(Math.min(1, item.quantity));
+                      }}
+                      style={{
+                        border: selectedReservedItem === item ? '2px solid #ffc107' : '1px solid #dee2e6',
+                        borderRadius: '8px',
+                        padding: '0.75rem',
+                        cursor: 'pointer',
+                        backgroundColor: selectedReservedItem === item ? '#fff8e1' : '#f8f9fa',
+                        transition: 'all 0.2s ease',
+                        boxShadow: selectedReservedItem === item ? '0 0 8px rgba(255, 193, 7, 0.3)' : 'none'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedReservedItem !== item) {
+                          e.currentTarget.style.backgroundColor = '#f0f0f0';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedReservedItem !== item) {
+                          e.currentTarget.style.backgroundColor = '#f8f9fa';
+                        }
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#333' }}>
+                          {item.sku || item.productName}
+                        </span>
+                        <Badge bg={selectedReservedItem === item ? 'warning' : 'secondary'} text={selectedReservedItem === item ? 'dark' : 'white'}>
+                          {item.quantity} units
+                        </Badge>
+                      </div>
+                      
+                      {item.productName && item.sku && (
+                        <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.4rem' }}>
+                          {item.productName}
+                        </div>
+                      )}
+                      
+                      <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '0.4rem' }}>
+                        <strong>Ref ID:</strong> {item.referenceId}
+                      </div>
+                      
+                      {item.reservedDate && (
+                        <div style={{ fontSize: '0.75rem', color: '#999' }}>
+                          Reserved: {new Date(item.reservedDate).toLocaleDateString()}
+                        </div>
+                      )}
+                      
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                        <Button
+                          variant={selectedReservedItem === item ? 'warning' : 'outline-warning'}
+                          size="sm"
+                          className="flex-grow-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedReservedItem(item);
+                            setReleaseQty(Math.min(1, item.quantity));
+                          }}
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                        >
+                          {selectedReservedItem === item ? '✓ Selected' : 'Select'}
+                        </Button>
+                      </div>
+                    </div>
                   ))}
-                </Form.Select>
-              </Form.Group>
-
-              {selectedReservedItem && (
-                <div className="alert alert-light border">
-                  <h6>Selected Item Details:</h6>
-                  <ul className="mb-0">
-                    {selectedReservedItem.sku && (
-                      <li>
-                        <strong>SKU:</strong> {selectedReservedItem.sku}
-                      </li>
-                    )}
-                    {selectedReservedItem.productName && (
-                      <li>
-                        <strong>Product:</strong> {selectedReservedItem.productName}
-                      </li>
-                    )}
-                    <li>
-                      <strong>Reference ID:</strong> {selectedReservedItem.referenceId}
-                    </li>
-                    <li>
-                      <strong>Total Reserved:</strong> {selectedReservedItem.quantity} units
-                    </li>
-                    <li>
-                      <strong>Reserved Date:</strong>{" "}
-                      {new Date(selectedReservedItem.reservedDate || "").toLocaleDateString()}
-                    </li>
-                  </ul>
-
-                  <Form.Group className="mt-3">
-                    <Form.Label>
-                      <strong>Quantity to Release:</strong>
-                    </Form.Label>
-                    <Form.Control
-                      type="number"
-                      min="1"
-                      max={selectedReservedItem.quantity}
-                      value={releaseQty}
-                      onChange={(e) => setReleaseQty(parseInt(e.target.value) || 1)}
-                    />
-                    <small className="text-muted">
-                      Max: {selectedReservedItem.quantity} units
-                    </small>
-                  </Form.Group>
                 </div>
-              )}
+              </div>
+
+              <hr className="my-4" />
+
+              {/* Release Form - Like AdminInventoryRelease */}
+              <div className="mb-3">
+                <h6 className="fw-bold mb-3">🔓 Release Form</h6>
+                
+                {reservedItems.length > 0 && (
+                  <div className="alert alert-info alert-sm mb-3" style={{ fontSize: '0.85rem' }}>
+                    <span style={{ marginRight: '0.5rem' }}>💡</span>
+                    Click on a reserved item above to select it, or use the dropdown below
+                  </div>
+                )}
+
+                {selectedReservedItem ? (
+                  <>
+                    {/* Selected Item Details */}
+                    <div className="alert alert-light border border-warning mb-3" style={{ backgroundColor: '#fff8e1' }}>
+                      <h6 className="fw-bold mb-2">📦 Selected Item Details</h6>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.9rem' }}>
+                        {selectedReservedItem.sku && (
+                          <>
+                            <div><strong>SKU:</strong></div>
+                            <div>{selectedReservedItem.sku}</div>
+                          </>
+                        )}
+                        {selectedReservedItem.productName && (
+                          <>
+                            <div><strong>Product:</strong></div>
+                            <div>{selectedReservedItem.productName}</div>
+                          </>
+                        )}
+                        <div><strong>Reference ID:</strong></div>
+                        <div className="text-monospace">{selectedReservedItem.referenceId}</div>
+                        <div><strong>Total Reserved:</strong></div>
+                        <div>{selectedReservedItem.quantity} units</div>
+                        {selectedReservedItem.reservedDate && (
+                          <>
+                            <div><strong>Reserved Date:</strong></div>
+                            <div>{new Date(selectedReservedItem.reservedDate).toLocaleDateString()}</div>
+                          </>
+                        )}
+                      </div>
+
+                      <Form.Group className="mt-3">
+                        <Form.Label className="fw-bold">Quantity to Release *</Form.Label>
+                        <Form.Control
+                          type="number"
+                          min="1"
+                          max={selectedReservedItem.quantity}
+                          value={releaseQty}
+                          onChange={(e) => setReleaseQty(Math.max(1, Math.min(parseInt(e.target.value) || 1, selectedReservedItem.quantity)))}
+                          className="form-control-lg"
+                        />
+                        <small className="text-muted">
+                          Available: {selectedReservedItem.quantity} units
+                        </small>
+                      </Form.Group>
+                    </div>
+                  </>
+                ) : (
+                  <div className="alert alert-secondary mb-3">
+                    <small>Please select a reserved item from the list above</small>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="border-top pt-3">
           <Button variant="secondary" onClick={() => setShowReleaseModal(false)}>
-            Close
+            Cancel
           </Button>
           <Button
             variant="warning"
             onClick={handleReleaseItem}
-            disabled={!selectedReservedItem || isReleasing}
+            disabled={!selectedReservedItem || isReleasing || releaseQty <= 0}
+            size="lg"
           >
-            {isReleasing ? "Releasing..." : "🔄 Release Item"}
+            {isReleasing ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Releasing…
+              </>
+            ) : (
+              <>� Release Item ({selectedReservedItem ? releaseQty : 0} units)</>
+            )}
           </Button>
         </Modal.Footer>
       </Modal>

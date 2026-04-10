@@ -5,6 +5,11 @@ import RequireAuth from '../auth/RequireAuth';
 
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import Reports from '../pages/admin/Reports';
+import DetailedReportPage from '../pages/admin/DetailedReport';
+import SalesReportPage from '../pages/admin/SalesReport';
+import InventoryReportPage from '../pages/admin/InventoryReport';
+import ProductReportPage from '../pages/admin/ProductReport';
+import BillingReportPage from '../pages/admin/BillingReport';
 import Users from '../pages/admin/Users';
 import FromPurchase from '../pages/admin/FromPurchase';
 import AdminProduct from '../pages/admin/AdminProduct';
@@ -49,6 +54,46 @@ const AppRoutes: React.FC = () => (
       element={
         <RequireAuth roles={['ADMIN']}>
           <Reports />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/detailed-reports"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <DetailedReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/sales-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <SalesReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/inventory-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <InventoryReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/product-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <ProductReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/billing-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <BillingReportPage />
         </RequireAuth>
       }
     />

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Container, Table, Spinner, Card, Row, Col } from "react-bootstrap";
+import { Container, Table, Spinner, Card, Row, Col, Button } from "react-bootstrap";
+import { useNavigate } from "react-router-dom";
 import AdminHeader from "../../components/AdminHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 
 const ReportPage: React.FC = () => {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getReport()
@@ -26,7 +28,83 @@ const ReportPage: React.FC = () => {
         description="View inventory and sales reports"
       />
 
-      <h2 className="mb-4 text-center">📊 Inventory & Sales Report</h2>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="mb-0">📊 Inventory & Sales Report</h2>
+        <Button 
+          variant="primary" 
+          onClick={() => navigate('/admin/detailed-reports')}
+        >
+          📈 View Detailed Report with Graphs
+        </Button>
+      </div>
+
+      {/* Report Navigation Cards */}
+      <Row className="mb-5">
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer" 
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/sales-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">📈</div>
+              <Card.Title>Sales Report</Card.Title>
+              <Card.Text className="text-muted small">
+                Track sales performance and trends
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">View Details</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/inventory-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">📦</div>
+              <Card.Title>Inventory Report</Card.Title>
+              <Card.Text className="text-muted small">
+                Monitor stock levels and status
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">View Details</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/product-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">🏷️</div>
+              <Card.Title>Product Report</Card.Title>
+              <Card.Text className="text-muted small">
+                Analyze product performance
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">View Details</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/billing-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">💳</div>
+              <Card.Title>Billing Report</Card.Title>
+              <Card.Text className="text-muted small">
+                Track revenue and tax metrics
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">View Details</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
 
       {/* Totals */}
       <Row className="mb-4">

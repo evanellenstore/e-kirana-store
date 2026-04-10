@@ -37,6 +37,12 @@ const AdminProducts: React.FC = () => {
 
   /* 🔍 Filters */
   const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterBrand, setFilterBrand] = useState("");
+
+  /* 📄 Pagination */
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 10;
 
   const emptyProduct: Product = {
     sku: "",
@@ -97,6 +103,7 @@ const AdminProducts: React.FC = () => {
   useEffect(() => {
     loadProducts();
     loadCategories();
+    loadBrandsByCategory(); // Load all brands for filtering
   }, []);
 
   // Load brands when category changes in form
@@ -131,7 +138,7 @@ const AdminProducts: React.FC = () => {
    */
   const handleBarcodeScan = async () => {
     if (!barcodeInput.trim()) {
-      setScanError("Please enter a barcode");
+      setScanError("❌ Please enter a barcode");
       return;
     }
 
@@ -142,7 +149,7 @@ const AdminProducts: React.FC = () => {
       const response = await getProductByBarcode(barcodeInput.trim());
       const product = response.data;
 
-      // Pre-fill the form with scanned product data
+      // Product found - show "already exists" message
       setFormData({
         ...product,
         sku: product.sku || "",
@@ -159,9 +166,9 @@ const AdminProducts: React.FC = () => {
       });
 
       setBarcodeInput("");
-      setScanError(null);
-      // Switch to manual mode to show product details
-      setInputMode("manual");
+      setScanError(`✅ Product already exists! Found: ${product.name} (SKU: ${product.sku})`);
+      // Keep in barcode mode to show the message
+      setInputMode("barcode");
     } catch (error: any) {
       // Product not found - set external barcode and switch to manual mode
       const scannedBarcode = barcodeInput.trim();
@@ -209,9 +216,23 @@ const AdminProducts: React.FC = () => {
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.sku.toLowerCase().includes(search.toLowerCase());
 
-      return matchSearch;
+      const matchCategory = !filterCategory || p.category === filterCategory;
+      const matchBrand = !filterBrand || p.brandId?.toString() === filterBrand;
+
+      return matchSearch && matchCategory && matchBrand;
     });
-  }, [products, search]);
+  }, [products, search, filterCategory, filterBrand]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterCategory, filterBrand]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const startIndex = (currentPage - 1) * productsPerPage;
+  const endIndex = startIndex + productsPerPage;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
 
   if (loading) {
     return (
@@ -230,16 +251,17 @@ const AdminProducts: React.FC = () => {
           description="Create, edit, and manage all products in your system"
         />
 
-        {/* Search & Add Product Section */}
+        {/* Search & Filters Section */}
         <div className="admin-product-toolbar">
           <div className="admin-product-search-card">
             <div className="admin-product-search-header">
-              <h3 className="admin-product-search-title">🔍 Search Products</h3>
+              <h3 className="admin-product-search-title">🔍 Search & Filter Products</h3>
               <div className="admin-product-count-badge">
                 {filteredProducts.length} Products
               </div>
             </div>
             <div className="admin-product-search-body">
+              {/* Search Input */}
               <div className="admin-product-search-input-group">
                 <Form.Control
                   placeholder="Search by SKU or Product Name"
@@ -249,6 +271,106 @@ const AdminProducts: React.FC = () => {
                 />
                 <span className="admin-product-search-icon">🔎</span>
               </div>
+
+              {/* Category & Brand Filters */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                marginTop: "12px"
+              }}>
+                {/* Category Filter */}
+                <Form.Group className="mb-0">
+                  <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                    📁 Category
+                  </Form.Label>
+                  <Form.Select
+                    value={filterCategory}
+                    onChange={e => {
+                      setFilterCategory(e.target.value);
+                      setFilterBrand(""); // Reset brand when category changes
+                    }}
+                    style={{ fontSize: "13px", padding: "8px 12px" }}
+                  >
+                    <option value="">All Categories</option>
+                    {categories
+                      .filter(cat => cat.isActive)
+                      .map(cat => (
+                        <option key={cat.id} value={cat.category}>
+                          {cat.category}
+                        </option>
+                      ))}
+                  </Form.Select>
+                </Form.Group>
+
+                {/* Brand Filter */}
+                <Form.Group className="mb-0">
+                  <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                    🏷️ Brand
+                  </Form.Label>
+                  <Form.Select
+                    value={filterBrand}
+                    onChange={e => setFilterBrand(e.target.value)}
+                    disabled={!filterCategory}
+                    style={{ fontSize: "13px", padding: "8px 12px" }}
+                  >
+                    <option value="">All Brands</option>
+                    {filterCategory && brands
+                      .map(brand => (
+                        <option key={brand.id} value={brand.id}>
+                          {brand.brand}
+                        </option>
+                      ))}
+                  </Form.Select>
+                </Form.Group>
+              </div>
+
+              {/* Active Filters Display */}
+              {(filterCategory || filterBrand) && (
+                <div style={{
+                  marginTop: "10px",
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap"
+                }}>
+                  {filterCategory && (
+                    <span style={{
+                      background: "#e7f3ff",
+                      border: "1px solid #91d5ff",
+                      padding: "4px 10px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      color: "#0050b3"
+                    }}>
+                      📁 {filterCategory}
+                      <span 
+                        onClick={() => setFilterCategory("")}
+                        style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
+                      >
+                        ✕
+                      </span>
+                    </span>
+                  )}
+                  {filterBrand && (
+                    <span style={{
+                      background: "#f6e7ff",
+                      border: "1px solid #b37feb",
+                      padding: "4px 10px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      color: "#531dab"
+                    }}>
+                      🏷️ {brands.find(b => b.id.toString() === filterBrand)?.brand || ""}
+                      <span 
+                        onClick={() => setFilterBrand("")}
+                        style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
+                      >
+                        ✕
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -263,7 +385,7 @@ const AdminProducts: React.FC = () => {
 
         {/* Products Grid */}
         <div className="admin-product-grid">
-          {filteredProducts.map(p => (
+          {paginatedProducts.map(p => (
             <div key={p.id} className="admin-product-card">
               <div className="admin-product-card-header">
                 <div className="admin-product-card-title-section">
@@ -353,6 +475,94 @@ const AdminProducts: React.FC = () => {
             <p className="admin-product-empty-text">No products found</p>
           </div>
         )}
+
+        {/* Pagination Controls */}
+        {filteredProducts.length > 0 && (
+          <div style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "12px",
+            marginTop: "32px",
+            padding: "20px",
+            background: "#f8f9fa",
+            borderRadius: "10px"
+          }}>
+            {/* Previous Button */}
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: "8px 16px",
+                background: currentPage === 1 ? "#e9ecef" : "#667eea",
+                color: currentPage === 1 ? "#999" : "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                fontWeight: "600",
+                fontSize: "13px"
+              }}
+            >
+              ← Previous
+            </button>
+
+            {/* Page Numbers */}
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  style={{
+                    padding: "8px 12px",
+                    background: currentPage === page ? "#667eea" : "#fff",
+                    color: currentPage === page ? "white" : "#333",
+                    border: currentPage === page ? "none" : "1px solid #ddd",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: currentPage === page ? "600" : "500",
+                    fontSize: "13px"
+                  }}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            {/* Next Button */}
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: "8px 16px",
+                background: currentPage === totalPages ? "#e9ecef" : "#667eea",
+                color: currentPage === totalPages ? "#999" : "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                fontWeight: "600",
+                fontSize: "13px"
+              }}
+            >
+              Next →
+            </button>
+
+            {/* Page Info */}
+            <div style={{
+              marginLeft: "16px",
+              fontSize: "13px",
+              fontWeight: "500",
+              color: "#666",
+              paddingLeft: "16px",
+              borderLeft: "2px solid #ddd"
+            }}>
+              Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+              <br />
+              <span style={{ fontSize: "12px", color: "#999" }}>
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add/Edit Product Modal */}
@@ -362,85 +572,227 @@ const AdminProducts: React.FC = () => {
         </Modal.Header>
 
         <Modal.Body className="admin-product-modal-body">
-          {/* Input Mode Toggle - Only for Adding New Products */}
+          {/* Input Mode Selection - Compact */}
           {!editing && (
-            <div className="mb-4 p-3 border rounded" style={{ backgroundColor: "#e7f3ff" }}>
-              <h6 className="mb-3">Choose Input Method</h6>
-              <div className="d-flex gap-3">
-                <Form.Check
-                  type="radio"
-                  label="✏️ Manual Entry (Enter all details)"
-                  name="inputMode"
-                  id="admin-manual-mode"
-                  checked={inputMode === "manual"}
-                  onChange={() => {
+            <div className="mb-2">
+              <div style={{
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                padding: "8px 12px",
+                borderRadius: "6px",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px",
+                color: "white"
+              }}>
+                {/* Manual Entry Option */}
+                <div
+                  onClick={() => {
                     setInputMode("manual");
                     setScanError(null);
                     setBarcodeInput("");
                   }}
-                />
-                <Form.Check
-                  type="radio"
-                  label="📱 Barcode Scan (Scan or enter barcode)"
-                  name="inputMode"
-                  id="admin-barcode-mode"
-                  checked={inputMode === "barcode"}
-                  onChange={() => {
+                  style={{
+                    padding: "6px 8px",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    background: inputMode === "manual" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.08)",
+                    border: inputMode === "manual" ? "1px solid white" : "1px solid transparent",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    textAlign: "center",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  ✏️ Manual
+                </div>
+
+                {/* Barcode Scan Option */}
+                <div
+                  onClick={() => {
                     setInputMode("barcode");
                     setScanError(null);
                   }}
-                />
+                  style={{
+                    padding: "6px 8px",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    background: inputMode === "barcode" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.08)",
+                    border: inputMode === "barcode" ? "1px solid white" : "1px solid transparent",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    textAlign: "center",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  📱 Scan
+                </div>
               </div>
             </div>
           )}
 
-          {/* Barcode Scanner Section */}
+          {/* Barcode Scanner Section - Enhanced UI */}
           {!editing && inputMode === "barcode" && (
-            <div className="mb-4 p-3 border rounded" style={{ backgroundColor: "#f8f9fa" }}>
-              <h6 className="mb-3">📱 Barcode Scanner</h6>
-              <Form.Group className="mb-2">
-                <Form.Label>Scan or Enter External Barcode</Form.Label>
-                <Form.Control
-                  placeholder="Scan barcode here..."
-                  value={barcodeInput}
-                  onChange={(e) => {
-                    setBarcodeInput(e.target.value);
-                    setScanError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleBarcodeScan();
-                    }
-                  }}
-                  disabled={barcodeScanning}
-                  autoFocus
-                />
-                <small className="form-text text-muted">
-                  Press Enter to scan or search by SKU/external barcode
-                </small>
-              </Form.Group>
+            <div className="mb-4" style={{
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              padding: "24px",
+              borderRadius: "12px",
+              boxShadow: "0 8px 24px rgba(102, 126, 234, 0.3)"
+            }}>
+              {/* Header */}
+              <div style={{
+                color: "white",
+                marginBottom: "16px"
+              }}>
+                <h5 style={{ margin: 0, fontWeight: 600, fontSize: "16px" }}>📱 Scan Product Barcode</h5>
+                <p style={{ margin: "4px 0 0 0", fontSize: "13px", opacity: 0.9 }}>
+                  Scan SKU or external barcode to quickly find existing products
+                </p>
+              </div>
 
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleBarcodeScan}
-                disabled={!barcodeInput || barcodeScanning}
-              >
-                {barcodeScanning ? "Scanning..." : "🔍 Search Barcode"}
-              </button>
+              {/* Input Section */}
+              <div style={{
+                background: "white",
+                padding: "16px",
+                borderRadius: "10px",
+                marginBottom: "12px"
+              }}>
+                <Form.Group className="mb-0">
+                  <Form.Control
+                    placeholder="Enter or scan barcode..."
+                    value={barcodeInput}
+                    onChange={(e) => {
+                      setBarcodeInput(e.target.value);
+                      setScanError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleBarcodeScan();
+                      }
+                    }}
+                    disabled={barcodeScanning}
+                    autoFocus
+                    style={{
+                      fontSize: "14px",
+                      padding: "12px 14px",
+                      border: "2px solid #e0e0e0",
+                      borderRadius: "8px",
+                      height: "44px",
+                      fontWeight: "500"
+                    }}
+                  />
+                </Form.Group>
 
+                {/* Action Button */}
+                <button
+                  className="btn w-100"
+                  onClick={handleBarcodeScan}
+                  disabled={!barcodeInput || barcodeScanning}
+                  style={{
+                    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 16px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    cursor: barcodeInput && !barcodeScanning ? "pointer" : "not-allowed",
+                    opacity: barcodeInput && !barcodeScanning ? 1 : 0.6,
+                    marginTop: "10px",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  {barcodeScanning ? (
+                    <>
+                      <Spinner animation="border" size="sm" style={{ width: "14px", height: "14px", marginRight: "8px" }} />
+                      Searching...
+                    </>
+                  ) : (
+                    "🔍 Search Product"
+                  )}
+                </button>
+              </div>
+
+              {/* Status Message */}
               {scanError && (
-                <div className={`alert mt-2 mb-0 ${scanError.includes("✅") ? "alert-success" : "alert-warning"}`}>
-                  <div>{scanError}</div>
-                  {scanError.includes("✅") && (
-                    <div className="mt-2">
+                <div style={{
+                  padding: "12px 14px",
+                  borderRadius: "8px",
+                  background: scanError.includes("already exists") ? "#cfe2ff" : scanError.includes("✅") ? "#d4edda" : scanError.includes("❌") ? "#f8d7da" : "#fff3cd",
+                  border: `2px solid ${scanError.includes("already exists") ? "#b6d4fe" : scanError.includes("✅") ? "#c3e6cb" : scanError.includes("❌") ? "#f5c6cb" : "#ffeeba"}`,
+                  color: scanError.includes("already exists") ? "#084298" : scanError.includes("✅") ? "#155724" : scanError.includes("❌") ? "#721c24" : "#856404",
+                  fontSize: "13px",
+                  fontWeight: "500"
+                }}>
+                  <div style={{ marginBottom: "8px" }}>{scanError}</div>
+                  {scanError.includes("already exists") && (
+                    <div style={{ display: "flex", gap: "8px" }}>
                       <button
-                        className="btn btn-success btn-sm"
-                        onClick={() => setInputMode("manual")}
+                        className="btn btn-sm flex-grow-1"
+                        onClick={() => {
+                          setBarcodeInput("");
+                          setScanError(null);
+                          setInputMode("barcode");
+                        }}
+                        style={{
+                          background: "#6c757d",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: "600"
+                        }}
                       >
-                        ➕ Create Product with this Barcode
+                        🔄 Scan Another
+                      </button>
+                      <button
+                        className="btn btn-sm flex-grow-1"
+                        onClick={() => setInputMode("manual")}
+                        style={{
+                          background: "#0d6efd",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: "600"
+                        }}
+                      >
+                        👁️ View Details
                       </button>
                     </div>
                   )}
+                  {scanError.includes("not found") && (
+                    <button
+                      className="btn btn-sm w-100"
+                      onClick={() => setInputMode("manual")}
+                      style={{
+                        background: "#667eea",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "8px 12px",
+                        fontSize: "12px",
+                        fontWeight: "600"
+                      }}
+                    >
+                      ➕ Create New Product
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Helper Text */}
+              {!scanError && (
+                <div style={{
+                  color: "rgba(255, 255, 255, 0.85)",
+                  fontSize: "12px",
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "center"
+                }}>
+                  <span>💡</span>
+                  <span>Accepts SKU or barcode format (press Enter or click Search)</span>
                 </div>
               )}
             </div>
@@ -522,17 +874,6 @@ const AdminProducts: React.FC = () => {
             />
           </Form.Group>
 
-          {/* SKU */}
-          <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">SKU</Form.Label>
-            <Form.Control
-              placeholder="Enter SKU"
-              value={formData.sku}
-              onChange={e => setFormData({ ...formData, sku: e.target.value })}
-              className="admin-product-form-input"
-            />
-          </Form.Group>
-
           {/* Unit */}
           <Form.Group className="mb-3">
             <Form.Label className="admin-product-form-label">Unit *</Form.Label>
@@ -548,9 +889,9 @@ const AdminProducts: React.FC = () => {
           <Form.Group className="mb-3">
             <Form.Label className="admin-product-form-label">Price (₹) *</Form.Label>
             <Form.Control
-              type="number"
+              type="text"
               placeholder="Enter price"
-              value={formData.price}
+              value={formData.price || ""}
               onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
               className="admin-product-form-input"
             />
@@ -560,25 +901,10 @@ const AdminProducts: React.FC = () => {
           <Form.Group className="mb-3">
             <Form.Label className="admin-product-form-label">Discount (₹)</Form.Label>
             <Form.Control
-              type="number"
+              type="text"
               placeholder="Enter discount amount"
-              min="0"
-              step="0.01"
-              value={formData.discountAmount || 0}
+              value={formData.discountAmount || ""}
               onChange={e => setFormData({ ...formData, discountAmount: parseFloat(e.target.value) || 0 })}
-              className="admin-product-form-input"
-            />
-          </Form.Group>
-
-          {/* Description */}
-          <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Description</Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={3}
-              placeholder="Enter product description"
-              value={formData.description}
-              onChange={e => setFormData({ ...formData, description: e.target.value })}
               className="admin-product-form-input"
             />
           </Form.Group>
@@ -596,21 +922,23 @@ const AdminProducts: React.FC = () => {
             </Form.Select>
           </Form.Group>
 
-          {/* External Barcode Field */}
-          <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">External Barcode</Form.Label>
-            <Form.Control
-              placeholder="External Barcode Number (optional)"
-              value={formData.externalBarcode || ""}
-              onChange={e =>
-                setFormData({ ...formData, externalBarcode: e.target.value })
-              }
-              className="admin-product-form-input"
-            />
-            <small className="form-text text-muted">
-              Unique barcode number for quick lookup (e.g., manufacturer barcode)
-            </small>
-          </Form.Group>
+          {/* External Barcode Field - Only show when creating new product */}
+          {!editing && (
+            <Form.Group className="mb-3">
+              <Form.Label className="admin-product-form-label">External Barcode</Form.Label>
+              <Form.Control
+                placeholder="External Barcode Number (optional)"
+                value={formData.externalBarcode || ""}
+                onChange={e =>
+                  setFormData({ ...formData, externalBarcode: e.target.value })
+                }
+                className="admin-product-form-input"
+              />
+              <small className="form-text text-muted">
+                Unique barcode number for quick lookup (e.g., manufacturer barcode)
+              </small>
+            </Form.Group>
+          )}
             </>
           ) : null}
         </Modal.Body>

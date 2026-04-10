@@ -5,22 +5,35 @@ import {
   Modal
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
+import api from "../../services/api";
 import {
   getAllProducts,
   getProductByBarcode,
-  type Product
+  getActiveBrands,
+  type Product,
+  type Brand
 } from "../../services/productService";
 import "./Products.css";
+
+interface Category {
+  id: number;
+  category: string;
+  isActive: boolean;
+}
 
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
 
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
 
   /* 🔍 Filters & Pagination */
   const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterBrand, setFilterBrand] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
 
@@ -55,8 +68,29 @@ const Products: React.FC = () => {
       .finally(() => setLoading(false));
   };
 
+  const loadCategories = async () => {
+    try {
+      const response = await api.get("/products/categories");
+      setCategories(response.data);
+    } catch (error) {
+      console.error("Failed to load categories", error);
+    }
+  };
+
+  const loadBrandsByCategory = async () => {
+    try {
+      const response = await getActiveBrands();
+      setBrands(response.data || []);
+    } catch (error) {
+      console.error("Failed to load brands:", error);
+      setBrands([]);
+    }
+  };
+
   useEffect(() => {
     loadProducts();
+    loadCategories();
+    loadBrandsByCategory(); // Load all brands for filtering
   }, []);
 
   const openModal = (product?: Product) => {
@@ -116,9 +150,17 @@ const Products: React.FC = () => {
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.sku.toLowerCase().includes(search.toLowerCase());
 
-      return matchSearch;
+      const matchCategory = !filterCategory || p.category === filterCategory;
+      const matchBrand = !filterBrand || p.brandId?.toString() === filterBrand;
+
+      return matchSearch && matchCategory && matchBrand;
     });
-  }, [products, search]);
+  }, [products, search, filterCategory, filterBrand]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterCategory, filterBrand]);
 
   /* 📄 Pagination logic */
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
@@ -127,11 +169,6 @@ const Products: React.FC = () => {
     const endIndex = startIndex + itemsPerPage;
     return filteredProducts.slice(startIndex, endIndex);
   }, [filteredProducts, currentPage, itemsPerPage]);
-
-  // Reset to page 1 when search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search]);
 
   if (loading) {
     return (
@@ -150,10 +187,10 @@ const Products: React.FC = () => {
           description="Browse and manage all products in your store"
         />
 
-        {/* Search Card */}
+        {/* Search & Filters Card */}
         <div className="products-search-card">
           <div className="products-search-header">
-            <h3 className="products-search-title">🔍 Search Products</h3>
+            <h3 className="products-search-title">🔍 Search & Filter Products</h3>
             <button 
               className="btn btn-success"
               onClick={() => openModal()}
@@ -166,6 +203,7 @@ const Products: React.FC = () => {
             </div>
           </div>
           <div className="products-search-body">
+            {/* Search Input */}
             <div className="products-search-input-group">
               <Form.Control
                 placeholder="Search by SKU or Product Name"
@@ -175,6 +213,106 @@ const Products: React.FC = () => {
               />
               <span className="products-search-icon">🔎</span>
             </div>
+
+            {/* Category & Brand Filters */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "12px",
+              marginTop: "12px"
+            }}>
+              {/* Category Filter */}
+              <Form.Group className="mb-0">
+                <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                  📁 Category
+                </Form.Label>
+                <Form.Select
+                  value={filterCategory}
+                  onChange={e => {
+                    setFilterCategory(e.target.value);
+                    setFilterBrand(""); // Reset brand when category changes
+                  }}
+                  style={{ fontSize: "13px", padding: "8px 12px" }}
+                >
+                  <option value="">All Categories</option>
+                  {categories
+                    .filter(cat => cat.isActive)
+                    .map(cat => (
+                      <option key={cat.id} value={cat.category}>
+                        {cat.category}
+                      </option>
+                    ))}
+                </Form.Select>
+              </Form.Group>
+
+              {/* Brand Filter */}
+              <Form.Group className="mb-0">
+                <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                  🏷️ Brand
+                </Form.Label>
+                <Form.Select
+                  value={filterBrand}
+                  onChange={e => setFilterBrand(e.target.value)}
+                  disabled={!filterCategory}
+                  style={{ fontSize: "13px", padding: "8px 12px" }}
+                >
+                  <option value="">All Brands</option>
+                  {filterCategory && brands
+                    .map(brand => (
+                      <option key={brand.id} value={brand.id}>
+                        {brand.brand}
+                      </option>
+                    ))}
+                </Form.Select>
+              </Form.Group>
+            </div>
+
+            {/* Active Filters Display */}
+            {(filterCategory || filterBrand) && (
+              <div style={{
+                marginTop: "10px",
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap"
+              }}>
+                {filterCategory && (
+                  <span style={{
+                    background: "#e7f3ff",
+                    border: "1px solid #91d5ff",
+                    padding: "4px 10px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    color: "#0050b3"
+                  }}>
+                    📁 {filterCategory}
+                    <span 
+                      onClick={() => setFilterCategory("")}
+                      style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
+                    >
+                      ✕
+                    </span>
+                  </span>
+                )}
+                {filterBrand && (
+                  <span style={{
+                    background: "#f6e7ff",
+                    border: "1px solid #b37feb",
+                    padding: "4px 10px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    color: "#531dab"
+                  }}>
+                    🏷️ {brands.find(b => b.id.toString() === filterBrand)?.brand || ""}
+                    <span 
+                      onClick={() => setFilterBrand("")}
+                      style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
+                    >
+                      ✕
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
