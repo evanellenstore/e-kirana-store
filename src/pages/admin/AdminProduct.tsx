@@ -13,6 +13,7 @@ import {
   updateProduct,
   deleteProduct,
   getActiveBrands,
+  getProductByBarcode,
   type Product,
   type Brand
 } from "../../services/productService";
@@ -46,12 +47,21 @@ const AdminProducts: React.FC = () => {
     unit: "",
     price: 0,
     discountAmount: 0,
-    status: "ACTIVE"
+    status: "ACTIVE",
+    externalBarcode: ""
   };
 
   const [formData, setFormData] = useState<Product>(emptyProduct);
   const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+
+  // Barcode scanner state
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeScanning, setBarcodeScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  
+  // Input mode: "manual" or "barcode"
+  const [inputMode, setInputMode] = useState<"manual" | "barcode">("manual");
 
   const loadProducts = () => {
     setLoading(true);
@@ -102,6 +112,9 @@ const AdminProducts: React.FC = () => {
     setEditing(product || null);
     const productToEdit = product ?? emptyProduct;
     setFormData(productToEdit);
+    setInputMode("manual"); // Reset to manual when opening modal
+    setBarcodeInput("");
+    setScanError(null);
     
     // Load brands for the selected category
     if (productToEdit.category) {
@@ -111,6 +124,62 @@ const AdminProducts: React.FC = () => {
     }
     
     setShow(true);
+  };
+
+  /**
+   * Handle barcode scanning - searches for product by SKU or external barcode
+   */
+  const handleBarcodeScan = async () => {
+    if (!barcodeInput.trim()) {
+      setScanError("Please enter a barcode");
+      return;
+    }
+
+    setBarcodeScanning(true);
+    setScanError(null);
+
+    try {
+      const response = await getProductByBarcode(barcodeInput.trim());
+      const product = response.data;
+
+      // Pre-fill the form with scanned product data
+      setFormData({
+        ...product,
+        sku: product.sku || "",
+        name: product.name || "",
+        description: product.description || "",
+        category: product.category || "",
+        brandId: product.brandId || undefined,
+        brandName: product.brandName || "",
+        unit: product.unit || "",
+        price: product.price || 0,
+        discountAmount: product.discountAmount || 0,
+        status: product.status || "ACTIVE",
+        externalBarcode: product.externalBarcode || ""
+      });
+
+      setBarcodeInput("");
+      setScanError(null);
+      // Switch to manual mode to show product details
+      setInputMode("manual");
+    } catch (error: any) {
+      // Product not found - set external barcode and switch to manual mode
+      const scannedBarcode = barcodeInput.trim();
+      
+      // Pre-fill with external barcode and empty form
+      setFormData({
+        ...emptyProduct,
+        externalBarcode: scannedBarcode
+      });
+
+      setScanError(`✅ Barcode "${scannedBarcode}" not found. Let's create a new product with this barcode!`);
+      
+      // Switch to manual mode so user can fill details
+      setInputMode("manual");
+      setBarcodeInput("");
+    } finally {
+      setBarcodeScanning(false);
+    }
   };
 
   const saveProduct = () => {
@@ -293,6 +362,93 @@ const AdminProducts: React.FC = () => {
         </Modal.Header>
 
         <Modal.Body className="admin-product-modal-body">
+          {/* Input Mode Toggle - Only for Adding New Products */}
+          {!editing && (
+            <div className="mb-4 p-3 border rounded" style={{ backgroundColor: "#e7f3ff" }}>
+              <h6 className="mb-3">Choose Input Method</h6>
+              <div className="d-flex gap-3">
+                <Form.Check
+                  type="radio"
+                  label="✏️ Manual Entry (Enter all details)"
+                  name="inputMode"
+                  id="admin-manual-mode"
+                  checked={inputMode === "manual"}
+                  onChange={() => {
+                    setInputMode("manual");
+                    setScanError(null);
+                    setBarcodeInput("");
+                  }}
+                />
+                <Form.Check
+                  type="radio"
+                  label="📱 Barcode Scan (Scan or enter barcode)"
+                  name="inputMode"
+                  id="admin-barcode-mode"
+                  checked={inputMode === "barcode"}
+                  onChange={() => {
+                    setInputMode("barcode");
+                    setScanError(null);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Barcode Scanner Section */}
+          {!editing && inputMode === "barcode" && (
+            <div className="mb-4 p-3 border rounded" style={{ backgroundColor: "#f8f9fa" }}>
+              <h6 className="mb-3">📱 Barcode Scanner</h6>
+              <Form.Group className="mb-2">
+                <Form.Label>Scan or Enter External Barcode</Form.Label>
+                <Form.Control
+                  placeholder="Scan barcode here..."
+                  value={barcodeInput}
+                  onChange={(e) => {
+                    setBarcodeInput(e.target.value);
+                    setScanError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleBarcodeScan();
+                    }
+                  }}
+                  disabled={barcodeScanning}
+                  autoFocus
+                />
+                <small className="form-text text-muted">
+                  Press Enter to scan or search by SKU/external barcode
+                </small>
+              </Form.Group>
+
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleBarcodeScan}
+                disabled={!barcodeInput || barcodeScanning}
+              >
+                {barcodeScanning ? "Scanning..." : "🔍 Search Barcode"}
+              </button>
+
+              {scanError && (
+                <div className={`alert mt-2 mb-0 ${scanError.includes("✅") ? "alert-success" : "alert-warning"}`}>
+                  <div>{scanError}</div>
+                  {scanError.includes("✅") && (
+                    <div className="mt-2">
+                      <button
+                        className="btn btn-success btn-sm"
+                        onClick={() => setInputMode("manual")}
+                      >
+                        ➕ Create Product with this Barcode
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Form Fields - Only show in manual mode or when editing */}
+          {editing || inputMode === "manual" ? (
+            <>
           {/* Category */}
           <Form.Group className="mb-3">
             <Form.Label className="admin-product-form-label">Category *</Form.Label>
@@ -439,6 +595,24 @@ const AdminProducts: React.FC = () => {
               <option value="INACTIVE">INACTIVE</option>
             </Form.Select>
           </Form.Group>
+
+          {/* External Barcode Field */}
+          <Form.Group className="mb-3">
+            <Form.Label className="admin-product-form-label">External Barcode</Form.Label>
+            <Form.Control
+              placeholder="External Barcode Number (optional)"
+              value={formData.externalBarcode || ""}
+              onChange={e =>
+                setFormData({ ...formData, externalBarcode: e.target.value })
+              }
+              className="admin-product-form-input"
+            />
+            <small className="form-text text-muted">
+              Unique barcode number for quick lookup (e.g., manufacturer barcode)
+            </small>
+          </Form.Group>
+            </>
+          ) : null}
         </Modal.Body>
 
         <Modal.Footer className="admin-product-modal-footer">

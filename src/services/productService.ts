@@ -12,6 +12,7 @@ export interface Product {
   price: number;
   discountAmount?: number;
   status: "ACTIVE" | "INACTIVE";
+  externalBarcode?: string;
   barcode?: string;
 }
 
@@ -54,6 +55,10 @@ export const getProductsByBrand = (brand: string) =>
 // GET product by sku → returns Product
 export const getProductBySku = (sku: string) =>
   api.get<Product>("/products/search/sku", { params: { sku } });
+
+// GET product by barcode (works for both SKU and external barcode) → returns Product
+export const getProductByBarcode = (barcode: string) =>
+  api.get<Product>("/products/search/barcode", { params: { barcode } });
 
 // CREATE product
 export const createProduct = (product: Product) =>
