@@ -38,3 +38,7 @@ export const getSummary = (billId: string) =>
 export const finalizeBill = (billId: string, payload?: any) =>
   // If backend supports payment metadata, send it in the body. Payload is optional.
   api.post(`/billings/${billId}/finalize`, payload);
+
+export const cancelBill = (billId: string) =>
+  // Cancel bill and release all reserved items
+  api.post(`/billings/${billId}/cancel`);

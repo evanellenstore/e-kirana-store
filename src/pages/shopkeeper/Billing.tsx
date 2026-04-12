@@ -17,6 +17,7 @@ import {
   getBatches,
   addItemsBatch,
   finalizeBill,
+  cancelBill,
   type CartItem
 } from "../../services/billingApi";
 import {
@@ -480,6 +481,38 @@ const Billing = () => {
       alert(`❌ Payment failed: ${msg}`);
     } finally {
       setIsPaying(false);
+    }
+  };
+
+  // Handle bill cancellation - release all reserved items
+  const handleCancelBill = async () => {
+    if (!billId) return;
+    
+    const confirmCancel = window.confirm(
+      '⚠️ Are you sure you want to CANCEL this bill?\n\nThis will release all reserved items back to inventory.\n\nYou can start a new bill afterwards.'
+    );
+    
+    if (!confirmCancel) return;
+
+    try {
+      await cancelBill(billId);
+      alert('✅ Bill cancelled successfully!\nAll reserved items have been released back to inventory.');
+      
+      // Reset UI
+      setShowPaymentModal(false);
+      setCart([]);
+      setDiscount(0);
+      setDiscountIsPercent(false);
+      setCashReceived(undefined);
+      setCustomerMobile('');
+      setReservedForBill(false);
+      setSubtotalBeforeDiscount(0);
+      setTotal(0);
+      setBillId(undefined);
+    } catch (error: any) {
+      console.error('Error cancelling bill:', error);
+      const msg = error?.response?.data?.message || error?.message || String(error);
+      alert(`❌ Failed to cancel bill: ${msg}`);
     }
   };
 
@@ -1129,7 +1162,19 @@ const Billing = () => {
 
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>Cancel</Button>
+          <Button 
+            variant="outline-danger" 
+            onClick={handleCancelBill}
+            title="Cancel this bill and release all reserved items"
+          >
+            ❌ Cancel Bill
+          </Button>
+          <Button 
+            variant="secondary" 
+            onClick={() => setShowPaymentModal(false)}
+          >
+            ← Back
+          </Button>
           <Button variant="primary" disabled={isPaying} onClick={async () => {
             // validate payment
             if (!billId) { alert('No active bill'); return; }
