@@ -5,40 +5,47 @@ interface AdminHeaderProps {
   title: string;
   description?: string;
   showHomeButton?: boolean;
+  showActions?: boolean;
 }
 
 const AdminHeader: React.FC<AdminHeaderProps> = ({
   title,
   description,
-  showHomeButton = true
+  showHomeButton = true,
+  showActions = true
 }) => {
   return (
     <div className="admin-header-wrapper">
-      <div className="admin-header">
-        {/* Decorative Background Elements */}
-        <div className="admin-bg-accent admin-bg-accent-1"></div>
-        <div className="admin-bg-accent admin-bg-accent-2"></div>
-        
-        {/* Header Top with Back Button */}
-        <div className="header-top">
+      <div className="admin-header sticky">
+
+        {/* LEFT */}
+        <div className="header-left">
           {showHomeButton && (
-            <Link to="/admin" className="back-button-link">
-              <button className="back-button">
-                <span className="back-icon">←</span>
-                <span className="back-text">Back Home</span>
-              </button>
+            <Link to="/admin" className="back-button">
+              ←
             </Link>
           )}
-        </div>
-        
-        {/* Main Header Content */}
-        <div className="header-content">
-          <div className="header-title-section">
+
+          <div className="header-title-group">
             <h1 className="admin-title">{title}</h1>
-            {description && <p className="admin-description">{description}</p>}
+            {description && (
+              <p className="admin-description">{description}</p>
+            )}
           </div>
-          <div className="header-accent-line"></div>
         </div>
+
+        {/* RIGHT */}
+        {showActions && (
+          <div className="header-right">
+            <button className="header-btn">Settings</button>
+
+            <div className="header-divider"></div>
+
+            <button className="header-btn primary">
+              + Add
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1005,24 +1005,23 @@ const Billing = () => {
         <div className="billing-main-card">
           <div className="billing-header-section">
             <div className="billing-title-area">
-              <div className="mb-4">
-                <div className="d-flex justify-content-start mb-3">
+              <div className="mb-2">
+                <div className="d-flex justify-content-start mb-2">
                   <Button 
                     variant="primary"
-                    size="lg"
                     onClick={async () => {
                       await handleGoBackToBilling();
                       setTimeout(() => handleStartBilling(), 300);
                     }}
-                    className="fw-bold px-4"
+                    className="fw-bold px-3"
                     style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                   >
                     ✚ Start Bill
                   </Button>
                 </div>
                 <div className="d-flex align-items-center justify-content-between gap-2">
-                  <h4 className="billing-title mb-0">Bill Details</h4>
-                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0 }}>Bill: {billId}</Badge>}
+                  <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>Bill Details</h5>
+                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>Bill: {billId}</Badge>}
                 </div>
               </div>
             </div>
