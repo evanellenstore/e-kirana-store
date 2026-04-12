@@ -8,7 +8,8 @@ import {
   Row,
   Col,
   Badge,
-  Modal
+  Modal,
+  Alert
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import {
@@ -51,10 +52,15 @@ const Billing = () => {
   const [gstRate] = useState<number>(0);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [suppressCancelOnClose, setSuppressCancelOnClose] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState<string>("");
+  const [notificationType, setNotificationType] = useState<"success" | "danger" | "warning" | "info">("info");
+  const [showNotification, setShowNotification] = useState(false);
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
   const [cashReceived, setCashReceived] = useState<number | undefined>(undefined);
   const [customerMobile, setCustomerMobile] = useState<string>("");
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [showBatchAllocModal, setShowBatchAllocModal] = useState(false);
   const [batchAllocItem, setBatchAllocItem] = useState<any>(null);
@@ -490,16 +496,24 @@ const Billing = () => {
   // Handle bill cancellation - release all reserved items
   const handleCancelBill = async () => {
     if (!billId) return;
-    
-    const confirmCancel = window.confirm(
-      '⚠️ Are you sure you want to CANCEL this bill?\n\nThis will release all reserved items back to inventory.\n\nYou can start a new bill afterwards.'
-    );
-    
-    if (!confirmCancel) return;
+    // Show confirmation modal instead of alert
+    setShowCancelConfirmModal(true);
+  };
 
+  // Confirm and execute bill cancellation
+  const confirmCancelBill = async () => {
+    if (!billId) return;
+    
+    setIsCancelling(true);
     try {
       await cancelBill(billId);
-      alert('✅ Bill cancelled successfully!\nAll reserved items have been released back to inventory.');
+      setShowCancelConfirmModal(false);
+      
+      // Show success notification
+      setNotificationMessage('✅ Bill cancelled successfully! All reserved items have been released back to inventory.');
+      setNotificationType("success");
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
       
       // Reset UI
       setShowPaymentModal(false);
@@ -515,7 +529,13 @@ const Billing = () => {
     } catch (error: any) {
       console.error('Error cancelling bill:', error);
       const msg = error?.response?.data?.message || error?.message || String(error);
-      alert(`❌ Failed to cancel bill: ${msg}`);
+      setNotificationMessage(`❌ Failed to cancel bill: ${msg}`);
+      setNotificationType("danger");
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
+      setShowCancelConfirmModal(false);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -529,17 +549,9 @@ const Billing = () => {
     }
 
     // If items were reserved for this bill but user closed the modal, auto-cancel to release reserved stock
-    if (reservedForBill && billId) {
-      try {
-        await cancelBill(billId);
-        // notify user
-        alert('⚠️ Payment cancelled: reserved items released back to inventory.');
-      } catch (err: any) {
-        console.error('Error auto-cancelling bill on modal close:', err);
-      }
-    }
-
-    // Reset UI similar to explicit cancel
+    const shouldCancel = reservedForBill && billId;
+    
+    // Reset UI first (close modal and clear cart)
     setShowPaymentModal(false);
     setCart([]);
     setDiscount(0);
@@ -549,6 +561,27 @@ const Billing = () => {
     setReservedForBill(false);
     setSubtotalBeforeDiscount(0);
     setTotal(0);
+
+    // Then if we need to cancel, do it and show notification
+    if (shouldCancel) {
+      try {
+        await cancelBill(billId);
+        console.log('✅ Bill cancelled and reserved items released');
+        // Show notification after modal closes
+        setNotificationMessage('⚠️ Payment cancelled: reserved items released back to inventory.');
+        setNotificationType("warning");
+        setShowNotification(true);
+        // Auto-hide after 4 seconds
+        setTimeout(() => setShowNotification(false), 4000);
+      } catch (err: any) {
+        console.error('Error auto-cancelling bill on modal close:', err);
+        setNotificationMessage('❌ Error releasing items: ' + (err?.message || 'Unknown error'));
+        setNotificationType("danger");
+        setShowNotification(true);
+        setTimeout(() => setShowNotification(false), 4000);
+      }
+    }
+    
     setBillId(undefined);
   };
 
@@ -928,6 +961,19 @@ const Billing = () => {
       />
       
       <Container className="billing-content" style={{ maxWidth: 1100 }}>
+        {/* Notification Alert - Fixed position at top */}
+        {showNotification && (
+          <Alert 
+            variant={notificationType} 
+            onClose={() => setShowNotification(false)} 
+            dismissible
+            className="mb-3 position-fixed top-0 start-50 translate-middle-x"
+            style={{ zIndex: 9999, width: '90%', maxWidth: '500px', marginTop: '20px' }}
+          >
+            {notificationMessage}
+          </Alert>
+        )}
+        
         {/* Main Billing Section */}
         <div className="billing-main-card">
           <div className="billing-header-section">
@@ -1334,6 +1380,41 @@ const Billing = () => {
             const res = await startBill(uname);
             setBillId(res.data.billId);
           }}>Done</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Cancel Bill Confirmation Modal */}
+      <Modal show={showCancelConfirmModal} onHide={() => setShowCancelConfirmModal(false)} centered backdrop="static">
+        <Modal.Header closeButton>
+          <Modal.Title>⚠️ Cancel Bill</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="alert alert-warning mb-3">
+            <strong>Are you sure you want to cancel this bill?</strong>
+          </div>
+          <p>This action will:</p>
+          <ul>
+            <li>Release all reserved items back to inventory</li>
+            <li>Cancel the current billing session</li>
+            <li>Allow you to start a new bill</li>
+          </ul>
+          <p className="text-muted mb-0">This action cannot be undone.</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={() => setShowCancelConfirmModal(false)}
+            disabled={isCancelling}
+          >
+            Keep Bill
+          </Button>
+          <Button 
+            variant="danger" 
+            onClick={confirmCancelBill}
+            disabled={isCancelling}
+          >
+            {isCancelling ? '🔄 Cancelling...' : '❌ Cancel Bill'}
+          </Button>
         </Modal.Footer>
       </Modal>
 
