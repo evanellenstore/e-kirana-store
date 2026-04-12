@@ -50,6 +50,7 @@ const Billing = () => {
   const [discountIsPercent, setDiscountIsPercent] = useState<boolean>(false);
   const [gstRate] = useState<number>(0);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [suppressCancelOnClose, setSuppressCancelOnClose] = useState(false);
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
   const [cashReceived, setCashReceived] = useState<number | undefined>(undefined);
   const [customerMobile, setCustomerMobile] = useState<string>("");
@@ -464,7 +465,7 @@ const Billing = () => {
         }
       }
 
-      setReceiptData({
+  setReceiptData({
         billId,
         items: cart.map(i => ({ ...i })),
         payment: paymentPayload,
@@ -473,7 +474,9 @@ const Billing = () => {
         walletUsed: walletDeduction,
         amountToCharge: amountToCharge
       });
-      setShowPaymentModal(false);
+  // Prevent the modal close handler from auto-cancelling the bill
+  setSuppressCancelOnClose(true);
+  setShowPaymentModal(false);
       setShowReceiptModal(true);
     } catch (err: any) {
       console.error('Payment failed', err);
@@ -514,6 +517,39 @@ const Billing = () => {
       const msg = error?.response?.data?.message || error?.message || String(error);
       alert(`❌ Failed to cancel bill: ${msg}`);
     }
+  };
+
+  // Called when user manually closes the payment modal (back/close button or backdrop)
+  const handlePaymentModalClose = async () => {
+    // If we intentionally suppressed cancel (programmatic close after payment), just clear the flag
+    if (suppressCancelOnClose) {
+      setSuppressCancelOnClose(false);
+      setShowPaymentModal(false);
+      return;
+    }
+
+    // If items were reserved for this bill but user closed the modal, auto-cancel to release reserved stock
+    if (reservedForBill && billId) {
+      try {
+        await cancelBill(billId);
+        // notify user
+        alert('⚠️ Payment cancelled: reserved items released back to inventory.');
+      } catch (err: any) {
+        console.error('Error auto-cancelling bill on modal close:', err);
+      }
+    }
+
+    // Reset UI similar to explicit cancel
+    setShowPaymentModal(false);
+    setCart([]);
+    setDiscount(0);
+    setDiscountIsPercent(false);
+    setCashReceived(undefined);
+    setCustomerMobile('');
+    setReservedForBill(false);
+    setSubtotalBeforeDiscount(0);
+    setTotal(0);
+    setBillId(undefined);
   };
 
   const reserveItems = async () => {
@@ -1048,7 +1084,7 @@ const Billing = () => {
       </Container>
 
       {/* Payment Modal */}
-      <Modal show={showPaymentModal} onHide={() => setShowPaymentModal(false)}>
+  <Modal show={showPaymentModal} onHide={handlePaymentModalClose}>
         <Modal.Header closeButton>
           <Modal.Title>Payment</Modal.Title>
         </Modal.Header>
@@ -1169,12 +1205,7 @@ const Billing = () => {
           >
             ❌ Cancel Bill
           </Button>
-          <Button 
-            variant="secondary" 
-            onClick={() => setShowPaymentModal(false)}
-          >
-            ← Back
-          </Button>
+          {/* Back button removed - closing the modal will now auto-cancel reserved items if needed */}
           <Button variant="primary" disabled={isPaying} onClick={async () => {
             // validate payment
             if (!billId) { alert('No active bill'); return; }
