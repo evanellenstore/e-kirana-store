@@ -23,7 +23,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line, Bar, Pie, Doughnut } from "react-chartjs-2";
-import AdminHeader from "../../components/AdminHeader";
+import AdminReportHeader from "../../components/AdminReportHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 import { mockReportData, useMockData } from "../../services/mockReportData";
 import "./DetailedReport.css";
@@ -62,7 +62,16 @@ const DetailedReportPage: React.FC = () => {
       })
       .catch((err) => {
         console.error("Error fetching report:", err);
-        setError(err.message || "Failed to load report");
+        // Handle 401 (token expired) separately
+        if (err.response?.status === 401) {
+          setError("Your session has expired. Please login again.");
+          localStorage.removeItem("user");
+          setTimeout(() => {
+            window.location.href = "/login?expired=true";
+          }, 2000);
+        } else {
+          setError(err.message || "Failed to load report");
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -237,7 +246,7 @@ const DetailedReportPage: React.FC = () => {
 
   return (
     <Container fluid className="mt-4 p-4 report-container">
-      <AdminHeader
+      <AdminReportHeader
         title="📊 Detailed Reports & Analytics"
         description="Track comprehensive business metrics with visual analytics"
       />

@@ -12,7 +12,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line, Pie } from "react-chartjs-2";
-import AdminHeader from "../../components/AdminHeader";
+import AdminReportHeader from "../../components/AdminReportHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 import { mockReportData, useMockData } from "../../services/mockReportData";
 
@@ -46,7 +46,16 @@ const BillingReportPage: React.FC = () => {
       })
       .catch((err) => {
         console.error("Error fetching billing report:", err);
-        setError(err.message || "Failed to load billing report");
+        // Handle 401 (token expired) separately
+        if (err.response?.status === 401) {
+          setError("Your session has expired. Please login again.");
+          localStorage.removeItem("user");
+          setTimeout(() => {
+            window.location.href = "/login?expired=true";
+          }, 2000);
+        } else {
+          setError(err.message || "Failed to load billing report");
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -159,7 +168,7 @@ const BillingReportPage: React.FC = () => {
 
   return (
     <Container fluid className="mt-4 p-4">
-      <AdminHeader
+      <AdminReportHeader
         title="💳 Billing Report"
         description="Track revenue, tax, and financial metrics"
       />

@@ -12,7 +12,7 @@ import {
   Legend,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
-import AdminHeader from "../../components/AdminHeader";
+import AdminReportHeader from "../../components/AdminReportHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 import { mockReportData, useMockData } from "../../services/mockReportData";
 
@@ -46,7 +46,16 @@ const ProductReportPage: React.FC = () => {
       })
       .catch((err) => {
         console.error("Error fetching product report:", err);
-        setError(err.message || "Failed to load product report");
+        // Handle 401 (token expired) separately
+        if (err.response?.status === 401) {
+          setError("Your session has expired. Please login again.");
+          localStorage.removeItem("user");
+          setTimeout(() => {
+            window.location.href = "/login?expired=true";
+          }, 2000);
+        } else {
+          setError(err.message || "Failed to load product report");
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -134,7 +143,7 @@ const ProductReportPage: React.FC = () => {
 
   return (
     <Container fluid className="mt-4 p-4">
-      <AdminHeader
+      <AdminReportHeader
         title="🏷️ Product Report"
         description="Analyze product performance and metrics"
       />

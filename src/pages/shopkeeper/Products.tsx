@@ -191,13 +191,7 @@ const Products: React.FC = () => {
         <div className="products-search-card">
           <div className="products-search-header">
             <h3 className="products-search-title">🔍 Search & Filter Products</h3>
-            <button 
-              className="btn btn-success"
-              onClick={() => openModal()}
-              style={{ marginRight: "10px" }}
-            >
-              ➕ Add Product
-            </button>
+            
             <div className="products-count-badge">
               Showing {paginatedProducts.length} of {filteredProducts.length}
             </div>

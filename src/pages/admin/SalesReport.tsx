@@ -12,7 +12,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line, Bar } from "react-chartjs-2";
-import AdminHeader from "../../components/AdminHeader";
+import AdminReportHeader from "../../components/AdminReportHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 import { mockReportData, useMockData } from "../../services/mockReportData";
 
@@ -149,7 +149,7 @@ const SalesReportPage: React.FC = () => {
 
   return (
     <Container fluid className="mt-4 p-4">
-      <AdminHeader
+      <AdminReportHeader
         title="📈 Sales Report"
         description="Track sales performance and trends"
       />

@@ -25,13 +25,16 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Token expired or invalid
-      console.warn("🔐 Token expired or invalid - redirecting to login");
-      localStorage.removeItem("user");
-      alert("⚠️ Your session has expired. Please login again.");
-      // Redirect after a short delay to allow alert to be read
-      setTimeout(() => {
-        window.location.href = "/login";
-      }, 500);
+      console.warn("🔐 Token expired or invalid");
+      
+      // Only redirect if we're not already on the login page
+      if (window.location.pathname !== "/login") {
+        localStorage.removeItem("user");
+        // Use a more graceful redirect with a small delay
+        setTimeout(() => {
+          window.location.href = "/login?expired=true";
+        }, 100);
+      }
     }
     return Promise.reject(error);
   }

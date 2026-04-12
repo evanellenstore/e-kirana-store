@@ -7,16 +7,33 @@ import { getReport, type ReportResponse } from "../../services/reportingService"
 const ReportPage: React.FC = () => {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     getReport()
       .then((res) => setReport(res.data))
+      .catch((err) => {
+        console.error("Error fetching report:", err);
+        // Handle 401 (token expired) separately
+        if (err.response?.status === 401) {
+          setError("Your session has expired. Please login again.");
+          localStorage.removeItem("user");
+          setTimeout(() => {
+            window.location.href = "/login?expired=true";
+          }, 2000);
+        } else {
+          setError(err.message || "Failed to load report");
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
   if (loading)
     return <div className="text-center mt-5"><Spinner animation="border" /> Loading report...</div>;
+
+  if (error)
+    return <div className="alert alert-danger mt-5 text-center"><h5>Session Expired</h5><p>{error}</p></div>;
 
   if (!report)
     return <div className="alert alert-danger mt-5 text-center">No report data available</div>;
