@@ -117,7 +117,9 @@ const Billing = () => {
           }
         })();
 
+      console.log('Starting bill for user:', uname);
       const res = await startBill(uname);
+      console.log('Bill started successfully:', res.data);
       setBillId(res.data.billId);
       setNotificationMessage(`✅ New bill started: ${res.data.billId}`);
       setNotificationType("success");
@@ -126,10 +128,11 @@ const Billing = () => {
       barcodeRef.current?.focus();
     } catch (error: any) {
       console.error('Error starting bill:', error);
-      setNotificationMessage('❌ Failed to start billing');
+      console.error('Error details:', error.response?.data || error.message);
+      setNotificationMessage(`❌ Failed to start billing: ${error.response?.data?.message || error.message || 'Unknown error'}`);
       setNotificationType("danger");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 3000);
+      setTimeout(() => setShowNotification(false), 5000);
     }
   };
 
@@ -1002,24 +1005,25 @@ const Billing = () => {
         <div className="billing-main-card">
           <div className="billing-header-section">
             <div className="billing-title-area">
-              <div className="d-flex align-items-center justify-content-between mb-3 gap-2">
-                <div className="d-flex gap-2">
+              <div className="mb-4">
+                <div className="d-flex justify-content-start mb-3">
                   <Button 
-                    variant="success" 
-                    size="sm"
+                    variant="primary"
+                    size="lg"
                     onClick={async () => {
                       await handleGoBackToBilling();
-                      // Give a moment for state to clear, then start new bill
                       setTimeout(() => handleStartBilling(), 300);
                     }}
+                    className="fw-bold px-4"
+                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                   >
-                    Start New Bill
+                    ✚ Start Bill
                   </Button>
                 </div>
-                <h4 className="billing-title mb-0">
-                  Bill Details
-                  {billId && <Badge className="billing-badge bg-primary ms-3">Bill: {billId}</Badge>}
-                </h4>
+                <div className="d-flex align-items-center justify-content-between gap-2">
+                  <h4 className="billing-title mb-0">Bill Details</h4>
+                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0 }}>Bill: {billId}</Badge>}
+                </div>
               </div>
             </div>
           </div>
