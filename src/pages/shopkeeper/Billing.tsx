@@ -103,27 +103,51 @@ const Billing = () => {
   /* =====================
      Start Bill
   ===================== */
-  /* =====================
-     Start Bill
-  ===================== */
-  useEffect(() => {
-    const uname =
-      auth?.user?.username ??
-      (() => {
-        const s = localStorage.getItem("user");
-        if (!s) return "guest";
-        try {
-          return JSON.parse(s).username;
-        } catch {
-          return "guest";
-        }
-      })();
+  const handleStartBilling = async () => {
+    try {
+      const uname =
+        auth?.user?.username ??
+        (() => {
+          const s = localStorage.getItem("user");
+          if (!s) return "guest";
+          try {
+            return JSON.parse(s).username;
+          } catch {
+            return "guest";
+          }
+        })();
 
-    startBill(uname).then(res => setBillId(res.data.billId));
-    barcodeRef.current?.focus();
-  }, [auth?.user?.username]);
+      const res = await startBill(uname);
+      setBillId(res.data.billId);
+      setNotificationMessage(`✅ New bill started: ${res.data.billId}`);
+      setNotificationType("success");
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 3000);
+      barcodeRef.current?.focus();
+    } catch (error: any) {
+      console.error('Error starting bill:', error);
+      setNotificationMessage('❌ Failed to start billing');
+      setNotificationType("danger");
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 3000);
+    }
+  };
 
-  // Global keycapture to support USB barcode scanners that act like keyboards.
+  // Handle going back to start billing screen
+  const handleGoBackToBilling = () => {
+    setCart([]);
+    setDiscount(0);
+    setDiscountIsPercent(false);
+    setCashReceived(undefined);
+    setCustomerMobile('');
+    setReservedForBill(false);
+    setSubtotalBeforeDiscount(0);
+    setTotal(0);
+    setBillId(undefined);
+    setShowPaymentModal(false);
+  };
+
+  /* Keep focus on barcode input */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const k = e.key;
@@ -978,10 +1002,25 @@ const Billing = () => {
         <div className="billing-main-card">
           <div className="billing-header-section">
             <div className="billing-title-area">
-              <h4 className="billing-title">
-                Bill Details
-                {billId && <Badge className="billing-badge bg-primary ms-3">Bill: {billId}</Badge>}
-              </h4>
+              <div className="d-flex align-items-center justify-content-between mb-3 gap-2">
+                <div className="d-flex gap-2">
+                  <Button 
+                    variant="success" 
+                    size="sm"
+                    onClick={async () => {
+                      await handleGoBackToBilling();
+                      // Give a moment for state to clear, then start new bill
+                      setTimeout(() => handleStartBilling(), 300);
+                    }}
+                  >
+                    Start New Bill
+                  </Button>
+                </div>
+                <h4 className="billing-title mb-0">
+                  Bill Details
+                  {billId && <Badge className="billing-badge bg-primary ms-3">Bill: {billId}</Badge>}
+                </h4>
+              </div>
             </div>
           </div>
 
@@ -1125,8 +1164,8 @@ const Billing = () => {
               Total: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
             </h4>
           </div>
+            </div>
           </div>
-        </div>
       </Container>
 
       {/* Payment Modal */}
