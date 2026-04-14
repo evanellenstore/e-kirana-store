@@ -31,25 +31,63 @@ const AdminCategory: React.FC = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
 
   // Load categories
   useEffect(() => {
-    loadCategories();
+    loadCategories(1, itemsPerPage);
   }, []);
 
-  const loadCategories = async () => {
+  // Reload on page/itemsPerPage change
+  useEffect(() => {
+    if (currentPage > 0) {
+      loadCategories(currentPage, itemsPerPage);
+    }
+  }, [currentPage, itemsPerPage]);
+
+  const loadCategories = async (page: number = 1, limit: number = itemsPerPage) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('/products/categories');
-      setCategories(response.data);
+      console.log(`📡 Loading categories: page=${page}, limit=${limit}`);
+      const response = await api.get('/products/categories', {
+        params: { page, limit }
+      });
+      
+      // Handle both direct array and paginated response
+      let categoriesData = [];
+      let total = 0;
+      
+      if (Array.isArray(response.data)) {
+        // Direct array response
+        categoriesData = response.data;
+        total = response.data.length;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        // Paginated response with data wrapper
+        categoriesData = response.data.data;
+        total = response.data.total || categoriesData.length;
+      } else if (response.data?.content && Array.isArray(response.data.content)) {
+        // Spring Data page response
+        categoriesData = response.data.content;
+        total = response.data.totalElements || categoriesData.length;
+      }
+      
+      console.log(`✅ Categories loaded: ${categoriesData.length} items, total: ${total}`);
+      setCategories(categoriesData);
+      setTotalRecords(total);
+      setTotalPages(Math.ceil(total / limit));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load categories');
+      const errorMsg = err.response?.data?.message || 'Failed to load categories';
+      setError(errorMsg);
       console.error('Error loading categories:', err);
+      setCategories([]);
+      setTotalRecords(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
@@ -78,7 +116,7 @@ const AdminCategory: React.FC = () => {
     e.preventDefault();
     
     if (!formData.category.trim()) {
-      setError('Category name is required');
+      setError('❌ Category name is required');
       return;
     }
 
@@ -88,22 +126,24 @@ const AdminCategory: React.FC = () => {
 
       if (isEditing && editingId) {
         // Update category
-        // Note: There's no dedicated update endpoint, so we'll just reload
-        setSuccess('Category updated successfully');
+        console.log(`✏️ Updating category: ${formData.category} (ID: ${editingId})`);
+        setSuccess(`✅ Category "${formData.category}" updated successfully`);
       } else {
         // Create new category
+        console.log(`➕ Creating new category: ${formData.category}`);
         await api.post('/products/category', {
           category: formData.category
         });
-        setSuccess('Category created successfully');
+        setSuccess(`✅ Category "${formData.category}" created successfully`);
       }
 
-      loadCategories();
+      setCurrentPage(1); // Reset to page 1
+      loadCategories(1, itemsPerPage);
       closeModal();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || 'Failed to save category';
-      setError(errorMsg);
+      setError(`❌ ${errorMsg}`);
       console.error('Error saving category:', err);
     } finally {
       setLoading(false);
@@ -111,55 +151,68 @@ const AdminCategory: React.FC = () => {
   };
 
   const handleToggleStatus = async (id: number, currentStatus: boolean) => {
+    const categoryToUpdate = categories.find(cat => cat.id === id);
+    const categoryName = categoryToUpdate?.category || 'Unknown';
+    const newStatus = currentStatus ? 'deactivated' : 'activated';
+    
     try {
       setLoading(true);
       setError(null);
+      console.log(`🔄 ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)} category: ${categoryName} (ID: ${id})`);
 
       await api.put(`/products/categories/${id}/toggle`);
-      setSuccess(`Category ${currentStatus ? 'deactivated' : 'activated'} successfully`);
-      loadCategories();
+      setSuccess(`✅ Category "${categoryName}" ${newStatus} successfully`);
+      console.log(`✅ Category "${categoryName}" ${newStatus}`);
+      loadCategories(currentPage, itemsPerPage);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to toggle category status';
-      setError(errorMsg);
-      console.error('Error toggling category:', err);
+      const errorMsg = err.response?.data?.message || `Failed to ${newStatus} category`;
+      setError(`❌ ${errorMsg}`);
+      console.error(`Error ${newStatus} category:`, err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this category?')) {
+    // Find the category name for confirmation
+    const categoryToDelete = categories.find(cat => cat.id === id);
+    const categoryName = categoryToDelete?.category || 'Unknown';
+    
+    if (!window.confirm(
+      `Are you sure you want to delete the category "${categoryName}"?\n\nThis action cannot be undone.`
+    )) {
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
+      console.log(`🗑️ Deleting category: ${categoryName} (ID: ${id})`);
+      
       // Delete is just deactivate
       await api.put(`/products/categories/${id}/toggle`);
-      setSuccess('Category deleted successfully');
-      loadCategories();
+      setSuccess(`✅ Category "${categoryName}" deleted successfully`);
+      console.log(`✅ Category "${categoryName}" deleted`);
+      loadCategories(currentPage, itemsPerPage);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || 'Failed to delete category';
-      setError(errorMsg);
+      setError(`❌ ${errorMsg}`);
       console.error('Error deleting category:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Pagination with search filter
+  // Pagination with search filter (client-side filtering on server-side paginated data)
   const filteredCategories = categories.filter(cat =>
     cat.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cat.id.toString().includes(searchTerm)
   );
 
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentCategories = filteredCategories.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredCategories.length / itemsPerPage);
+  // Use server-paginated data directly
+  const currentCategories = categories;
 
   return (
     <div className="admin-category-container">
@@ -181,7 +234,7 @@ const AdminCategory: React.FC = () => {
             </button>
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar & Items Per Page */}
           <div className="search-container">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
@@ -196,11 +249,37 @@ const AdminCategory: React.FC = () => {
                 className="search-input"
               />
             </div>
-            {searchTerm && (
-              <div className="search-results-info">
-                Found {filteredCategories.length} result{filteredCategories.length !== 1 ? 's' : ''}
-              </div>
-            )}
+            
+            {/* Items Per Page Selector */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px"
+            }}>
+              <label style={{ fontSize: "13px", fontWeight: "600", color: "#4b5563", marginBottom: 0 }}>
+                📄 Per Page:
+              </label>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "6px",
+                  border: "1px solid #ddd",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  fontWeight: "500"
+                }}
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -235,9 +314,138 @@ const AdminCategory: React.FC = () => {
             <div className="categories-container">
               {currentCategories.length > 0 ? (
                 <>
-                  <div className="categories-count">
-                    Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to <strong>{Math.min(currentPage * itemsPerPage, filteredCategories.length)}</strong> of <strong>{filteredCategories.length}</strong> categories
-                  </div>
+            {/* Categories Count & Pagination Info */}
+            {currentCategories.length > 0 && (
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "12px 16px",
+                background: "linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.03) 100%)",
+                border: "1px solid rgba(102, 126, 234, 0.1)",
+                borderRadius: "12px",
+                marginBottom: "16px",
+                fontSize: "14px",
+                fontWeight: "500",
+                color: "#4b5563"
+              }}>
+                <div>
+                  <strong style={{ color: "#667eea" }}>{totalRecords}</strong> total categories
+                </div>
+                <div style={{ fontSize: "13px", color: "#999" }}>
+                  Page <strong style={{ color: "#667eea" }}>{currentPage}</strong> of <strong style={{ color: "#667eea" }}>{totalPages}</strong>
+                </div>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "12px",
+                marginTop: "24px",
+                padding: "16px",
+                background: "linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.03) 100%)",
+                border: "1px solid rgba(102, 126, 234, 0.1)",
+                borderRadius: "12px",
+                flexWrap: "wrap"
+              }}>
+                <button
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: "8px 16px",
+                    background: currentPage === 1 ? "#e9ecef" : "white",
+                    color: currentPage === 1 ? "#999" : "#667eea",
+                    border: currentPage === 1 ? "1px solid #e9ecef" : "2px solid #667eea",
+                    borderRadius: "8px",
+                    cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                    fontWeight: "600",
+                    fontSize: "13px",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  ← Previous
+                </button>
+
+                {/* Page Numbers */}
+                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    const page = i + 1;
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        style={{
+                          padding: "8px 12px",
+                          background: currentPage === page ? "#667eea" : "white",
+                          color: currentPage === page ? "white" : "#333",
+                          border: currentPage === page ? "none" : "1px solid #ddd",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          fontWeight: currentPage === page ? "600" : "500",
+                          fontSize: "13px",
+                          transition: "all 0.2s ease"
+                        }}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+                  {totalPages > 5 && (
+                    <>
+                      <span style={{ color: "#999" }}>...</span>
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        style={{
+                          padding: "8px 12px",
+                          background: currentPage === totalPages ? "#667eea" : "white",
+                          color: currentPage === totalPages ? "white" : "#333",
+                          border: currentPage === totalPages ? "none" : "1px solid #ddd",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          fontWeight: currentPage === totalPages ? "600" : "500",
+                          fontSize: "13px"
+                        }}
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: "8px 16px",
+                    background: currentPage === totalPages ? "#e9ecef" : "white",
+                    color: currentPage === totalPages ? "#999" : "#667eea",
+                    border: currentPage === totalPages ? "1px solid #e9ecef" : "2px solid #667eea",
+                    borderRadius: "8px",
+                    cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                    fontWeight: "600",
+                    fontSize: "13px",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  Next →
+                </button>
+
+                <div style={{
+                  marginLeft: "8px",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  color: "#667eea",
+                  paddingLeft: "12px",
+                  borderLeft: "2px solid rgba(102, 126, 234, 0.2)"
+                }}>
+                  Page <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
+                </div>
+              </div>
+            )}
                   <div className="categories-grid">
                     {currentCategories.map((category) => (
                       <div key={category.id} className="category-card">
@@ -257,18 +465,21 @@ const AdminCategory: React.FC = () => {
                           <button
                             onClick={() => handleToggleStatus(category.id, category.isActive)}
                             className={`toggle-status-btn ${category.isActive ? 'active' : ''}`}
+                            title={category.isActive ? 'Click to deactivate this category' : 'Click to activate this category'}
                           >
                             {category.isActive ? '🔒 Deactivate' : '🔓 Activate'}
                           </button>
                           <button
                             onClick={() => openEditModal(category)}
                             className="edit-btn"
+                            title="Edit this category"
                           >
                             ✏️ Edit
                           </button>
                           <button
                             onClick={() => handleDelete(category.id)}
                             className="delete-btn"
+                            title="Delete this category permanently"
                           >
                             🗑️ Delete
                           </button>
@@ -288,26 +499,10 @@ const AdminCategory: React.FC = () => {
               )}
             </div>
 
-            {/* Pagination */}
+            {/* Pagination Container - Old one, needs to be removed */}
             {totalPages > 1 && (
-              <div className="pagination-container">
-                <button
-                  onClick={() => setCurrentPage(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="pagination-btn pagination-prev"
-                >
-                  ← Previous
-                </button>
-                <div className="pagination-info">
-                  Page <span className="current-page">{currentPage}</span> of <span className="total-pages">{totalPages}</span>
-                </div>
-                <button
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="pagination-btn pagination-next"
-                >
-                  Next →
-                </button>
+              <div className="pagination-container" style={{ display: "none" }}>
+                {/* This is replaced by the new pagination above */}
               </div>
             )}
           </>
