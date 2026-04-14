@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Container,
   Card,
@@ -29,6 +30,7 @@ interface BillTransaction {
 }
 
 const AdminRewards = () => {
+  const { t } = useTranslation();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [billTransactions, setBillTransactions] = useState<BillTransaction[]>([]);
@@ -40,7 +42,7 @@ const AdminRewards = () => {
 
   const loadCustomerData = async (mobileNo: string) => {
     if (!mobileNo.trim()) {
-      setError("Please enter a mobile number");
+      setError(t('adminRewards.pleaseEnterMobileNumber'));
       return;
     }
 
@@ -80,7 +82,7 @@ const AdminRewards = () => {
 
       setSearched(true);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || "Failed to load customer";
+      const msg = err?.response?.data?.message || err?.message || t('adminRewards.failedToLoadCustomer');
       setError(msg);
       setCustomer(null);
       setTransactions([]);
@@ -99,7 +101,7 @@ const AdminRewards = () => {
     return (
       <Container className="mt-5 text-center">
         <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading...</span>
+          <span className="visually-hidden">{t('adminRewards.loading')}</span>
         </Spinner>
       </Container>
     );
@@ -108,11 +110,11 @@ const AdminRewards = () => {
   return (
     <Container fluid className="admin-rewards-container py-4">
       <AdminHeader 
-        title="Customer Rewards Management" 
-        description="View and manage customer wallet, transactions, and billing history"
+        title={t('adminRewards.customerRewardsManagement')} 
+        description={t('adminRewards.viewAndManageCustomer')}
       />
       <div className="rewards-header mb-4">
-        <h2>💰 Customer Rewards</h2>
+        <h2>💰 {t('adminRewards.customerRewards')}</h2>
       </div>
 
       {/* Search Section */}
@@ -121,13 +123,13 @@ const AdminRewards = () => {
           <form onSubmit={handleSearch} className="d-flex gap-2">
             <input
               type="text"
-              placeholder="Enter customer mobile number"
+              placeholder={t('adminRewards.enterCustomerMobileNumber')}
               value={mobileInput}
               onChange={(e) => setMobileInput(e.target.value)}
               className="form-control"
             />
             <Button variant="primary" type="submit">
-              Search
+              {t('adminRewards.search')}
             </Button>
           </form>
         </Card.Body>
@@ -142,27 +144,27 @@ const AdminRewards = () => {
             <Col md={4}>
               <Card className="text-center bg-success text-white">
                 <Card.Body>
-                  <Card.Title>Wallet Balance</Card.Title>
+                  <Card.Title>{t('adminRewards.walletBalance')}</Card.Title>
                   <h2 className="mb-0">₹{(customer.walletBalance || 0).toFixed(2)}</h2>
-                  <small className="mt-2 d-block">Available Credits</small>
+                  <small className="mt-2 d-block">{t('adminRewards.availableCredits')}</small>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={4}>
               <Card className="text-center bg-info text-white">
                 <Card.Body>
-                  <Card.Title>Mobile</Card.Title>
+                  <Card.Title>{t('adminRewards.mobile')}</Card.Title>
                   <h4 className="mb-0">{customer.mobileNo}</h4>
-                  <small className="mt-2 d-block">Customer ID: {customer.id?.substring(0, 8)}</small>
+                  <small className="mt-2 d-block">{t('adminRewards.customerId')}: {customer.id?.substring(0, 8)}</small>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={4}>
               <Card className="text-center bg-warning text-dark">
                 <Card.Body>
-                  <Card.Title>Total Transactions</Card.Title>
+                  <Card.Title>{t('adminRewards.totalTransactions')}</Card.Title>
                   <h2 className="mb-0">{transactions.length}</h2>
-                  <small className="mt-2 d-block">Credits & Debits</small>
+                  <small className="mt-2 d-block">{t('adminRewards.creditsDebits')}</small>
                 </Card.Body>
               </Card>
             </Col>
@@ -175,19 +177,19 @@ const AdminRewards = () => {
                 variant={activeTab === "overview" ? "primary" : "outline-primary"}
                 onClick={() => setActiveTab("overview")}
               >
-                📊 Overview
+                📊 {t('adminRewards.overview')}
               </Button>
               <Button
                 variant={activeTab === "wallet" ? "primary" : "outline-primary"}
                 onClick={() => setActiveTab("wallet")}
               >
-                💳 Wallet Transactions
+                💳 {t('adminRewards.walletTransactions')}
               </Button>
               <Button
                 variant={activeTab === "bills" ? "primary" : "outline-primary"}
                 onClick={() => setActiveTab("bills")}
               >
-                🧾 Billing Transactions
+                🧾 {t('adminRewards.billingTransactions')}
               </Button>
             </div>
           </div>
@@ -196,13 +198,13 @@ const AdminRewards = () => {
           {activeTab === "overview" && (
             <Card className="mb-4">
               <Card.Header className="bg-light">
-                <h5 className="mb-0">📊 Wallet Overview</h5>
+                <h5 className="mb-0">📊 {t('adminRewards.walletOverview')}</h5>
               </Card.Header>
               <Card.Body>
                 <Row>
                   <Col md={6}>
                     <div className="mb-3">
-                      <label className="fw-bold text-muted">Current Balance</label>
+                      <label className="fw-bold text-muted">{t('adminRewards.currentBalance')}</label>
                       <div className="fs-4 text-success">
                         ₹{(customer.walletBalance || 0).toFixed(2)}
                       </div>
@@ -210,9 +212,9 @@ const AdminRewards = () => {
                   </Col>
                   <Col md={6}>
                     <div className="mb-3">
-                      <label className="fw-bold text-muted">Member Since</label>
+                      <label className="fw-bold text-muted">{t('adminRewards.memberSince')}</label>
                       <div className="fs-6">
-                        {new Date(customer.createdAt || "").toLocaleDateString() || "N/A"}
+                        {new Date(customer.createdAt || "").toLocaleDateString() || t('adminRewards.notAvailable')}
                       </div>
                     </div>
                   </Col>
@@ -221,21 +223,21 @@ const AdminRewards = () => {
                 <Row>
                   <Col md={6}>
                     <div className="mb-3">
-                      <label className="fw-bold text-muted">Total Transactions</label>
+                      <label className="fw-bold text-muted">{t('adminRewards.totalTransactions')}</label>
                       <div className="fs-5">{transactions.length}</div>
                     </div>
                   </Col>
                   <Col md={6}>
                     <div className="mb-3">
-                      <label className="fw-bold text-muted">Last Updated</label>
+                      <label className="fw-bold text-muted">{t('adminRewards.lastUpdated')}</label>
                       <div className="fs-6">
-                        {new Date(customer.updatedAt || "").toLocaleDateString() || "N/A"}
+                        {new Date(customer.updatedAt || "").toLocaleDateString() || t('adminRewards.notAvailable')}
                       </div>
                     </div>
                   </Col>
                 </Row>
                 <Alert variant="info" className="mt-3 mb-0">
-                  <strong>ℹ️ Admin Note:</strong> Use this section to monitor customer wallet balances and reward distributions.
+                  <strong>ℹ️ {t('adminRewards.adminNote')}:</strong> {t('adminRewards.adminNoteText')}
                 </Alert>
               </Card.Body>
             </Card>

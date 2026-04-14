@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Container, Table, Spinner, Card, Row, Col, Button, Badge } from "react-bootstrap";
+import { useTranslation } from "react-i18next";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -17,6 +18,7 @@ import { mockReportData, useMockData } from "../../services/mockReportData";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 const InventoryReportPage: React.FC = () => {
+  const { t } = useTranslation();
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,13 +39,13 @@ const InventoryReportPage: React.FC = () => {
         console.error("Error fetching inventory report:", err);
         // Handle 401 (token expired) separately
         if (err.response?.status === 401) {
-          setError("Your session has expired. Please login again.");
+          setError(t('reports.sessionExpiredMessage'));
           localStorage.removeItem("user");
           setTimeout(() => {
             window.location.href = "/login?expired=true";
           }, 2000);
         } else {
-          setError(err.message || "Failed to load inventory report");
+          setError(err.message || t('reports.failedToLoadInventoryReport'));
         }
       })
       .finally(() => setLoading(false));
@@ -53,7 +55,7 @@ const InventoryReportPage: React.FC = () => {
     return (
       <Container className="text-center mt-5">
         <Spinner animation="border" />
-        <p className="mt-3">Loading inventory report...</p>
+        <p className="mt-3">{t('reports.loadingInventoryReport')}</p>
       </Container>
     );
   }
@@ -62,10 +64,10 @@ const InventoryReportPage: React.FC = () => {
     return (
       <Container className="mt-5">
         <div className="alert alert-danger">
-          <h5>❌ Error Loading Inventory Report</h5>
+          <h5>❌ {t('reports.errorLoadingInventoryReport')}</h5>
           <p>{error}</p>
           <Button onClick={() => window.location.reload()} variant="primary">
-            Retry
+            {t('reports.retry')}
           </Button>
         </div>
       </Container>
@@ -76,8 +78,8 @@ const InventoryReportPage: React.FC = () => {
     return (
       <Container className="mt-5">
         <div className="alert alert-warning text-center">
-          <h5>⚠️ No Inventory Data Available</h5>
-          <p>No inventory items found.</p>
+          <h5>⚠️ {t('reports.noInventoryDataAvailable')}</h5>
+          <p>{t('reports.noInventoryItemsFound')}</p>
         </div>
       </Container>
     );
@@ -95,14 +97,14 @@ const InventoryReportPage: React.FC = () => {
     labels: report.inventoryStatus.map((i) => `Product ${i.productId}`),
     datasets: [
       {
-        label: "Available Qty",
+        label: t('reports.availableQty'),
         data: report.inventoryStatus.map((i) => i.availableQty),
         backgroundColor: "rgba(75, 192, 192, 0.7)",
         borderColor: "rgba(75, 192, 192, 1)",
         borderWidth: 1,
       },
       {
-        label: "Reserved Qty",
+        label: t('reports.reservedQty'),
         data: report.inventoryStatus.map((i) => i.reservedQty),
         backgroundColor: "rgba(255, 99, 132, 0.7)",
         borderColor: "rgba(255, 99, 132, 1)",
@@ -124,8 +126,8 @@ const InventoryReportPage: React.FC = () => {
   return (
     <Container fluid className="mt-4 p-4">
       <AdminReportHeader
-        title="📦 Inventory Report"
-        description="Monitor stock levels and inventory status"
+        title={`📦 ${t('reports.inventoryReport')}`}
+        description={t('reports.monitorStockLevels')}
       />
 
       {/* KPI Cards */}
@@ -133,36 +135,36 @@ const InventoryReportPage: React.FC = () => {
         <Col md={3} className="mb-3">
           <Card className="text-white bg-success">
             <Card.Body>
-              <Card.Title className="fs-6">Total Stock</Card.Title>
+              <Card.Title className="fs-6">{t('reports.totalStock')}</Card.Title>
               <Card.Text className="fs-4 fw-bold">{totalStock}</Card.Text>
-              <small>All items in inventory</small>
+              <small>{t('reports.allItemsInInventory')}</small>
             </Card.Body>
           </Card>
         </Col>
         <Col md={3} className="mb-3">
           <Card className="text-white bg-info">
             <Card.Body>
-              <Card.Title className="fs-6">Available Qty</Card.Title>
+              <Card.Title className="fs-6">{t('reports.availableQty')}</Card.Title>
               <Card.Text className="fs-4 fw-bold">{totalAvailable}</Card.Text>
-              <small>Ready to sell</small>
+              <small>{t('reports.readyToSell')}</small>
             </Card.Body>
           </Card>
         </Col>
         <Col md={3} className="mb-3">
           <Card className="text-white bg-warning">
             <Card.Body>
-              <Card.Title className="fs-6">Reserved Qty</Card.Title>
+              <Card.Title className="fs-6">{t('reports.reservedQty')}</Card.Title>
               <Card.Text className="fs-4 fw-bold">{totalReserved}</Card.Text>
-              <small>Pending orders</small>
+              <small>{t('reports.pendingOrders')}</small>
             </Card.Body>
           </Card>
         </Col>
         <Col md={3} className="mb-3">
           <Card className="text-white bg-danger">
             <Card.Body>
-              <Card.Title className="fs-6">Low/Out of Stock</Card.Title>
+              <Card.Title className="fs-6">{t('reports.lowOutOfStock')}</Card.Title>
               <Card.Text className="fs-4 fw-bold">{lowStockItems + outOfStockItems}</Card.Text>
-              <small>Items needing attention</small>
+              <small>{t('reports.itemsNeedingAttention')}</small>
             </Card.Body>
           </Card>
         </Col>
@@ -173,7 +175,7 @@ const InventoryReportPage: React.FC = () => {
         <Col md={12}>
           <Card className="shadow-sm">
             <Card.Header className="bg-info text-white">
-              <Card.Title className="mb-0">📊 Stock Levels by Product</Card.Title>
+              <Card.Title className="mb-0">📊 {t('reports.stockLevelsByProduct')}</Card.Title>
             </Card.Header>
             <Card.Body>
               <Bar data={inventoryData} options={chartOptions} />
@@ -189,7 +191,7 @@ const InventoryReportPage: React.FC = () => {
             <Card.Body>
               <div className="d-flex align-items-center">
                 <div className="flex-grow-1">
-                  <small className="text-muted">In Stock Items</small>
+                  <small className="text-muted">{t('reports.inStockItems')}</small>
                   <h4 className="mt-2 mb-0">
                     {report.inventoryStatus.filter((i) => i.availableQty > 10).length}
                   </h4>
@@ -204,7 +206,7 @@ const InventoryReportPage: React.FC = () => {
             <Card.Body>
               <div className="d-flex align-items-center">
                 <div className="flex-grow-1">
-                  <small className="text-muted">Low Stock Items</small>
+                  <small className="text-muted">{t('reports.lowStockItems')}</small>
                   <h4 className="mt-2 mb-0">{lowStockItems}</h4>
                 </div>
                 <div className="text-warning fs-3">⚠</div>
@@ -217,7 +219,7 @@ const InventoryReportPage: React.FC = () => {
             <Card.Body>
               <div className="d-flex align-items-center">
                 <div className="flex-grow-1">
-                  <small className="text-muted">Out of Stock</small>
+                  <small className="text-muted">{t('reports.outOfStock')}</small>
                   <h4 className="mt-2 mb-0">{outOfStockItems}</h4>
                 </div>
                 <div className="text-danger fs-3">✕</div>
@@ -230,19 +232,19 @@ const InventoryReportPage: React.FC = () => {
       {/* Detailed Inventory Table */}
       <Card className="shadow-sm">
         <Card.Header className="bg-dark text-white">
-          <Card.Title className="mb-0">📋 Detailed Inventory Status</Card.Title>
+          <Card.Title className="mb-0">📋 {t('reports.detailedInventoryStatus')}</Card.Title>
         </Card.Header>
         <Card.Body>
           <Table striped bordered hover responsive>
             <thead>
               <tr>
-                <th>#</th>
-                <th>Product ID</th>
-                <th>Available Qty</th>
-                <th>Reserved Qty</th>
-                <th>Total Stock</th>
-                <th>Utilization %</th>
-                <th>Status</th>
+                <th>{t('reports.row')}</th>
+                <th>{t('reports.productId')}</th>
+                <th>{t('reports.availableQty')}</th>
+                <th>{t('reports.reservedQty')}</th>
+                <th>{t('reports.total')}</th>
+                <th>{t('reports.utilization')}</th>
+                <th>{t('reports.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -252,16 +254,16 @@ const InventoryReportPage: React.FC = () => {
                 let status, statusBg;
 
                 if (item.availableQty === 0) {
-                  status = "Out of Stock";
+                  status = t('reports.outOfStockStatus');
                   statusBg = "danger";
                 } else if (item.availableQty < 10) {
-                  status = "Low Stock";
+                  status = t('reports.lowStockStatus');
                   statusBg = "warning";
                 } else if (item.availableQty > 100) {
-                  status = "Well Stocked";
+                  status = t('reports.wellStockedStatus');
                   statusBg = "success";
                 } else {
-                  status = "In Stock";
+                  status = t('reports.inStockStatus');
                   statusBg = "info";
                 }
 

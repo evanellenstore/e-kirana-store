@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Container,
   Card,
@@ -44,6 +45,7 @@ interface BillTransaction {
 }
 
 const Rewards = () => {
+  const { t } = useTranslation();
   const auth = useContext(AuthContext);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -62,7 +64,7 @@ const Rewards = () => {
 
   const loadCustomerData = async (mobileNo: string) => {
     if (!mobileNo.trim()) {
-      setError("Please enter a mobile number");
+      setError(t('rewards.enterMobileNumber'));
       return;
     }
 
@@ -104,7 +106,7 @@ const Rewards = () => {
 
       setSearched(true);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || "Failed to load customer";
+      const msg = err?.response?.data?.message || err?.message || t('rewards.failedToLoadCustomer');
       setError(msg);
       setCustomer(null);
       setTransactions([]);
@@ -135,7 +137,7 @@ const Rewards = () => {
     return (
       <Container className="mt-5 text-center">
         <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading...</span>
+          <span className="visually-hidden">{t('rewards.loading')}</span>
         </Spinner>
       </Container>
     );
@@ -144,7 +146,7 @@ const Rewards = () => {
   return (
     <Container fluid className="customer-rewards-container py-4">
       <div className="rewards-header mb-4">
-        <h2>💰 Customer Rewards & Wallet</h2>
+        <h2>💰 {t('rewards.customerRewardsWallet')}</h2>
       </div>
 
       {/* Search Section */}
@@ -153,13 +155,13 @@ const Rewards = () => {
           <form onSubmit={handleSearch} className="d-flex gap-2">
             <input
               type="text"
-              placeholder="Enter mobile number"
+              placeholder={t('rewards.enterMobileNumber')}
               value={mobileInput}
               onChange={(e) => setMobileInput(e.target.value)}
               className="form-control"
             />
             <Button variant="primary" type="submit">
-              Search
+              {t('rewards.search')}
             </Button>
           </form>
         </Card.Body>
@@ -174,27 +176,27 @@ const Rewards = () => {
             <Col md={4}>
               <Card className="text-center bg-success text-white">
                 <Card.Body>
-                  <Card.Title>Wallet Balance</Card.Title>
+                  <Card.Title>{t('rewards.walletBalance')}</Card.Title>
                   <h2 className="mb-0">₹{(customer.walletBalance || 0).toFixed(2)}</h2>
-                  <small className="mt-2 d-block">Available Credits</small>
+                  <small className="mt-2 d-block">{t('rewards.availableCredits')}</small>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={4}>
               <Card className="text-center bg-info text-white">
                 <Card.Body>
-                  <Card.Title>Mobile</Card.Title>
+                  <Card.Title>{t('rewards.mobile')}</Card.Title>
                   <h4 className="mb-0">{customer.mobileNo}</h4>
-                  <small className="mt-2 d-block">Customer ID: {customer.id?.substring(0, 8)}</small>
+                  <small className="mt-2 d-block">{t('rewards.customerId')}: {customer.id?.substring(0, 8)}</small>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={4}>
               <Card className="text-center bg-warning text-dark">
                 <Card.Body>
-                  <Card.Title>Transactions</Card.Title>
+                  <Card.Title>{t('rewards.transactions')}</Card.Title>
                   <h2 className="mb-0">{transactions.length}</h2>
-                  <small className="mt-2 d-block">Total Credits/Debits</small>
+                  <small className="mt-2 d-block">{t('rewards.totalCreditsDebits')}</small>
                 </Card.Body>
               </Card>
             </Col>
@@ -207,19 +209,19 @@ const Rewards = () => {
                 variant={activeTab === "wallet" ? "primary" : "outline-primary"}
                 onClick={() => setActiveTab("wallet")}
               >
-                💳 Wallet Overview
+                💳 {t('rewards.walletOverview')}
               </Button>
               <Button
                 variant={activeTab === "transactions" ? "primary" : "outline-primary"}
                 onClick={() => setActiveTab("transactions")}
               >
-                📊 Transaction History
+                📊 {t('rewards.transactionHistory')}
               </Button>
               <Button
                 variant={activeTab === "bills" ? "primary" : "outline-primary"}
                 onClick={() => setActiveTab("bills")}
               >
-                📋 Billing Details
+                📋 {t('rewards.billingDetails')}
               </Button>
             </div>
           </div>
@@ -228,13 +230,13 @@ const Rewards = () => {
           {activeTab === "wallet" && (
             <Card className="mb-4">
               <Card.Header className="bg-light">
-                <h5 className="mb-0">💳 Wallet Overview</h5>
+                <h5 className="mb-0">💳 {t('rewards.walletOverview')}</h5>
               </Card.Header>
               <Card.Body>
                 <Row>
                   <Col md={6}>
                     <div className="mb-3">
-                      <label className="fw-bold text-muted">Current Balance</label>
+                      <label className="fw-bold text-muted">{t('rewards.currentBalance')}</label>
                       <div className="fs-4 text-success">
                         ₹{(customer.walletBalance || 0).toFixed(2)}
                       </div>
@@ -242,16 +244,15 @@ const Rewards = () => {
                   </Col>
                   <Col md={6}>
                     <div className="mb-3">
-                      <label className="fw-bold text-muted">Member Since</label>
+                      <label className="fw-bold text-muted">{t('rewards.memberSince')}</label>
                       <div className="fs-6">
-                        {new Date(customer.createdAt || "").toLocaleDateString() || "N/A"}
+                        {new Date(customer.createdAt || "").toLocaleDateString() || t('rewards.notAvailable')}
                       </div>
                     </div>
                   </Col>
                 </Row>
                 <div className="alert alert-info mt-3 mb-0">
-                  <strong>ℹ️ How it works:</strong> Your wallet stores reward points and discounts
-                  earned from purchases. Use your balance at checkout to get discounts!
+                  <strong>ℹ️ {t('rewards.howItWorks')}:</strong> {t('rewards.walletDescription')}
                 </div>
               </Card.Body>
             </Card>
@@ -261,7 +262,7 @@ const Rewards = () => {
           {activeTab === "transactions" && (
             <Card className="mb-4">
               <Card.Header className="bg-light">
-                <h5 className="mb-0">📊 Wallet Transactions</h5>
+                <h5 className="mb-0">📊 {t('rewards.walletTransactions')}</h5>
               </Card.Header>
               <Card.Body>
                 {transactions.length > 0 ? (
@@ -269,10 +270,10 @@ const Rewards = () => {
                     <Table striped hover>
                       <thead>
                         <tr>
-                          <th>Date</th>
-                          <th>Type</th>
-                          <th>Amount</th>
-                          <th>Description</th>
+                          <th>{t('rewards.date')}</th>
+                          <th>{t('rewards.type')}</th>
+                          <th>{t('rewards.amount')}</th>
+                          <th>{t('rewards.description')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -297,7 +298,7 @@ const Rewards = () => {
                   </div>
                 ) : (
                   <Alert variant="info" className="mb-0">
-                    No transactions yet. Start shopping to earn rewards!
+                    {t('rewards.noTransactionsYet')}
                   </Alert>
                 )}
               </Card.Body>
@@ -308,7 +309,7 @@ const Rewards = () => {
           {activeTab === "bills" && (
             <Card className="mb-4">
               <Card.Header className="bg-light">
-                <h5 className="mb-0">📋 Billing Transactions</h5>
+                <h5 className="mb-0">📋 {t('rewards.billingTransactions')}</h5>
               </Card.Header>
               <Card.Body>
                 {billTransactions.length > 0 ? (
@@ -316,12 +317,12 @@ const Rewards = () => {
                     <Table striped hover>
                       <thead>
                         <tr>
-                          <th>Bill ID</th>
-                          <th>Date</th>
-                          <th>Items</th>
-                          <th>Amount</th>
-                          <th>Discount</th>
-                          <th>Net Amount</th>
+                          <th>{t('rewards.billId')}</th>
+                          <th>{t('rewards.date')}</th>
+                          <th>{t('rewards.items')}</th>
+                          <th>{t('rewards.amount')}</th>
+                          <th>{t('rewards.discount')}</th>
+                          <th>{t('rewards.netAmount')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -344,7 +345,7 @@ const Rewards = () => {
                   </div>
                 ) : (
                   <Alert variant="info" className="mb-0">
-                    No billing transactions found.
+                    {t('rewards.noBillingTransactions')}
                   </Alert>
                 )}
               </Card.Body>
@@ -354,7 +355,7 @@ const Rewards = () => {
       ) : (
         !searched && (
           <Alert variant="info">
-            Enter a mobile number to view customer rewards and wallet details.
+            {t('rewards.enterMobileNumberforDetails')}
           </Alert>
         )
       )}

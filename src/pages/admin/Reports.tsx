@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Container, Table, Spinner, Card, Row, Col, Button } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import AdminHeader from "../../components/AdminHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 
 const ReportPage: React.FC = () => {
+  const { t } = useTranslation();
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,41 +19,41 @@ const ReportPage: React.FC = () => {
         console.error("Error fetching report:", err);
         // Handle 401 (token expired) separately
         if (err.response?.status === 401) {
-          setError("Your session has expired. Please login again.");
+          setError(t('reports.sessionExpiredMessage'));
           localStorage.removeItem("user");
           setTimeout(() => {
             window.location.href = "/login?expired=true";
           }, 2000);
         } else {
-          setError(err.message || "Failed to load report");
+          setError(err.message || t('reports.viewInventoryAndSales'));
         }
       })
       .finally(() => setLoading(false));
   }, []);
 
   if (loading)
-    return <div className="text-center mt-5"><Spinner animation="border" /> Loading report...</div>;
+    return <div className="text-center mt-5"><Spinner animation="border" /> {t('reports.loadingReport')}</div>;
 
   if (error)
-    return <div className="alert alert-danger mt-5 text-center"><h5>Session Expired</h5><p>{error}</p></div>;
+    return <div className="alert alert-danger mt-5 text-center"><h5>{t('reports.sessionExpired')}</h5><p>{error}</p></div>;
 
   if (!report)
-    return <div className="alert alert-danger mt-5 text-center">No report data available</div>;
+    return <div className="alert alert-danger mt-5 text-center">{t('reports.noReportData')}</div>;
 
   return (
     <Container className="mt-4">
       <AdminHeader 
-        title="Reports & Analytics" 
-        description="View inventory and sales reports"
+        title={t('reports.reportsAndAnalytics')} 
+        description={t('reports.viewInventoryAndSales')}
       />
 
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2 className="mb-0">📊 Inventory & Sales Report</h2>
+        <h2 className="mb-0">📊 {t('reports.inventoryAndSalesReport')}</h2>
         <Button 
           variant="primary" 
           onClick={() => navigate('/admin/detailed-reports')}
         >
-          📈 View Detailed Report with Graphs
+          📈 {t('reports.viewDetailedReports')}
         </Button>
       </div>
 
@@ -65,11 +67,11 @@ const ReportPage: React.FC = () => {
           >
             <Card.Body className="text-center">
               <div className="fs-1 mb-3">📈</div>
-              <Card.Title>Sales Report</Card.Title>
+              <Card.Title>{t('reports.salesReport')}</Card.Title>
               <Card.Text className="text-muted small">
-                Track sales performance and trends
+                {t('reports.trackSalesPerformance')}
               </Card.Text>
-              <Button variant="outline-primary" size="sm">View Details</Button>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
             </Card.Body>
           </Card>
         </Col>
@@ -81,11 +83,11 @@ const ReportPage: React.FC = () => {
           >
             <Card.Body className="text-center">
               <div className="fs-1 mb-3">📦</div>
-              <Card.Title>Inventory Report</Card.Title>
+              <Card.Title>{t('reports.inventoryReport')}</Card.Title>
               <Card.Text className="text-muted small">
-                Monitor stock levels and status
+                {t('reports.monitorsStockLevels')}
               </Card.Text>
-              <Button variant="outline-primary" size="sm">View Details</Button>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
             </Card.Body>
           </Card>
         </Col>
@@ -97,11 +99,11 @@ const ReportPage: React.FC = () => {
           >
             <Card.Body className="text-center">
               <div className="fs-1 mb-3">🏷️</div>
-              <Card.Title>Product Report</Card.Title>
+              <Card.Title>{t('reports.productReport')}</Card.Title>
               <Card.Text className="text-muted small">
-                Analyze product performance
+                {t('reports.analyzeProductPerformance')}
               </Card.Text>
-              <Button variant="outline-primary" size="sm">View Details</Button>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
             </Card.Body>
           </Card>
         </Col>
@@ -113,11 +115,11 @@ const ReportPage: React.FC = () => {
           >
             <Card.Body className="text-center">
               <div className="fs-1 mb-3">💳</div>
-              <Card.Title>Billing Report</Card.Title>
+              <Card.Title>{t('reports.billingReport')}</Card.Title>
               <Card.Text className="text-muted small">
-                Track revenue and tax metrics
+                {t('reports.trackRevenueAndTax')}
               </Card.Text>
-              <Button variant="outline-primary" size="sm">View Details</Button>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
             </Card.Body>
           </Card>
         </Col>
@@ -128,7 +130,7 @@ const ReportPage: React.FC = () => {
         <Col md={6}>
           <Card className="text-white bg-primary mb-3">
             <Card.Body>
-              <Card.Title>Total Revenue</Card.Title>
+              <Card.Title>{t('reports.totalRevenue')}</Card.Title>
               <Card.Text>₹{report.totalRevenue.toFixed(2)}</Card.Text>
             </Card.Body>
           </Card>
@@ -136,7 +138,7 @@ const ReportPage: React.FC = () => {
         <Col md={6}>
           <Card className="text-white bg-success mb-3">
             <Card.Body>
-              <Card.Title>Total Tax</Card.Title>
+              <Card.Title>{t('reports.totalTax')}</Card.Title>
               <Card.Text>₹{report.totalTax.toFixed(2)}</Card.Text>
             </Card.Body>
           </Card>
@@ -144,13 +146,13 @@ const ReportPage: React.FC = () => {
       </Row>
 
       {/* Inventory Status Table */}
-      <h4 className="mb-3">Inventory Status</h4>
+      <h4 className="mb-3">{t('reports.inventoryStatus')}</h4>
       <Table striped bordered hover responsive>
         <thead>
           <tr>
-            <th>Product ID</th>
-            <th>Available Quantity</th>
-            <th>Reserved Quantity</th>
+            <th>{t('reports.productId')}</th>
+            <th>{t('reports.availableQuantity')}</th>
+            <th>{t('reports.reservedQuantity')}</th>
           </tr>
         </thead>
         <tbody>
@@ -165,13 +167,13 @@ const ReportPage: React.FC = () => {
       </Table>
 
       {/* Product Reports Table */}
-      <h4 className="mb-3 mt-4">Product Reports</h4>
+      <h4 className="mb-3 mt-4">{t('reports.productReports')}</h4>
       <Table striped bordered hover responsive>
         <thead>
           <tr>
-            <th>Product ID</th>
-            <th>Total Purchased</th>
-            <th>Total Revenue</th>
+            <th>{t('reports.productId')}</th>
+            <th>{t('reports.totalPurchased')}</th>
+            <th>{t('reports.totalRevenue')}</th>
           </tr>
         </thead>
         <tbody>
