@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import AdminHeader from "../../components/AdminHeader";
 import InventoryEntry from "./AdminInventoryEntry";
 import InventoryList from "./AdminInventoryList";
@@ -9,20 +10,21 @@ import "./AdminInventory.css";
 type ViewMode = "LIST" | "ADD" | "EDIT" | "RELEASE";
 
 const AdminInventory: React.FC = () => {
+  const { t } = useTranslation();
   const [view, setView] = useState<ViewMode>("LIST");
 
   return (
     <div className="admin-inventory-container">
       <AdminHeader 
-        title="Inventory Management" 
-        description="Manage stock levels and batch information"
+        title={t('inventory.inventoryManagement')}
+        description={t('inventory.manageDesc')}
       />
 
       <div className="inventory-wrapper">
         <div className="inventory-header">
           <div className="header-content">
-            <h1 className="page-title">📦 Inventory Management</h1>
-            <p className="page-subtitle">Manage stock levels, batches, and expiry dates</p>
+            <h1 className="page-title">📦 {t('inventory.title')}</h1>
+            <p className="page-subtitle">{t('inventory.subtitle')}</p>
           </div>
         </div>
 
@@ -33,7 +35,7 @@ const AdminInventory: React.FC = () => {
             onClick={() => setView("LIST")}
           >
             <span className="tab-icon">👁️</span>
-            <span className="tab-label">Inventory Details</span>
+            <span className="tab-label">{t('inventory.inventoryDetails')}</span>
           </button>
 
           <button
@@ -41,7 +43,7 @@ const AdminInventory: React.FC = () => {
             onClick={() => setView("ADD")}
           >
             <span className="tab-icon">➕</span>
-            <span className="tab-label">Add Inventory</span>
+            <span className="tab-label">{t('inventory.addInventory')}</span>
           </button>
 
           <button
@@ -49,7 +51,7 @@ const AdminInventory: React.FC = () => {
             onClick={() => setView("EDIT")}
           >
             <span className="tab-icon">✏️</span>
-            <span className="tab-label">Edit Inventory</span>
+            <span className="tab-label">{t('inventory.editInventory')}</span>
           </button>
 
          

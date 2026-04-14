@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Container,
   Form,
@@ -18,6 +19,7 @@ import {
 import { adjustInventory } from "../../services/adminInventoryService";
 
 const AdminInventoryEntry: React.FC = () => {
+  const { t } = useTranslation();
 
   /* ======================
      Dropdown data
@@ -182,7 +184,7 @@ const AdminInventoryEntry: React.FC = () => {
       supplierName,              // ✅ sent to backend
       expiryDate: expiryDate
     }).then(() => {
-      setSuccess("✅ Inventory updated successfully");
+      setSuccess(`✅ ${t('inventory.savedSuccessfully')}`);
       resetForm();
     });
   };
@@ -207,19 +209,19 @@ const AdminInventoryEntry: React.FC = () => {
       <Card className="shadow">
         <Card.Body>
 
-          <Card.Title className="mb-3">📦 Inventory Entry</Card.Title>
+          <Card.Title className="mb-3">📦 {t('inventory.addInventory')}</Card.Title>
 
           {loading && <Spinner animation="border" size="sm" />}
           {success && <Alert variant="success">{success}</Alert>}
 
           {/* CATEGORY */}
           <Form.Group className="mb-3">
-            <Form.Label>Category</Form.Label>
+            <Form.Label>{t('inventory.category')}</Form.Label>
             <Form.Select
               value={category}
               onChange={e => setCategory(e.target.value)}
             >
-              <option value="">-- Select Category --</option>
+              <option value="">{t('inventory.selectCategory')}</option>
               {categories.map((c, idx) => {
                 const v = optionToString(c) || `cat-${idx}`;
                 return <option key={v} value={v}>{v}</option>;
@@ -229,22 +231,22 @@ const AdminInventoryEntry: React.FC = () => {
 
           {/* BRAND */}
           <Form.Group className="mb-3">
-            <Form.Label>🏷️ Brand</Form.Label>
+            <Form.Label>🏷️ {t('inventory.brand')}</Form.Label>
             {!category ? (
               <Form.Select disabled>
-                <option value="">👆 Select Category First</option>
+                <option value="">{t('inventory.selectCategory')}</option>
               </Form.Select>
             ) : loading ? (
               <div style={{ display: "flex", alignItems: "center", padding: "8px 12px" }}>
                 <Spinner animation="border" size="sm" style={{ marginRight: "8px" }} />
-                Loading brands...
+                {t('inventory.loading')}
               </div>
             ) : brands.length > 0 ? (
               <Form.Select
                 value={brand ?? ""}
                 onChange={e => setBrand(e.target.value ? Number(e.target.value) : null)}
               >
-                <option value="">-- Select Brand --</option>
+                <option value="">{t('inventory.selectCategory')}</option>
                 {brands.map((b) => {
                   const brandObj = b as any;
                   return <option key={brandObj.id} value={brandObj.id}>{brandObj.brand}</option>;
@@ -252,20 +254,20 @@ const AdminInventoryEntry: React.FC = () => {
               </Form.Select>
             ) : (
               <div style={{ padding: "8px 12px", color: "#dc3545", fontSize: "14px" }}>
-                ⚠️ No brands mapped to this category
+                ⚠️ {t('inventory.noBrandsMapped')}
               </div>
             )}
           </Form.Group>
 
           {/* PRODUCT NAME */}
           <Form.Group className="mb-3">
-            <Form.Label>Product Name</Form.Label>
+            <Form.Label>{t('inventory.productName')}</Form.Label>
             <Form.Select
               value={sku}
               disabled={!brand}
               onChange={e => setSku(e.target.value)}
             >
-              <option value="">-- Select Product --</option>
+              <option value="">{t('inventory.selectProduct')}</option>
               {names.map((n, idx) => {
                 const v = optionToString(n) || `name-${idx}`;
                 return <option key={v} value={v}>{v}</option>;
@@ -276,20 +278,20 @@ const AdminInventoryEntry: React.FC = () => {
           {/* PRODUCT INFO */}
           {product && (
             <Alert variant="info">
-              <strong>SKU:</strong> {product.sku}<br />
-              <strong>Price:</strong> ₹{product.price}<br />
-              <strong>Unit:</strong> {product.unit}
+              <strong>{t('inventory.sku')}:</strong> {product.sku}<br />
+              <strong>{t('inventory.unitCost')}:</strong> ₹{product.price}<br />
+              <strong>{t('inventory.unit')}:</strong> {product.unit}
             </Alert>
           )}
           {productError && (
-            <Alert variant="danger">Failed to load product: {productError}</Alert>
+            <Alert variant="danger">{t('inventory.failedToLoad')}: {productError}</Alert>
           )}
 
           {/* SUPPLIER */}
           <Form.Group className="mb-3">
-            <Form.Label>Supplier Name</Form.Label>
+            <Form.Label>{t('inventory.supplier')}</Form.Label>
             <Form.Control
-              placeholder="Enter supplier name"
+              placeholder={t('inventory.enterSupplier')}
               value={supplierName}
               onChange={e => setSupplierName(e.target.value)}
             />
@@ -298,7 +300,7 @@ const AdminInventoryEntry: React.FC = () => {
           {/* CONFIRM */}
           <Form.Check
             type="checkbox"
-            label="Confirm selected product"
+            label={t('inventory.confirmProduct')}
             className="mb-3"
             checked={confirmed}
             onChange={e => setConfirmed(e.target.checked)}
@@ -306,12 +308,12 @@ const AdminInventoryEntry: React.FC = () => {
 
           {/* QUANTITY */}
           <Form.Group className="mb-3">
-            <Form.Label>Quantity (IN)</Form.Label>
+            <Form.Label>{t('inventory.quantity')}</Form.Label>
             <Form.Select
               value={String(quantity || "")}
               onChange={e => setQuantity(Number(e.target.value))}
             >
-              <option value="">-- Select Quantity --</option>
+              <option value="">{t('inventory.enterQuantity')}</option>
               {presetQuantities.map(q => (
                 <option key={q} value={q}>{q}</option>
               ))}
@@ -320,7 +322,7 @@ const AdminInventoryEntry: React.FC = () => {
 
           {/* EXPIRY DATE */}
           <Form.Group className="mb-3">
-            <Form.Label>Expiry Date *</Form.Label>
+            <Form.Label>{t('inventory.expiryDate')} *</Form.Label>
             <Form.Control
               type="date"
               value={expiryDate ?? ""}
@@ -328,15 +330,15 @@ const AdminInventoryEntry: React.FC = () => {
               isInvalid={!expiryDate && confirmed}
             />
             <Form.Control.Feedback type="invalid">
-              Expiry Date is required
+              {t('inventory.expiryDateRequired')}
             </Form.Control.Feedback>
           </Form.Group>
 
           {/* REMARKS */}
           <Form.Group className="mb-3">
-            <Form.Label>Remarks</Form.Label>
+            <Form.Label>{t('inventory.remarks')}</Form.Label>
             <Form.Control
-              placeholder="Initial stock"
+              placeholder={t('inventory.initialStock')}
               value={remarks}
               onChange={e => setRemarks(e.target.value)}
             />
@@ -348,7 +350,7 @@ const AdminInventoryEntry: React.FC = () => {
             disabled={!product || !confirmed || quantity <= 0 || !expiryDate}
             onClick={handleSubmit}
           >
-            Update Inventory
+            {t('inventory.save')}
           </Button>
 
         </Card.Body>

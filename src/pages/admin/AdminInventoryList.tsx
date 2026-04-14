@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal } from "react-bootstrap";
 import api from "../../services/api";
 import {
@@ -47,6 +48,7 @@ const EXPIRY_WARNING_DAYS = 30;
 ======================= */
 
 const InventoryList: React.FC = () => {
+  const { t } = useTranslation();
   const [data, setData] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingBrands, setLoadingBrands] = useState(false);
@@ -302,9 +304,9 @@ const InventoryList: React.FC = () => {
     const exp = new Date(expiry);
     const diffDays = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
 
-    if (diffDays < 0) return <span className="badge badge-danger">Expired</span>;
-    if (diffDays <= EXPIRY_WARNING_DAYS) return <span className="badge badge-warning">Near Expiry</span>;
-    return <span className="badge badge-success">Valid</span>;
+    if (diffDays < 0) return <span className="badge badge-danger">{t('inventory.expired')}</span>;
+    if (diffDays <= EXPIRY_WARNING_DAYS) return <span className="badge badge-warning">{t('inventory.nearExpiry')}</span>;
+    return <span className="badge badge-success">{t('inventory.valid')}</span>;
   };
 
   /* =======================
@@ -317,7 +319,7 @@ const InventoryList: React.FC = () => {
         <div className="spinner">
           <div className="spinner-ring"></div>
         </div>
-        <p className="loading-text">Loading inventory...</p>
+        <p className="loading-text">{t('inventory.loading')}</p>
       </div>
     );
   }
@@ -327,7 +329,7 @@ const InventoryList: React.FC = () => {
       {/* Filter Panel */}
       <div className="filter-panel">
         <div className="filter-panel-header">
-          <h2 className="filter-panel-title">🔍 Advanced Filters</h2>
+          <h2 className="filter-panel-title">🔍 {t('inventory.filters')}</h2>
           {(search || filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
             <button
               onClick={() => {
@@ -341,7 +343,7 @@ const InventoryList: React.FC = () => {
               }}
               className="clear-filters-btn"
             >
-              ✕ Clear All Filters
+              ✕ {t('inventory.clearFilters')}
             </button>
           )}
         </div>
@@ -351,7 +353,7 @@ const InventoryList: React.FC = () => {
           <span className="search-icon">🔍</span>
           <input
             type="text"
-            placeholder="Search by SKU or Product Name..."
+            placeholder={t('inventory.searchBySkuProduct')}
             value={search}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               setSearch(e.target.value);
@@ -365,14 +367,14 @@ const InventoryList: React.FC = () => {
         <div className="filter-grid">
           {/* Category Filter */}
           <div className="filter-item">
-            <label className="filter-item-label">📁 Category</label>
+            <label className="filter-item-label">📁 {t('inventory.category')}</label>
             <select
               value={filterCategory}
               onChange={(e) => handleCategoryChange(e.target.value)}
               className="filter-item-select"
               disabled={loading}
             >
-              <option value="">All Categories</option>
+              <option value="">{t('inventory.allCategories')}</option>
               {categories
                 .filter(cat => cat.isActive)
                 .map(cat => (
@@ -385,7 +387,7 @@ const InventoryList: React.FC = () => {
 
           {/* Brand Filter */}
           <div className="filter-item">
-            <label className="filter-item-label">🏷️ Brand</label>
+            <label className="filter-item-label">🏷️ {t('inventory.brand')}</label>
             <select
               value={filterBrand}
               onChange={(e) => {
@@ -397,7 +399,7 @@ const InventoryList: React.FC = () => {
               className="filter-item-select"
             >
               <option value="">
-                {!filterCategory ? 'Select Category First' : loadingBrands ? 'Loading...' : 'All Brands'}
+                {!filterCategory ? t('inventory.selectCategoryFirst') : loadingBrands ? t('inventory.loadingBrands') : t('inventory.allBrands')}
               </option>
               {brands.map(brand => (
                 <option key={brand.id} value={brand.id.toString()}>
@@ -409,7 +411,7 @@ const InventoryList: React.FC = () => {
 
           {/* Stock Status Filter */}
           <div className="filter-item">
-            <label className="filter-item-label">📦 Stock Status</label>
+            <label className="filter-item-label">📦 {t('inventory.stockStatus')}</label>
             <select
               value={filterStockStatus}
               onChange={(e) => {
@@ -418,15 +420,15 @@ const InventoryList: React.FC = () => {
               }}
               className="filter-item-select"
             >
-              <option value="all">All Stock</option>
-              <option value="in-stock">✅ In Stock</option>
-              <option value="low">⚠️ Low Stock</option>
+              <option value="all">{t('inventory.allStock')}</option>
+              <option value="in-stock">✅ {t('inventory.inStock')}</option>
+              <option value="low">⚠️ {t('inventory.lowStock')}</option>
             </select>
           </div>
 
           {/* Expiry Status Filter */}
           <div className="filter-item">
-            <label className="filter-item-label">⏰ Expiry Status</label>
+            <label className="filter-item-label">⏰ {t('inventory.expiryStatus')}</label>
             <select
               value={filterExpiryStatus}
               onChange={(e) => {
@@ -435,26 +437,26 @@ const InventoryList: React.FC = () => {
               }}
               className="filter-item-select"
             >
-              <option value="all">All Items</option>
-              <option value="valid">✅ Valid</option>
-              <option value="near-expiry">🔔 Near Expiry</option>
-              <option value="expired">❌ Expired</option>
+              <option value="all">{t('inventory.allItems')}</option>
+              <option value="valid">✅ {t('inventory.valid')}</option>
+              <option value="near-expiry">🔔 {t('inventory.nearExpiry')}</option>
+              <option value="expired">❌ {t('inventory.expired')}</option>
             </select>
           </div>
 
           {/* Items Per Page */}
           <div className="filter-item">
-            <label className="filter-item-label">📄 Items Per Page</label>
+            <label className="filter-item-label">📄 {t('inventory.itemsPerPage')}</label>
             <select
               value={itemsPerPage}
               onChange={(e) => setItemsPerPage(Number(e.target.value))}
               className="filter-item-select"
             >
-              <option value={5}>5 items</option>
-              <option value={10}>10 items</option>
-              <option value={20}>20 items</option>
-              <option value={50}>50 items</option>
-              <option value={100}>100 items</option>
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
             </select>
           </div>
         </div>
@@ -462,10 +464,10 @@ const InventoryList: React.FC = () => {
         {/* Active Filters Display */}
         {(search || filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
           <div className="active-filters">
-            <span className="active-filters-label">Active Filters:</span>
+            <span className="active-filters-label">{t('inventory.activeFilters')}:</span>
             {search && <span className="filter-badge">🔍 {search}</span>}
             {filterCategory && <span className="filter-badge">📁 {filterCategory}</span>}
-            {filterBrand && <span className="filter-badge">🏷️ Brand: {filterBrand}</span>}
+            {filterBrand && <span className="filter-badge">🏷️ {t('inventory.brand')}: {filterBrand}</span>}
             {filterStockStatus !== "all" && <span className="filter-badge">📦 {filterStockStatus.replace('-', ' ').toUpperCase()}</span>}
             {filterExpiryStatus !== "all" && <span className="filter-badge">⏰ {filterExpiryStatus.replace('-', ' ').toUpperCase()}</span>}
           </div>
@@ -477,17 +479,17 @@ const InventoryList: React.FC = () => {
         <div className="results-summary">
           <div className="summary-left">
             <span className="summary-stat">
-              <strong>{totalRecords}</strong> Products Found
+              <strong>{totalRecords}</strong> {t('inventory.productsFound')}
             </span>
             <span className="summary-divider">•</span>
             <span className="summary-stat">
-              Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to{" "}
+              {t('inventory.showing')} <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> {t('inventory.to')}{" "}
               <strong>{Math.min(currentPage * itemsPerPage, totalRecords)}</strong>
             </span>
           </div>
           <div className="summary-right">
             <span className="summary-page">
-              Page <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
+              {t('inventory.page')} <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
             </span>
           </div>
         </div>
@@ -505,7 +507,7 @@ const InventoryList: React.FC = () => {
                       <h3 className="product-name">{product.productName}</h3>
                       <div className="product-sku-section">
                         <div className="product-sku">
-                          SKU: <strong>{product.productSku}</strong>
+                          {t('inventory.sku')}: <strong>{product.productSku}</strong>
                         </div>
                         {product.barcode && (
                           <div className="product-sku-barcode">
@@ -524,7 +526,7 @@ const InventoryList: React.FC = () => {
                       </div>
                     </div>
                     <div className="product-qty-badge">
-                      Total Qty: <strong>{product.totalQty}</strong>
+                      {t('inventory.totalQty')}: <strong>{product.totalQty}</strong>
                     </div>
                   </div>
 
@@ -533,11 +535,11 @@ const InventoryList: React.FC = () => {
                     <table className="batches-table">
                       <thead>
                         <tr>
-                          <th>Batch No</th>
-                          <th>Expiry Date</th>
-                          <th className="text-center">Quantity</th>
-                          <th className="text-center">Expiry Status</th>
-                          <th className="text-center">Stock Status</th>
+                          <th>{t('inventory.batchNo')}</th>
+                          <th>{t('inventory.expiryDate')}</th>
+                          <th className="text-center">{t('inventory.quantity')}</th>
+                          <th className="text-center">{t('inventory.expiryStatusColumn')}</th>
+                          <th className="text-center">{t('inventory.stockStatusColumn')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -553,9 +555,9 @@ const InventoryList: React.FC = () => {
                               <td className="status-cell">{getExpiryBadge(batch.expiry)}</td>
                               <td className="stock-status">
                                 {isLowStock ? (
-                                  <span className="badge badge-danger">Low Stock</span>
+                                  <span className="badge badge-danger">{t('inventory.lowStock')}</span>
                                 ) : (
-                                  <span className="badge badge-success">In Stock</span>
+                                  <span className="badge badge-success">{t('inventory.inStock')}</span>
                                 )}
                               </td>
                             </tr>
@@ -579,14 +581,14 @@ const InventoryList: React.FC = () => {
                           </div>
                           <div className="batch-body">
                             <div className="batch-qty">
-                              Qty: <strong>{batch.qty}</strong>
+                              {t('inventory.qty')}: <strong>{batch.qty}</strong>
                             </div>
                             <div className="batch-badges">
                               <div>{getExpiryBadge(batch.expiry)}</div>
                               {isLowStock ? (
-                                <span className="badge badge-danger">Low Stock</span>
+                                <span className="badge badge-danger">{t('inventory.lowStock')}</span>
                               ) : (
-                                <span className="badge badge-success">In Stock</span>
+                                <span className="badge badge-success">{t('inventory.inStock')}</span>
                               )}
                             </div>
                           </div>
@@ -623,7 +625,7 @@ const InventoryList: React.FC = () => {
                   fontSize: "13px"
                 }}
               >
-                ← Previous
+                ← {t('inventory.previous')}
               </button>
               
               <div className="pagination-info" style={{
@@ -632,7 +634,7 @@ const InventoryList: React.FC = () => {
                 alignItems: "center",
                 fontSize: "13px"
               }}>
-                <span>Page</span>
+                <span>{t('inventory.page')}</span>
                 <input
                   type="number"
                   min="1"
@@ -650,7 +652,7 @@ const InventoryList: React.FC = () => {
                     textAlign: "center"
                   }}
                 />
-                <span>of <strong>{totalPages}</strong></span>
+                <span>{t('inventory.of')} <strong>{totalPages}</strong></span>
               </div>
               
               <button
@@ -666,7 +668,7 @@ const InventoryList: React.FC = () => {
                   fontSize: "13px"
                 }}
               >
-                Next →
+                {t('inventory.next')} →
               </button>
             </div>
           )}
@@ -674,9 +676,9 @@ const InventoryList: React.FC = () => {
       ) : (
         <div className="empty-state">
           <div className="empty-icon">📦</div>
-          <h3 className="empty-title">No Inventory Items Found</h3>
+          <h3 className="empty-title">{t('inventory.noInventoryItemsFound')}</h3>
           <p className="empty-message">
-            {search ? `No inventory matches "${search}"` : (filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") ? "No items match the selected filters" : "Start by adding your first inventory item"}
+            {search ? `${t('inventory.noInventoryMatches')} "${search}"` : (filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") ? t('inventory.noItemsMatchFilters') : t('inventory.startByAddingFirst')}
           </p>
         </div>
       )}
@@ -684,7 +686,7 @@ const InventoryList: React.FC = () => {
       {/* Barcode Preview Modal */}
       <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
         <Modal.Header closeButton>
-          <Modal.Title>Barcode Preview</Modal.Title>
+          <Modal.Title>{t('inventory.barcodePreview')}</Modal.Title>
         </Modal.Header>
         <Modal.Body className="text-center">
           {barcodePreview ? (
@@ -700,12 +702,12 @@ const InventoryList: React.FC = () => {
                   download="barcode.png"
                   className="btn btn-outline-primary btn-sm"
                 >
-                  📥 Download
+                  📥 {t('inventory.download')}
                 </a>
               </div>
             </>
           ) : (
-            <div className="text-muted">No preview available</div>
+            <div className="text-muted">{t('inventory.noPreviewAvailable')}</div>
           )}
         </Modal.Body>
       </Modal>
