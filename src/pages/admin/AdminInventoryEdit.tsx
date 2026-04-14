@@ -12,7 +12,6 @@ import {
 } from "../../services/inventoryService";
 import {
   getActiveCategories,
-  getActiveBrands,
   getBrandsByCategory,
   getNamesByBrand,
   getProductBySku,
@@ -35,7 +34,6 @@ const AdminInventoryEdit: React.FC = () => {
   
   // CASCADING DROPDOWN STATES
   const [categories, setCategories] = useState<Category[]>([]);
-  const [allBrands, setAllBrands] = useState<Brand[]>([]);
   const [filteredBrands, setFilteredBrands] = useState<Brand[]>([]);
   const [productSkus, setProductSkus] = useState<string[]>([]);
   // selectedProduct removed - no longer needed for display
@@ -239,19 +237,6 @@ const AdminInventoryEdit: React.FC = () => {
     }
   };
 
-  const loadAllBrands = async () => {
-    try {
-      setCascadeLoading(true);
-      const res = await getActiveBrands();
-      setAllBrands(res.data || []);
-    } catch (err) {
-      console.error("Failed to load brands:", err);
-      setAllBrands([]);
-    } finally {
-      setCascadeLoading(false);
-    }
-  };
-
   const handleCategoryChange = (categoryName: string) => {
     setSelectedCategory(categoryName);
     setSelectedBrand("");
@@ -266,29 +251,37 @@ const AdminInventoryEdit: React.FC = () => {
       return;
     }
 
-    // Filter brands by category
+    // Find category ID and load mapped brands
     try {
       setCascadeLoading(true);
-      getBrandsByCategory(categoryName)
+      const categoryObj = categories.find(c => c.category === categoryName);
+      
+      if (!categoryObj) {
+        setFilteredBrands([]);
+        setCascadeLoading(false);
+        return;
+      }
+
+      // Load brands mapped to this category by ID
+      getBrandsByCategory(categoryObj.id)
         .then((res) => {
-          const brandNames = res.data || [];
-          const filtered = allBrands.filter(b => brandNames.includes(b.brand));
-          setFilteredBrands(filtered);
+          // API now returns Brand objects directly
+          setFilteredBrands(res.data || []);
         })
         .catch((err) => {
-          console.error("Failed to filter brands:", err);
+          console.error("Failed to load mapped brands:", err);
           setFilteredBrands([]);
         })
         .finally(() => setCascadeLoading(false));
     } catch (err) {
-      console.error("Failed to filter brands:", err);
+      console.error("Failed to handle category change:", err);
       setFilteredBrands([]);
       setCascadeLoading(false);
     }
   };
 
   const handleBrandChange = (brandId: string) => {
-    const brand = allBrands.find(b => b.id === Number(brandId));
+    const brand = filteredBrands.find(b => b.id === Number(brandId));
     setSelectedBrand(brandId);
     setSelectedProductName("");
     setSelectedProductId(null);
@@ -371,8 +364,7 @@ const AdminInventoryEdit: React.FC = () => {
         loadInventory(),
         loadBatches(),
         loadReservedItems(),
-        loadCascadeCategories(),
-        loadAllBrands()
+        loadCascadeCategories()
       ]);
       setLoading(false);
     };

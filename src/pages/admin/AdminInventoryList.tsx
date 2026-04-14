@@ -1,11 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "react-bootstrap";
 import api from "../../services/api";
+import {
+  getActiveCategories,
+  getBrandsByCategory,
+  type Brand
+} from "../../services/productService";
 import "./AdminInventoryList.css";
 
 /* =======================
    Interfaces
 ======================= */
+
+interface Category {
+  id: number;
+  category: string;
+  isActive: boolean;
+}
 
 interface Batch {
   batchNo: string;
@@ -20,6 +31,8 @@ interface InventoryProduct {
   totalQty: number;
   batches: Batch[];
   barcode?: string;
+  category?: string;
+  brandId?: number;
 }
 
 /* =======================
@@ -35,91 +48,250 @@ const EXPIRY_WARNING_DAYS = 30;
 
 const InventoryList: React.FC = () => {
   const [data, setData] = useState<InventoryProduct[]>([]);
-  const [filteredData, setFilteredData] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [loadingBrands, setLoadingBrands] = useState(false);
   const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   
+  // Categories and Brands
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  
   // Pagination & Filters
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  
+  const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterBrand, setFilterBrand] = useState("");
   const [filterStockStatus, setFilterStockStatus] = useState<"all" | "low" | "in-stock">("all");
   const [filterExpiryStatus, setFilterExpiryStatus] = useState<"all" | "valid" | "near-expiry" | "expired">("all");
 
   /* =======================
-     Load Inventory
+     Load Categories on Mount
   ======================= */
 
   useEffect(() => {
-    const loadInventory = async () => {
+    const loadCategories = async () => {
       try {
-        const res = await api.get("/inventory");
-        const inventoryData = res.data as InventoryProduct[];
-        
-        // Fetch product details including barcode for each product
-        const enrichedData = await Promise.all(
-          inventoryData.map(async (product) => {
-            try {
-              const productRes = await api.get(`/products/${product.productId}`);
-              return {
-                ...product,
-                barcode: productRes.data?.barcode || undefined
-              };
-            } catch (error) {
-              console.error(`Failed to fetch product ${product.productId}`, error);
-              return product;
-            }
-          })
-        );
-        
-        setData(enrichedData);
-        setFilteredData(enrichedData);
-      } finally {
-        setLoading(false);
+        const res = await getActiveCategories();
+        setCategories(res.data || []);
+      } catch (error) {
+        console.error("Failed to load categories:", error);
       }
     };
 
-    loadInventory();
+    loadCategories();
   }, []);
 
   /* =======================
-     Search & Filter Logic
+     Load Brands by Category
+  ======================= */
+
+  const loadBrandsByCategory = async (categoryName: string) => {
+    if (!categoryName) {
+      console.log('⚠️ No category selected, clearing brands');
+      setBrands([]);
+      setFilterBrand("");
+      return;
+    }
+
+    try {
+      setLoadingBrands(true);
+      const categoryObj = categories.find(cat => cat.category === categoryName);
+      if (!categoryObj || !categoryObj.id) {
+        console.warn('⚠️ Category ID not found');
+        setBrands([]);
+        return;
+      }
+
+      const categoryId = categoryObj.id;
+      console.log('📡 Loading brands for categoryId:', categoryId);
+      
+      const response = await getBrandsByCategory(categoryId);
+      console.log('✅ Brands loaded:', response.data?.length);
+      setBrands(response.data || []);
+    } catch (error) {
+      console.error("Failed to load brands:", error);
+      setBrands([]);
+    } finally {
+      setLoadingBrands(false);
+    }
+  };
+
+  /* =======================
+     Handle Category Change
+  ======================= */
+
+  const handleCategoryChange = (categoryName: string) => {
+    console.log('📌 Category selected:', categoryName);
+    setFilterCategory(categoryName);
+    setFilterBrand(''); // Reset brand when category changes
+    setCurrentPage(1);
+    loadBrandsByCategory(categoryName);
+  };
+
+  const loadInventory = async (page: number, searchTerm: string, category: string, brand: string, stockStatus: string, expiryStatus: string, pageSize?: number) => {
+    try {
+      setLoading(true);
+      
+      const finalPageSize = pageSize || itemsPerPage;
+
+      // Build query parameters to send to API
+      const params = new URLSearchParams();
+      params.append("page", page.toString());
+      params.append("limit", finalPageSize.toString());
+      
+      // Add filter parameters to API
+      if (stockStatus && stockStatus !== "all") {
+        params.append("stockStatus", stockStatus);
+      }
+      if (expiryStatus && expiryStatus !== "all") {
+        params.append("expiryStatus", expiryStatus);
+      }
+      
+      const queryString = params.toString();
+      const fullUrl = `/inventory?${queryString}`;
+      
+      console.log('📡 API URL:', fullUrl);
+      console.log('📡 Filters being sent to API:', {
+        stockStatus: stockStatus || "all",
+        expiryStatus: expiryStatus || "all"
+      });
+
+      const res = await api.get(fullUrl);
+      console.log('📩 RAW API Response:', res);
+      
+      // Handle different response formats
+      let inventoryData = [];
+      if (res.data?.data && Array.isArray(res.data.data)) {
+        inventoryData = res.data.data;
+        console.log('✅ Found data in res.data.data');
+      } else if (Array.isArray(res.data)) {
+        inventoryData = res.data;
+        console.log('✅ Found data in res.data (direct array)');
+      } else if (res.data?.content && Array.isArray(res.data.content)) {
+        inventoryData = res.data.content;
+        console.log('✅ Found data in res.data.content');
+      }
+      
+      console.log('📦 Total items from API:', inventoryData.length);
+      console.log('📦 Sample item structure:', inventoryData[0]);
+
+      // Fetch product details to get category and brand for each product
+      console.log('🔄 Enriching data with product category and brand info...');
+      const enrichedData = await Promise.all(
+        inventoryData.map(async (product: any) => {
+          try {
+            const productId = product.productId || product.id;
+            if (!productId) {
+              console.warn('⚠️ No productId found in:', product);
+              return product;
+            }
+            
+            const productRes = await api.get(`/products/${productId}`);
+            return {
+              productId: productId,
+              productSku: product.productSku || product.sku || '',
+              productName: product.productName || product.name || '',
+              totalQty: product.totalQty || product.qty || 0,
+              batches: product.batches || [],
+              category: productRes.data?.category || product.category,
+              brandId: productRes.data?.brandId || product.brandId,
+              barcode: productRes.data?.barcode || undefined
+            };
+          } catch (error) {
+            console.error(`Failed to fetch product ${product.productId || product.id}:`, error);
+            return {
+              productId: product.productId || product.id,
+              productSku: product.productSku || product.sku || '',
+              productName: product.productName || product.name || '',
+              totalQty: product.totalQty || product.qty || 0,
+              batches: product.batches || [],
+              category: product.category,
+              brandId: product.brandId
+            };
+          }
+        })
+      );
+      
+      console.log('✅ Enriched data with category/brand:', enrichedData);
+
+      // NOW apply CLIENT-SIDE filters for category and brand (since backend doesn't support them)
+      console.log('🔍 Applying CLIENT-SIDE filters:', {
+        search: searchTerm,
+        category,
+        brand
+      });
+      
+      let filteredData = enrichedData;
+      
+      // Search filter (client-side)
+      if (searchTerm) {
+        filteredData = filteredData.filter((product: any) => {
+          const term = searchTerm.toLowerCase();
+          const productName = (product.productName || '').toLowerCase();
+          const productSku = (product.productSku || '').toLowerCase();
+          return productName.includes(term) || productSku.includes(term);
+        });
+      }
+      
+      // Category filter (client-side)
+      if (category && category !== "all") {
+        filteredData = filteredData.filter((product: any) => {
+          console.log(`Checking product ${product.productId}: category="${product.category}" vs filter="${category}"`);
+          return product.category === category;
+        });
+      }
+      
+      // Brand filter (client-side)
+      if (brand && brand !== "all") {
+        filteredData = filteredData.filter((product: any) => {
+          console.log(`Checking product ${product.productId}: brandId="${product.brandId}" vs filter="${brand}"`);
+          return product.brandId?.toString() === brand;
+        });
+      }
+      
+      console.log('✅ After filtering:', filteredData.length, 'items');
+      
+      // For client-side filtering on category/brand, calculate total on filtered data
+      const total = filteredData.length;
+      const totalPages = Math.ceil(total / finalPageSize);
+      
+      console.log('📄 Pagination (on all filtered data):', {
+        total,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: finalPageSize
+      });
+
+      setData(filteredData);
+      setTotalRecords(total);
+      setTotalPages(totalPages);
+    } catch (error) {
+      console.error("❌ Failed to load inventory:", error);
+      setData([]);
+      setTotalRecords(0);
+      setTotalPages(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* =======================
+     Trigger Load on Filter/Page Change
   ======================= */
 
   useEffect(() => {
-    const q = search.toLowerCase();
-    let filtered = data.filter(p => p.productName.toLowerCase().includes(q) || p.productSku.toLowerCase().includes(q));
-
-    // Stock status filter
-    if (filterStockStatus !== "all") {
-      filtered = filtered.filter(product => {
-        const hasLowStock = product.batches.some(b => b.qty <= LOW_STOCK_LIMIT);
-        return filterStockStatus === "low" ? hasLowStock : !hasLowStock;
-      });
-    }
-
-    // Expiry status filter
-    if (filterExpiryStatus !== "all") {
-      filtered = filtered.filter(product => {
-        const today = new Date();
-        const statusMap = product.batches.map(batch => {
-          const exp = new Date(batch.expiry);
-          const diffDays = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-          if (diffDays < 0) return "expired";
-          if (diffDays <= EXPIRY_WARNING_DAYS) return "near-expiry";
-          return "valid";
-        });
-        if (filterExpiryStatus === "valid") return statusMap.includes("valid");
-        if (filterExpiryStatus === "near-expiry") return statusMap.includes("near-expiry");
-        if (filterExpiryStatus === "expired") return statusMap.includes("expired");
-        return true;
-      });
-    }
-
-    setFilteredData(filtered);
+    // Reset to page 1 if itemsPerPage changes
     setCurrentPage(1);
-  }, [search, data, filterStockStatus, filterExpiryStatus]);
+  }, [itemsPerPage]);
+
+  useEffect(() => {
+    loadInventory(currentPage, search, filterCategory, filterBrand, filterStockStatus, filterExpiryStatus, itemsPerPage);
+  }, [currentPage, search, filterCategory, filterBrand, filterStockStatus, filterExpiryStatus, itemsPerPage]);
 
   /* =======================
      Helpers
@@ -150,8 +322,6 @@ const InventoryList: React.FC = () => {
     );
   }
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-
   return (
     <div className="inventory-list-container">
       {/* Search & Filter Header */}
@@ -175,6 +345,51 @@ const InventoryList: React.FC = () => {
 
         {/* Filter Controls */}
         <div className="filter-controls">
+          {/* Category Filter */}
+          <div className="filter-group">
+            <label className="filter-label">📁 Category:</label>
+            <select
+              value={filterCategory}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+              className="filter-select"
+              disabled={loading}
+            >
+              <option value="">All Categories</option>
+              {categories
+                .filter(cat => cat.isActive)
+                .map(cat => (
+                  <option key={cat.id} value={cat.category}>
+                    {cat.category}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Brand Filter */}
+          <div className="filter-group">
+            <label className="filter-label">🏷️ Brand:</label>
+            <select
+              value={filterBrand}
+              onChange={(e) => {
+                console.log('📌 Brand selected:', e.target.value);
+                setFilterBrand(e.target.value);
+                setCurrentPage(1);
+              }}
+              disabled={!filterCategory || loadingBrands}
+              className="filter-select"
+            >
+              <option value="">
+                {!filterCategory ? 'Select Category First' : loadingBrands ? 'Loading...' : 'All Brands'}
+              </option>
+              {brands.map(brand => (
+                <option key={brand.id} value={brand.id.toString()}>
+                  {brand.brand}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stock Status Filter */}
           <div className="filter-group">
             <label className="filter-label">Stock Status:</label>
             <select
@@ -209,12 +424,15 @@ const InventoryList: React.FC = () => {
           </div>
 
           {/* Clear Filters Button */}
-          {(search || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
+          {(search || filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
             <button
               onClick={() => {
                 setSearch("");
+                setFilterCategory("");
+                setFilterBrand("");
                 setFilterStockStatus("all");
                 setFilterExpiryStatus("all");
+                setBrands([]);
                 setCurrentPage(1);
               }}
               className="clear-filters-btn"
@@ -223,24 +441,64 @@ const InventoryList: React.FC = () => {
             </button>
           )}
         </div>
+
+        {/* Page Size Selector */}
+        <div style={{
+          marginTop: "12px",
+          display: "flex",
+          alignItems: "center",
+          gap: "10px"
+        }}>
+          <label style={{ fontSize: "13px", fontWeight: "600", marginBottom: 0 }}>
+            📄 Items per page:
+          </label>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => setItemsPerPage(Number(e.target.value))}
+            style={{
+              fontSize: "13px",
+              padding: "6px 10px",
+              borderRadius: "4px",
+              border: "1px solid #ddd",
+              cursor: "pointer"
+            }}
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
       </div>
 
       {/* Results Info */}
-      {filteredData.length > 0 && (
-        <div className="results-info">
-          Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to{" "}
-          <strong>{Math.min(currentPage * itemsPerPage, filteredData.length)}</strong> of{" "}
-          <strong>{filteredData.length}</strong> products
+      {totalRecords > 0 && (
+        <div className="results-info" style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "12px",
+          background: "#f5f5f5",
+          borderRadius: "4px",
+          marginBottom: "16px"
+        }}>
+          <div>
+            Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to{" "}
+            <strong>{Math.min(currentPage * itemsPerPage, totalRecords)}</strong> of{" "}
+            <strong>{totalRecords}</strong> products
+          </div>
+          <div style={{ fontSize: "13px", color: "#666" }}>
+            Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+          </div>
         </div>
       )}
 
       {/* Product Cards */}
-      {filteredData.length > 0 ? (
+      {data.length > 0 ? (
         <>
           <div className="inventory-products">
-            {filteredData
-              .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-              .map((product) => (
+            {data.map((product) => (
                 <div key={product.productId} className="product-card">
                   {/* Product Header */}
                   <div className="product-header">
@@ -342,23 +600,72 @@ const InventoryList: React.FC = () => {
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="pagination-container">
+          {totalRecords > 0 && (
+            <div className="pagination-container" style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "12px",
+              marginTop: "20px",
+              padding: "16px",
+              background: "#f9f9f9",
+              borderRadius: "4px"
+            }}>
               <button
                 onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
+                disabled={currentPage === 1 || loading}
                 className="pagination-btn pagination-prev"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  background: currentPage === 1 ? "#f0f0f0" : "#fff",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                  fontSize: "13px"
+                }}
               >
                 ← Previous
               </button>
-              <div className="pagination-info">
-                Page <span className="current-page">{currentPage}</span> of{" "}
-                <span className="total-pages">{totalPages}</span>
+              
+              <div className="pagination-info" style={{
+                display: "flex",
+                gap: "8px",
+                alignItems: "center",
+                fontSize: "13px"
+              }}>
+                <span>Page</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={totalPages}
+                  value={currentPage}
+                  onChange={(e) => {
+                    const page = Math.max(1, Math.min(totalPages, Number(e.target.value)));
+                    setCurrentPage(page);
+                  }}
+                  style={{
+                    width: "50px",
+                    padding: "6px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    textAlign: "center"
+                  }}
+                />
+                <span>of <strong>{totalPages}</strong></span>
               </div>
+              
               <button
                 onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
+                disabled={currentPage === totalPages || loading}
                 className="pagination-btn pagination-next"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  background: currentPage === totalPages ? "#f0f0f0" : "#fff",
+                  cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                  fontSize: "13px"
+                }}
               >
                 Next →
               </button>
@@ -370,7 +677,7 @@ const InventoryList: React.FC = () => {
           <div className="empty-icon">📦</div>
           <h3 className="empty-title">No Inventory Items Found</h3>
           <p className="empty-message">
-            {search ? `No inventory matches "${search}"` : "Start by adding your first inventory item"}
+            {search ? `No inventory matches "${search}"` : (filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") ? "No items match the selected filters" : "Start by adding your first inventory item"}
           </p>
         </div>
       )}

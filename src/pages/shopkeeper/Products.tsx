@@ -9,7 +9,7 @@ import api from "../../services/api";
 import {
   getAllProducts,
   getProductByBarcode,
-  getActiveBrands,
+  getBrandsByCategory,
   type Product,
   type Brand
 } from "../../services/productService";
@@ -24,6 +24,7 @@ interface Category {
 const Products: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingBrands, setLoadingBrands] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
 
@@ -77,20 +78,41 @@ const Products: React.FC = () => {
     }
   };
 
-  const loadBrandsByCategory = async () => {
+  const loadBrandsByCategory = async (categoryName: string) => {
+    if (!categoryName) {
+      console.log('⚠️ No category selected, clearing brands');
+      setBrands([]);
+      setFilterBrand("");
+      return;
+    }
+
     try {
-      const response = await getActiveBrands();
+      setLoadingBrands(true);
+      // Find category ID from category name
+      const categoryObj = categories.find(cat => cat.category === categoryName);
+      if (!categoryObj || !categoryObj.id) {
+        console.warn('⚠️ Category ID not found');
+        setBrands([]);
+        return;
+      }
+
+      const categoryId = categoryObj.id;
+      console.log('📡 Loading brands for categoryId:', categoryId);
+      
+      const response = await getBrandsByCategory(categoryId);
+      console.log('✅ Brands loaded:', response.data?.length);
       setBrands(response.data || []);
     } catch (error) {
       console.error("Failed to load brands:", error);
       setBrands([]);
+    } finally {
+      setLoadingBrands(false);
     }
   };
 
   useEffect(() => {
     loadProducts();
     loadCategories();
-    loadBrandsByCategory(); // Load all brands for filtering
   }, []);
 
   const openModal = (product?: Product) => {
@@ -223,8 +245,11 @@ const Products: React.FC = () => {
                 <Form.Select
                   value={filterCategory}
                   onChange={e => {
-                    setFilterCategory(e.target.value);
+                    const categoryName = e.target.value;
+                    console.log('📌 Category selected:', categoryName);
+                    setFilterCategory(categoryName);
                     setFilterBrand(""); // Reset brand when category changes
+                    loadBrandsByCategory(categoryName);
                   }}
                   style={{ fontSize: "13px", padding: "8px 12px" }}
                 >
@@ -246,13 +271,17 @@ const Products: React.FC = () => {
                 </Form.Label>
                 <Form.Select
                   value={filterBrand}
-                  onChange={e => setFilterBrand(e.target.value)}
-                  disabled={!filterCategory}
+                  onChange={e => {
+                    console.log('📌 Brand selected:', e.target.value);
+                    setFilterBrand(e.target.value);
+                  }}
+                  disabled={!filterCategory || loadingBrands}
                   style={{ fontSize: "13px", padding: "8px 12px" }}
                 >
-                  <option value="">All Brands</option>
-                  {filterCategory && brands
-                    .map(brand => (
+                  <option value="">
+                    {!filterCategory ? 'Select Category First' : loadingBrands ? 'Loading...' : 'All Brands'}
+                  </option>
+                  {brands.map(brand => (
                       <option key={brand.id} value={brand.id}>
                         {brand.brand}
                       </option>

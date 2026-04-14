@@ -17,6 +17,7 @@ import AdminInventory from '../pages/admin/AdminInventory';
 import AdminCategory from '../pages/admin/AdminCategory';
 import AdminBrand from '../pages/admin/AdminBrand';
 import AdminRewards from '../pages/admin/AdminRewards';
+import CategoryBrandMapping from '../pages/admin/CategoryBrandMapping';
 
 import ShopkeeperDashboard from '../pages/shopkeeper/ShopkeeperDashboard';
 import Products from '../pages/shopkeeper/Products';
@@ -142,6 +143,14 @@ const AppRoutes: React.FC = () => (
       element={
         <RequireAuth roles={['ADMIN']}>
           <AdminBrand />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/category-brand-mapping"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <CategoryBrandMapping />
         </RequireAuth>
       }
     />

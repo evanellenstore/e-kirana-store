@@ -12,7 +12,7 @@ import {
   getActiveCategories,
   getNamesByBrand,
   getProductBySku,
-  getActiveBrands,
+  getBrandsByCategory,
   type Product
 } from "../../services/productService";
 import { adjustInventory } from "../../services/adminInventoryService";
@@ -89,14 +89,34 @@ const AdminInventoryEntry: React.FC = () => {
   }, []);
 
   /* ======================
-     LOAD BRANDS
+     LOAD BRANDS BY CATEGORY
   ====================== */
   useEffect(() => {
+    if (!category) {
+      setBrands([]);
+      setBrand(null);
+      return;
+    }
+
     setLoading(true);
-    getActiveBrands()
-      .then(res => setBrands(res.data))
-      .finally(() => setLoading(false));
-  }, []);
+    // Find category ID from category value
+    const categoryObj = categories.find((c: any) => optionToString(c) === category);
+    if (categoryObj && categoryObj.id) {
+      getBrandsByCategory(categoryObj.id)
+        .then(res => {
+          console.log("Brands for category:", res.data);
+          setBrands(res.data || []);
+        })
+        .catch(err => {
+          console.error("Failed to load brands:", err);
+          setBrands([]);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setBrands([]);
+      setLoading(false);
+    }
+  }, [category, categories]);
 
   /* ======================
      LOAD PRODUCT NAMES
@@ -209,18 +229,32 @@ const AdminInventoryEntry: React.FC = () => {
 
           {/* BRAND */}
           <Form.Group className="mb-3">
-            <Form.Label>Brand</Form.Label>
-            <Form.Select
-              value={brand ?? ""}
-              disabled={!category}
-              onChange={e => setBrand(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">-- Select Brand --</option>
-              {brands.map((b) => {
-                const brandObj = b as any;
-                return <option key={brandObj.id} value={brandObj.id}>{brandObj.brand}</option>;
-              })}
-            </Form.Select>
+            <Form.Label>🏷️ Brand</Form.Label>
+            {!category ? (
+              <Form.Select disabled>
+                <option value="">👆 Select Category First</option>
+              </Form.Select>
+            ) : loading ? (
+              <div style={{ display: "flex", alignItems: "center", padding: "8px 12px" }}>
+                <Spinner animation="border" size="sm" style={{ marginRight: "8px" }} />
+                Loading brands...
+              </div>
+            ) : brands.length > 0 ? (
+              <Form.Select
+                value={brand ?? ""}
+                onChange={e => setBrand(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">-- Select Brand --</option>
+                {brands.map((b) => {
+                  const brandObj = b as any;
+                  return <option key={brandObj.id} value={brandObj.id}>{brandObj.brand}</option>;
+                })}
+              </Form.Select>
+            ) : (
+              <div style={{ padding: "8px 12px", color: "#dc3545", fontSize: "14px" }}>
+                ⚠️ No brands mapped to this category
+              </div>
+            )}
           </Form.Group>
 
           {/* PRODUCT NAME */}

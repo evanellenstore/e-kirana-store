@@ -34,6 +34,14 @@ const AdminDashboard = () => {
       color: 'success'
     },
     {
+      title: 'Category-Brand Mapping',
+      description: 'Map brands to categories',
+      icon: '🔗',
+      link: '/admin/category-brand-mapping',
+      badge: 'Connect',
+      color: 'secondary'
+    },
+    {
       title: 'Inventory',
       description: 'Track stock levels',
       icon: '📊',

@@ -40,8 +40,12 @@ export const getActiveCategories = () => api.get<Category[]>("/products/categori
 // GET all active brands → returns Brand[] (for dropdowns)
 export const getActiveBrands = () => api.get<Brand[]>("/products/brands/active");
 
-// GET brands by category → returns string[]
-export const getBrandsByCategory = (category: string) =>
+// GET brands by category ID → returns Brand[]
+export const getBrandsByCategory = (categoryId: number) =>
+  api.get<Brand[]>(`/products/categories/${categoryId}/brands`);
+
+// GET brands by category name (legacy) → returns string[]
+export const getBrandsByCategoryName = (category: string) =>
   api.get<string[]>(`/products/brands/category/${category}`);
 
 // GET product names by brand ID → returns string[]
@@ -59,6 +63,49 @@ export const getProductBySku = (sku: string) =>
 // GET product by barcode (works for both SKU and external barcode) → returns Product
 export const getProductByBarcode = (barcode: string) =>
   api.get<Product>("/products/search/barcode", { params: { barcode } });
+
+// ==============================
+// CATEGORY-BRAND MAPPING
+// ==============================
+
+// Map a brand to a category
+export const mapBrandToCategory = (categoryId: number, brandId: number) =>
+  api.post("/products/categories/brands/map", { categoryId, brandId });
+
+// Unmap a brand from a category
+export const unmapBrandFromCategory = (categoryId: number, brandId: number) =>
+  api.delete("/products/categories/brands/unmap", {
+    data: { categoryId, brandId }
+  });
+
+// Check if brand is mapped to a category
+export const isBrandMappedToCategory = (categoryId: number, brandId: number) =>
+  api.get<boolean>(`/products/categories/${categoryId}/brands/${brandId}`);
+
+// ==============================
+// FILTER PRODUCTS (Customer Shopping)
+// ==============================
+
+// Filter products by category, brand, and search term
+export const filterProducts = (
+  categoryId?: number | null,
+  brandId?: number | null,
+  searchTerm?: string | null
+) => {
+  const params = new URLSearchParams();
+  if (categoryId) params.append('categoryId', String(categoryId));
+  if (brandId) params.append('brandId', String(brandId));
+  if (searchTerm) params.append('searchTerm', searchTerm);
+  
+  const queryString = params.toString();
+  const url = queryString ? `/products/filter?${queryString}` : '/products/filter';
+  
+  return api.get<Product[]>(url);
+};
+
+// ==============================
+// CREATE/UPDATE/DELETE
+// ==============================
 
 // CREATE product
 export const createProduct = (product: Product) =>

@@ -12,7 +12,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  getActiveBrands,
+  getBrandsByCategory,
   getProductByBarcode,
   type Product,
   type Brand
@@ -85,12 +85,12 @@ const AdminProducts: React.FC = () => {
     }
   };
 
-  const loadBrandsByCategory = async () => {
+  const loadBrandsByCategory = async (categoryId: number) => {
     try {
       setLoadingBrands(true);
-      console.log("Loading all active brands");
-      const response = await getActiveBrands();
-      console.log("Brands response:", response.data);
+      console.log("Loading brands for category ID:", categoryId);
+      const response = await getBrandsByCategory(categoryId);
+      console.log("Mapped brands:", response.data);
       setBrands(response.data || []);
     } catch (error) {
       console.error("Failed to load brands:", error);
@@ -103,17 +103,20 @@ const AdminProducts: React.FC = () => {
   useEffect(() => {
     loadProducts();
     loadCategories();
-    loadBrandsByCategory(); // Load all brands for filtering
   }, []);
 
   // Load brands when category changes in form
   useEffect(() => {
     if (formData.category) {
-      loadBrandsByCategory();
+      // Find the category ID from the category name
+      const categoryObj = categories.find(cat => cat.category === formData.category);
+      if (categoryObj) {
+        loadBrandsByCategory(categoryObj.id);
+      }
     } else {
       setBrands([]);
     }
-  }, [formData.category]);
+  }, [formData.category, categories]);
 
   const openModal = (product?: Product) => {
     setEditing(product || null);
@@ -125,9 +128,17 @@ const AdminProducts: React.FC = () => {
     
     // Load brands for the selected category
     if (productToEdit.category) {
-      loadBrandsByCategory();
+      const categoryObj = categories.find(cat => cat.category === productToEdit.category);
+      if (categoryObj) {
+        loadBrandsByCategory(categoryObj.id);
+      }
     } else {
       setBrands([]);
+    }
+    
+    // Clear externalBarcode when opening modal in manual mode (for new products)
+    if (!editing) {
+      setFormData(prev => ({ ...prev, externalBarcode: "" }));
     }
     
     setShow(true);
@@ -190,9 +201,17 @@ const AdminProducts: React.FC = () => {
   };
 
   const saveProduct = () => {
+    // Generate dummy unique barcode if not provided (when creating new product)
+    const dataToSave = !editing && !formData.externalBarcode
+      ? {
+          ...formData,
+          externalBarcode: `PRD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+        }
+      : formData;
+
     const apiCall = editing
-      ? updateProduct(editing.id!, formData)
-      : createProduct(formData);
+      ? updateProduct(editing.id!, dataToSave)
+      : createProduct(dataToSave);
 
     apiCall.then(() => {
       loadProducts();
@@ -289,6 +308,13 @@ const AdminProducts: React.FC = () => {
                     onChange={e => {
                       setFilterCategory(e.target.value);
                       setFilterBrand(""); // Reset brand when category changes
+                      // Load brands for selected category
+                      const categoryObj = categories.find(cat => cat.category === e.target.value);
+                      if (categoryObj) {
+                        loadBrandsByCategory(categoryObj.id);
+                      } else {
+                        setBrands([]);
+                      }
                     }}
                     style={{ fontSize: "13px", padding: "8px 12px" }}
                   >
@@ -315,7 +341,7 @@ const AdminProducts: React.FC = () => {
                     style={{ fontSize: "13px", padding: "8px 12px" }}
                   >
                     <option value="">All Brands</option>
-                    {filterCategory && brands
+                    {brands
                       .map(brand => (
                         <option key={brand.id} value={brand.id}>
                           {brand.brand}
@@ -590,6 +616,8 @@ const AdminProducts: React.FC = () => {
                     setInputMode("manual");
                     setScanError(null);
                     setBarcodeInput("");
+                    // Clear externalBarcode when switching to manual mode
+                    setFormData(prev => ({ ...prev, externalBarcode: "" }));
                   }}
                   style={{
                     padding: "6px 8px",
@@ -747,7 +775,11 @@ const AdminProducts: React.FC = () => {
                       </button>
                       <button
                         className="btn btn-sm flex-grow-1"
-                        onClick={() => setInputMode("manual")}
+                        onClick={() => {
+                          setInputMode("manual");
+                          // Clear externalBarcode when switching from barcode to manual mode
+                          setFormData(prev => ({ ...prev, externalBarcode: "" }));
+                        }}
                         style={{
                           background: "#0d6efd",
                           color: "white",
@@ -825,10 +857,10 @@ const AdminProducts: React.FC = () => {
 
           {/* Brand */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Brand *</Form.Label>
+            <Form.Label className="admin-product-form-label">🏷️ Brand *</Form.Label>
             {!formData.category ? (
               <Form.Select disabled className="admin-product-form-select">
-                <option value="">Select category first</option>
+                <option value="">👆 Select Category First</option>
               </Form.Select>
             ) : loadingBrands ? (
               <div className="admin-product-loading-info">
@@ -849,7 +881,7 @@ const AdminProducts: React.FC = () => {
                 }}
                 className="admin-product-form-select"
               >
-                <option value="">Select a brand</option>
+                <option value="">-- Select Brand --</option>
                 {brands.map((brand) => (
                   <option key={brand.id} value={brand.id}>
                     {brand.brand}
@@ -858,7 +890,7 @@ const AdminProducts: React.FC = () => {
               </Form.Select>
             ) : (
               <div className="admin-product-warning-info">
-                No brands available
+                ⚠️ No brands mapped to this category
               </div>
             )}
           </Form.Group>
@@ -922,23 +954,24 @@ const AdminProducts: React.FC = () => {
             </Form.Select>
           </Form.Group>
 
-          {/* External Barcode Field - Only show when creating new product */}
-          {!editing && (
-            <Form.Group className="mb-3">
-              <Form.Label className="admin-product-form-label">External Barcode</Form.Label>
-              <Form.Control
-                placeholder="External Barcode Number (optional)"
-                value={formData.externalBarcode || ""}
-                onChange={e =>
-                  setFormData({ ...formData, externalBarcode: e.target.value })
-                }
-                className="admin-product-form-input"
-              />
-              <small className="form-text text-muted">
-                Unique barcode number for quick lookup (e.g., manufacturer barcode)
-              </small>
-            </Form.Group>
-          )}
+          {/* External Barcode Field - Show for both creating and editing */}
+          <Form.Group className="mb-3">
+            <Form.Label className="admin-product-form-label">External Barcode</Form.Label>
+            <Form.Control
+              placeholder="External Barcode Number (optional)"
+              value={formData.externalBarcode || ""}
+              onChange={e =>
+                setFormData({ ...formData, externalBarcode: e.target.value })
+              }
+              className="admin-product-form-input"
+            />
+            <small className="form-text text-muted">
+              {editing 
+                ? "Edit the barcode number for this product."
+                : "Unique barcode number for quick lookup (e.g., manufacturer barcode). If not provided, a unique barcode will be auto-generated (PRD-timestamp-random)."
+              }
+            </small>
+          </Form.Group>
             </>
           ) : null}
         </Modal.Body>
