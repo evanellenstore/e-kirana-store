@@ -1,17 +1,19 @@
 import { Container, Row, Col, Card } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { useContext } from "react";
+import { useTranslation } from "react-i18next";
 import { AuthContext } from "../../auth/AuthContext";
 
 const CustomerDashboard = () => {
   const auth = useContext(AuthContext);
+  const { t } = useTranslation();
   const username = auth?.user?.username || "Customer";
 
   return (
     <Container className="mt-5 mb-5">
       <div className="mb-5">
-        <h1 className="mb-2">Welcome, {username}! 👋</h1>
-        <p className="text-muted">Your one-stop shop for all shopping needs</p>
+        <h1 className="mb-2">{t('customer.welcome')}, {username}! 👋</h1>
+        <p className="text-muted">{t('customer.title')}</p>
       </div>
 
       <Row className="g-4">
@@ -21,15 +23,15 @@ const CustomerDashboard = () => {
             <Card.Body>
               <div className="text-center">
                 <h2>🛍️</h2>
-                <Card.Title>Browse Products</Card.Title>
+                <Card.Title>{t('customer.browse')}</Card.Title>
                 <Card.Text className="text-muted small">
-                  Explore our wide range of products
+                  {t('navigation.shop')}
                 </Card.Text>
               </div>
             </Card.Body>
             <Card.Footer className="bg-transparent border-top">
               <Link to="/customer/products" className="btn btn-primary btn-sm w-100">
-                Shop Now
+                {t('common.edit')}
               </Link>
             </Card.Footer>
           </Card>
@@ -41,15 +43,15 @@ const CustomerDashboard = () => {
             <Card.Body>
               <div className="text-center">
                 <h2>🛒</h2>
-                <Card.Title>Your Cart</Card.Title>
+                <Card.Title>{t('customer.cart')}</Card.Title>
                 <Card.Text className="text-muted small">
-                  View and manage your shopping cart
+                  {t('cart.empty')}
                 </Card.Text>
               </div>
             </Card.Body>
             <Card.Footer className="bg-transparent border-top">
               <Link to="/customer/cart" className="btn btn-primary btn-sm w-100">
-                View Cart
+                {t('cart.checkout')}
               </Link>
             </Card.Footer>
           </Card>
@@ -61,15 +63,15 @@ const CustomerDashboard = () => {
             <Card.Body>
               <div className="text-center">
                 <h2>📦</h2>
-                <Card.Title>Your Orders</Card.Title>
+                <Card.Title>{t('customer.orders')}</Card.Title>
                 <Card.Text className="text-muted small">
-                  Track your order history
+                  {t('order.orderId')}
                 </Card.Text>
               </div>
             </Card.Body>
             <Card.Footer className="bg-transparent border-top">
               <Link to="/customer/orders" className="btn btn-primary btn-sm w-100">
-                View Orders
+                {t('navigation.myOrders')}
               </Link>
             </Card.Footer>
           </Card>
@@ -83,13 +85,13 @@ const CustomerDashboard = () => {
                 <h2>💰</h2>
                 <Card.Title>Rewards & Wallet</Card.Title>
                 <Card.Text className="text-muted small">
-                  Check your wallet balance and rewards
+                  {t('order.total')}
                 </Card.Text>
               </div>
             </Card.Body>
             <Card.Footer className="bg-transparent border-top">
               <Link to="/customer/rewards" className="btn btn-success btn-sm w-100">
-                View Rewards
+                {t('navigation.myOrders')}
               </Link>
             </Card.Footer>
           </Card>

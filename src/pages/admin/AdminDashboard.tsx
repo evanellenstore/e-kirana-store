@@ -1,81 +1,83 @@
 import { Container, Row, Col, Card, Button, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../auth/AuthContext';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
   const auth = useContext(AuthContext);
+  const { t } = useTranslation();
   const username = auth?.user?.username || 'Admin';
 
   const menuItems = [
     {
-      title: 'Products',
-      description: 'Manage product catalog',
+      title: t('admin.products'),
+      description: t('admin.products'),
       icon: '📦',
       link: '/admin/admin-products',
       badge: 'Manage',
       color: 'primary'
     },
     {
-      title: 'Categories',
-      description: 'Organize product categories',
+      title: t('admin.categories'),
+      description: t('admin.categories'),
       icon: '📂',
       link: '/admin/categories',
       badge: 'Organize',
       color: 'info'
     },
     {
-      title: 'Brands',
-      description: 'Manage brand data',
+      title: t('admin.brands'),
+      description: t('admin.brandManage'),
       icon: '🏷️',
       link: '/admin/brands',
       badge: 'Organize',
       color: 'success'
     },
     {
-      title: 'Category-Brand Mapping',
-      description: 'Map brands to categories',
+      title: t('admin.categoryBrandMapping'),
+      description: t('admin.categoryBrandDesc'),
       icon: '🔗',
       link: '/admin/category-brand-mapping',
       badge: 'Connect',
       color: 'secondary'
     },
     {
-      title: 'Inventory',
-      description: 'Track stock levels',
+      title: t('shopkeeper.inventory'),
+      description: t('shopkeeper.inventory'),
       icon: '📊',
       link: '/admin/admin-inventory',
       badge: 'Track',
       color: 'warning'
     },
     {
-      title: 'Users',
-      description: 'User roles & access',
+      title: t('admin.users'),
+      description: t('admin.users'),
       icon: '👥',
       link: '/admin/users',
       badge: 'Control',
       color: 'danger'
     },
     {
-      title: 'Reports',
-      description: 'Sales & analytics',
+      title: t('admin.reports'),
+      description: t('admin.reports'),
       icon: '📈',
       link: '/admin/reports',
       badge: 'Analyze',
       color: 'primary'
     },
     {
-      title: 'Purchases',
-      description: 'Manage purchase orders',
+      title: t('admin.purchases'),
+      description: t('admin.purchaseDesc'),
       icon: '🛒',
       link: '/admin/from-purchase',
       badge: 'Process',
       color: 'info'
     },
     {
-      title: 'Rewards',
-      description: 'Customer loyalty',
+      title: t('admin.rewards'),
+      description: t('admin.rewardsDesc'),
       icon: '💰',
       link: '/admin/rewards',
       badge: 'Rewards',
@@ -91,13 +93,13 @@ const AdminDashboard = () => {
         <Row className="align-items-center">
           <Col>
             <Badge bg="dark" className="mb-2 px-3 py-2">
-              Admin Panel
+              {t('admin.dashboard')}
             </Badge>
             <h2 className="header-title">
-              Welcome, <span>{username}</span>
+              {t('admin.welcome')}, <span>{username}</span>
             </h2>
             <p className="header-subtitle">
-              Manage your entire system from one place
+              {t('admin.title')}
             </p>
           </Col>
 

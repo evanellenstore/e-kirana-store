@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import api from '../../services/api';
+import React, { useEffect, useState } from 'react';import { useTranslation } from 'react-i18next';import api from '../../services/api';
 import AdminHeader from '../../components/AdminHeader';
 import './AdminCategory.css';
 
@@ -14,6 +13,7 @@ interface CategoryFormData {
 }
 
 const AdminCategory: React.FC = () => {
+  const { t } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +116,7 @@ const AdminCategory: React.FC = () => {
     e.preventDefault();
     
     if (!formData.category.trim()) {
-      setError('❌ Category name is required');
+      setError(`❌ ${t('categories.nameRequired')}`);
       return;
     }
 
@@ -127,14 +127,14 @@ const AdminCategory: React.FC = () => {
       if (isEditing && editingId) {
         // Update category
         console.log(`✏️ Updating category: ${formData.category} (ID: ${editingId})`);
-        setSuccess(`✅ Category "${formData.category}" updated successfully`);
+        setSuccess(`✅ ${t('categories.updatedSuccessfully', { name: formData.category })}`);
       } else {
         // Create new category
         console.log(`➕ Creating new category: ${formData.category}`);
         await api.post('/products/category', {
           category: formData.category
         });
-        setSuccess(`✅ Category "${formData.category}" created successfully`);
+        setSuccess(`✅ ${t('categories.createdSuccessfully', { name: formData.category })}`);
       }
 
       setCurrentPage(1); // Reset to page 1
@@ -142,7 +142,7 @@ const AdminCategory: React.FC = () => {
       closeModal();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to save category';
+      const errorMsg = err.response?.data?.message || t('categories.failedToSave');
       setError(`❌ ${errorMsg}`);
       console.error('Error saving category:', err);
     } finally {
@@ -161,12 +161,14 @@ const AdminCategory: React.FC = () => {
       console.log(`🔄 ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)} category: ${categoryName} (ID: ${id})`);
 
       await api.put(`/products/categories/${id}/toggle`);
-      setSuccess(`✅ Category "${categoryName}" ${newStatus} successfully`);
+      const successKey = newStatus === 'activated' ? 'activatedSuccessfully' : 'deactivatedSuccessfully';
+      setSuccess(`✅ ${t(`categories.${successKey}`, { name: categoryName })}`);
       console.log(`✅ Category "${categoryName}" ${newStatus}`);
       loadCategories(currentPage, itemsPerPage);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || `Failed to ${newStatus} category`;
+      const failKey = newStatus === 'activated' ? 'failedToActivate' : 'failedToDeactivate';
+      const errorMsg = err.response?.data?.message || t(`categories.${failKey}`);
       setError(`❌ ${errorMsg}`);
       console.error(`Error ${newStatus} category:`, err);
     } finally {
@@ -180,7 +182,7 @@ const AdminCategory: React.FC = () => {
     const categoryName = categoryToDelete?.category || 'Unknown';
     
     if (!window.confirm(
-      `Are you sure you want to delete the category "${categoryName}"?\n\nThis action cannot be undone.`
+      t('categories.confirmDelete', { name: categoryName })
     )) {
       return;
     }
@@ -192,12 +194,12 @@ const AdminCategory: React.FC = () => {
       
       // Delete is just deactivate
       await api.put(`/products/categories/${id}/toggle`);
-      setSuccess(`✅ Category "${categoryName}" deleted successfully`);
+      setSuccess(`✅ ${t('categories.deletedSuccessfully', { name: categoryName })}`);
       console.log(`✅ Category "${categoryName}" deleted`);
       loadCategories(currentPage, itemsPerPage);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to delete category';
+      const errorMsg = err.response?.data?.message || t('categories.failedToDelete');
       setError(`❌ ${errorMsg}`);
       console.error('Error deleting category:', err);
     } finally {
@@ -217,20 +219,20 @@ const AdminCategory: React.FC = () => {
   return (
     <div className="admin-category-container">
       <AdminHeader 
-        title="Category Management" 
-        description="Manage product categories and control visibility"
+        title={t('categories.categoryManagement')}
+        description={t('categories.manageDesc')}
       />
       
       <div className="category-wrapper">
         <div className="category-controls">
           <div className="controls-header">
             <div className="header-content">
-              <h1 className="page-title">Categories</h1>
-              <p className="page-subtitle">Manage all product categories</p>
+              <h1 className="page-title">{t('categories.title')}</h1>
+              <p className="page-subtitle">{t('categories.subtitle')}</p>
             </div>
             <button onClick={openCreateModal} className="add-category-btn">
               <span className="btn-icon">➕</span>
-              Add Category
+              {t('categories.addCategory')}
             </button>
           </div>
 
@@ -240,7 +242,7 @@ const AdminCategory: React.FC = () => {
               <span className="search-icon">🔍</span>
               <input
                 type="text"
-                placeholder="Search by category name or ID..."
+                placeholder={t('categories.searchPlaceholder')}
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -257,7 +259,7 @@ const AdminCategory: React.FC = () => {
               gap: "8px"
             }}>
               <label style={{ fontSize: "13px", fontWeight: "600", color: "#4b5563", marginBottom: 0 }}>
-                📄 Per Page:
+                📄 {t('categories.perPage')}
               </label>
               <select
                 value={itemsPerPage}
@@ -306,7 +308,7 @@ const AdminCategory: React.FC = () => {
             <div className="spinner">
               <div className="spinner-ring"></div>
             </div>
-            <p className="loading-text">Loading categories...</p>
+            <p className="loading-text">{t('categories.loadingCategories')}</p>
           </div>
         ) : (
           <>
@@ -330,10 +332,10 @@ const AdminCategory: React.FC = () => {
                 color: "#4b5563"
               }}>
                 <div>
-                  <strong style={{ color: "#667eea" }}>{totalRecords}</strong> total categories
+                  <strong style={{ color: "#667eea" }}>{totalRecords}</strong> {t('categories.totalCategories')}
                 </div>
                 <div style={{ fontSize: "13px", color: "#999" }}>
-                  Page <strong style={{ color: "#667eea" }}>{currentPage}</strong> of <strong style={{ color: "#667eea" }}>{totalPages}</strong>
+                  {t('categories.page')} <strong style={{ color: "#667eea" }}>{currentPage}</strong> {t('categories.of')} <strong style={{ color: "#667eea" }}>{totalPages}</strong>
                 </div>
               </div>
             )}
@@ -367,7 +369,7 @@ const AdminCategory: React.FC = () => {
                     transition: "all 0.3s ease"
                   }}
                 >
-                  ← Previous
+                  {t('categories.previous')}
                 </button>
 
                 {/* Page Numbers */}
@@ -431,7 +433,7 @@ const AdminCategory: React.FC = () => {
                     transition: "all 0.3s ease"
                   }}
                 >
-                  Next →
+                  {t('categories.next')}
                 </button>
 
                 <div style={{
@@ -442,7 +444,7 @@ const AdminCategory: React.FC = () => {
                   paddingLeft: "12px",
                   borderLeft: "2px solid rgba(102, 126, 234, 0.2)"
                 }}>
-                  Page <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
+                  {t('categories.page')} <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
                 </div>
               </div>
             )}
@@ -452,12 +454,12 @@ const AdminCategory: React.FC = () => {
                         <div className="card-header">
                           <h3 className="category-name">{category.category}</h3>
                           <span className={`status-badge ${category.isActive ? 'active' : 'inactive'}`}>
-                            {category.isActive ? '✓ Active' : '✗ Inactive'}
+                            {category.isActive ? t('categories.active') : t('categories.inactive')}
                           </span>
                         </div>
                         <div className="card-body">
                           <div className="category-info">
-                            <span className="info-label">ID:</span>
+                            <span className="info-label">{t('categories.id')}</span>
                             <span className="info-value">#{category.id}</span>
                           </div>
                         </div>
@@ -465,23 +467,23 @@ const AdminCategory: React.FC = () => {
                           <button
                             onClick={() => handleToggleStatus(category.id, category.isActive)}
                             className={`toggle-status-btn ${category.isActive ? 'active' : ''}`}
-                            title={category.isActive ? 'Click to deactivate this category' : 'Click to activate this category'}
+                            title={category.isActive ? t('categories.deactivateTooltip') : t('categories.activateTooltip')}
                           >
-                            {category.isActive ? '🔒 Deactivate' : '🔓 Activate'}
+                            {category.isActive ? t('categories.deactivate') : t('categories.activate')}
                           </button>
                           <button
                             onClick={() => openEditModal(category)}
                             className="edit-btn"
-                            title="Edit this category"
+                            title={t('categories.editTooltip')}
                           >
-                            ✏️ Edit
+                            {t('categories.edit')}
                           </button>
                           <button
                             onClick={() => handleDelete(category.id)}
                             className="delete-btn"
-                            title="Delete this category permanently"
+                            title={t('categories.deleteTooltip')}
                           >
-                            🗑️ Delete
+                            {t('categories.delete')}
                           </button>
                         </div>
                       </div>
@@ -491,9 +493,9 @@ const AdminCategory: React.FC = () => {
               ) : (
                 <div className="empty-state">
                   <div className="empty-icon">📦</div>
-                  <h3 className="empty-title">No Categories Found</h3>
+                  <h3 className="empty-title">{t('categories.noCategories')}</h3>
                   <p className="empty-message">
-                    {searchTerm ? `No categories match "${searchTerm}"` : 'Start by adding your first category'}
+                    {searchTerm ? `${t('categories.noCategoriesFound')} "${searchTerm}"` : t('categories.startByAdding')}
                   </p>
                 </div>
               )}
@@ -515,24 +517,24 @@ const AdminCategory: React.FC = () => {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
-                {isEditing ? '✏️ Edit Category' : '➕ Add New Category'}
+                {isEditing ? `✏️ ${t('categories.editCategory')}` : `➕ ${t('categories.addCategory')}`}
               </h2>
               <button className="modal-close" onClick={closeModal}>×</button>
             </div>
             <form onSubmit={handleSubmit} className="modal-form">
               <div className="form-group">
-                <label htmlFor="category-name" className="form-label">Category Name *</label>
+                <label htmlFor="category-name" className="form-label">{t('categories.categoryNameLabel')}</label>
                 <input
                   id="category-name"
                   type="text"
-                  placeholder="Enter category name"
+                  placeholder={t('categories.enterCategoryName')}
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   className="form-input"
                   required
                 />
                 {formData.category === '' && (
-                  <span className="form-error">Category name is required</span>
+                  <span className="form-error">{t('categories.nameRequired')}</span>
                 )}
               </div>
               <div className="modal-footer">
@@ -541,7 +543,7 @@ const AdminCategory: React.FC = () => {
                   onClick={closeModal}
                   className="btn-cancel"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -551,12 +553,12 @@ const AdminCategory: React.FC = () => {
                   {loading ? (
                     <>
                       <span className="spinner-mini"></span>
-                      Saving...
+                      {t('categories.saving')}
                     </>
                   ) : isEditing ? (
-                    'Update Category'
+                    t('categories.update')
                   ) : (
-                    'Create Category'
+                    t('categories.create')
                   )}
                 </button>
               </div>

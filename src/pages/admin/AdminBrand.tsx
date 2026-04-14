@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import api from '../../services/api';
 import AdminHeader from '../../components/AdminHeader';
 import './AdminBrand.css';
@@ -14,6 +15,7 @@ interface BrandFormData {
 }
 
 const AdminBrand: React.FC = () => {
+  const { t } = useTranslation();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ const AdminBrand: React.FC = () => {
       const response = await api.get('/products/brands');
       setBrands(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load brands');
+      setError(err.response?.data?.message || t('brands.failedToSave'));
       console.error('Error loading brands:', err);
     } finally {
       setLoading(false);
@@ -78,7 +80,7 @@ const AdminBrand: React.FC = () => {
     e.preventDefault();
     
     if (!formData.brand.trim()) {
-      setError('Brand name is required');
+      setError(`❌ ${t('brands.nameRequired')}`);
       return;
     }
 
@@ -91,21 +93,21 @@ const AdminBrand: React.FC = () => {
         await api.put(`/products/brand/${editingId}`, {
           brand: formData.brand
         });
-        setSuccess('Brand updated successfully');
+        setSuccess(`✅ ${t('brands.updatedSuccessfully')}`);
       } else {
         // Create new brand
         await api.post('/products/brand', {
           brand: formData.brand
         });
-        setSuccess('Brand created successfully');
+        setSuccess(`✅ ${t('brands.createdSuccessfully')}`);
       }
 
       loadBrands();
       closeModal();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to save brand';
-      setError(errorMsg);
+      const errorMsg = err.response?.data?.message || t('brands.failedToSave');
+      setError(`❌ ${errorMsg}`);
       console.error('Error saving brand:', err);
     } finally {
       setLoading(false);
@@ -118,12 +120,13 @@ const AdminBrand: React.FC = () => {
       setError(null);
 
       await api.put(`/products/brand/${id}/toggle`);
-      setSuccess(`Brand ${currentStatus ? 'deactivated' : 'activated'} successfully`);
+      const successKey = currentStatus ? 'deactivatedSuccessfully' : 'activatedSuccessfully';
+      setSuccess(`✅ ${t(`brands.${successKey}`)}`);
       loadBrands();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to toggle brand status';
-      setError(errorMsg);
+      const errorMsg = err.response?.data?.message || t('brands.failedToToggle');
+      setError(`❌ ${errorMsg}`);
       console.error('Error toggling brand:', err);
     } finally {
       setLoading(false);
@@ -131,7 +134,7 @@ const AdminBrand: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this brand?')) {
+    if (!window.confirm(t('brands.confirmDelete'))) {
       return;
     }
 
@@ -139,12 +142,12 @@ const AdminBrand: React.FC = () => {
       setLoading(true);
       setError(null);
       await api.delete(`/products/brand/${id}`);
-      setSuccess('Brand deleted successfully');
+      setSuccess(`✅ ${t('brands.deletedSuccessfully')}`);
       loadBrands();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Failed to delete brand';
-      setError(errorMsg);
+      const errorMsg = err.response?.data?.message || t('brands.failedToDelete');
+      setError(`❌ ${errorMsg}`);
       console.error('Error deleting brand:', err);
     } finally {
       setLoading(false);
@@ -169,7 +172,7 @@ const AdminBrand: React.FC = () => {
           <div className="spinner">
             <div className="spinner-ring"></div>
           </div>
-          <p className="loading-text">Loading brands...</p>
+          <p className="loading-text">{t('brands.loadingBrands')}</p>
         </div>
       </div>
     );
@@ -178,20 +181,20 @@ const AdminBrand: React.FC = () => {
   return (
     <div className="admin-brand-container">
       <AdminHeader 
-        title="Brand Management" 
-        description="Manage product brands and control availability"
+        title={t('brands.brandManagement')}
+        description={t('brands.manageDesc')}
       />
       
       <div className="brand-wrapper">
         <div className="brand-controls">
           <div className="controls-header">
             <div className="header-content">
-              <h1 className="page-title">Brands</h1>
-              <p className="page-subtitle">Manage all product brands</p>
+              <h1 className="page-title">{t('brands.title')}</h1>
+              <p className="page-subtitle">{t('brands.subtitle')}</p>
             </div>
             <button onClick={openCreateModal} className="add-brand-btn">
               <span className="btn-icon">➕</span>
-              Add Brand
+              {t('brands.addBrand')}
             </button>
           </div>
 
@@ -201,7 +204,7 @@ const AdminBrand: React.FC = () => {
               <span className="search-icon">🔍</span>
               <input
                 type="text"
-                placeholder="Search by brand name or ID..."
+                placeholder={t('brands.searchPlaceholder')}
                 value={searchTerm}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   setSearchTerm(e.target.value);
@@ -212,7 +215,7 @@ const AdminBrand: React.FC = () => {
             </div>
             {searchTerm && (
               <div className="search-results-info">
-                Found {filteredBrands.length} result{filteredBrands.length !== 1 ? 's' : ''}
+                {t('brands.showing')} {filteredBrands.length} {filteredBrands.length !== 1 ? t('brands.results') : t('brands.result')}
               </div>
             )}
           </div>
@@ -240,7 +243,7 @@ const AdminBrand: React.FC = () => {
           {currentBrands.length > 0 ? (
             <>
               <div className="brands-count">
-                Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to <strong>{Math.min(currentPage * itemsPerPage, filteredBrands.length)}</strong> of <strong>{filteredBrands.length}</strong> brands
+                {t('brands.showing')} <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> {t('brands.to')} <strong>{Math.min(currentPage * itemsPerPage, filteredBrands.length)}</strong> {t('brands.of')} <strong>{filteredBrands.length}</strong> {filteredBrands.length !== 1 ? t('brands.brands') : t('brands.brand')}
               </div>
               <div className="brands-grid">
                 {currentBrands.map((brand) => (
@@ -248,12 +251,12 @@ const AdminBrand: React.FC = () => {
                     <div className="card-header">
                       <h3 className="brand-name">{brand.brand}</h3>
                       <span className={`status-badge ${brand.isActive ? 'active' : 'inactive'}`}>
-                        {brand.isActive ? '✓ Active' : '✗ Inactive'}
+                        {brand.isActive ? t('brands.active') : t('brands.inactive')}
                       </span>
                     </div>
                     <div className="card-body">
                       <div className="brand-info">
-                        <span className="info-label">ID:</span>
+                        <span className="info-label">{t('brands.id')}</span>
                         <span className="info-value">#{brand.id}</span>
                       </div>
                     </div>
@@ -262,19 +265,19 @@ const AdminBrand: React.FC = () => {
                         onClick={() => openEditModal(brand)}
                         className="edit-btn"
                       >
-                        ✏️ Edit
+                        {t('brands.edit')}
                       </button>
                       <button
                         onClick={() => handleToggleStatus(brand.id, brand.isActive)}
                         className={`toggle-status-btn ${brand.isActive ? 'active' : ''}`}
                       >
-                        {brand.isActive ? '🔒 Deactivate' : '🔓 Activate'}
+                        {brand.isActive ? t('brands.deactivate') : t('brands.activate')}
                       </button>
                       <button
                         onClick={() => handleDelete(brand.id)}
                         className="delete-btn"
                       >
-                        🗑️ Delete
+                        {t('brands.delete')}
                       </button>
                     </div>
                   </div>
@@ -284,9 +287,9 @@ const AdminBrand: React.FC = () => {
           ) : (
             <div className="empty-state">
               <div className="empty-icon">🏷️</div>
-              <h3 className="empty-title">No Brands Found</h3>
+              <h3 className="empty-title">{t('brands.noBrands')}</h3>
               <p className="empty-message">
-                {searchTerm ? `No brands match "${searchTerm}"` : 'Start by adding your first brand'}
+                {searchTerm ? `${t('brands.noBrandsFound')} "${searchTerm}"` : t('brands.startByAdding')}
               </p>
             </div>
           )}
@@ -300,17 +303,17 @@ const AdminBrand: React.FC = () => {
               disabled={currentPage === 1}
               className="pagination-btn pagination-prev"
             >
-              ← Previous
+              {t('brands.previous')}
             </button>
             <div className="pagination-info">
-              Page <span className="current-page">{currentPage}</span> of <span className="total-pages">{totalPages}</span>
+              {t('brands.page')} <span className="current-page">{currentPage}</span> {t('brands.of')} <span className="total-pages">{totalPages}</span>
             </div>
             <button
               onClick={() => setCurrentPage(currentPage + 1)}
               disabled={currentPage === totalPages}
               className="pagination-btn pagination-next"
             >
-              Next →
+              {t('brands.next')}
             </button>
           </div>
         )}
@@ -322,17 +325,17 @@ const AdminBrand: React.FC = () => {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
-                {isEditing ? '✏️ Edit Brand' : '➕ Add New Brand'}
+                {isEditing ? `✏️ ${t('brands.editBrand')}` : `➕ ${t('brands.addBrand')}`}
               </h2>
               <button className="modal-close" onClick={closeModal}>×</button>
             </div>
             <form onSubmit={handleSubmit} className="modal-form">
               <div className="form-group">
-                <label htmlFor="brand-name" className="form-label">Brand Name *</label>
+                <label htmlFor="brand-name" className="form-label">{t('brands.brandNameLabel')}</label>
                 <input
                   id="brand-name"
                   type="text"
-                  placeholder="Enter brand name"
+                  placeholder={t('brands.enterBrandName')}
                   value={formData.brand}
                   onChange={(e) => setFormData({ brand: e.target.value })}
                   className="form-input"
@@ -340,7 +343,7 @@ const AdminBrand: React.FC = () => {
                   autoFocus
                 />
                 {formData.brand === '' && (
-                  <span className="form-error">Brand name is required</span>
+                  <span className="form-error">{t('brands.nameRequired')}</span>
                 )}
               </div>
               <div className="modal-footer">
@@ -349,7 +352,7 @@ const AdminBrand: React.FC = () => {
                   onClick={closeModal}
                   className="btn-cancel"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -359,12 +362,12 @@ const AdminBrand: React.FC = () => {
                   {loading ? (
                     <>
                       <span className="spinner-mini"></span>
-                      Saving...
+                      {t('brands.saving')}
                     </>
                   ) : isEditing ? (
-                    'Update Brand'
+                    t('brands.update')
                   ) : (
-                    'Add Brand'
+                    t('brands.create')
                   )}
                 </button>
               </div>

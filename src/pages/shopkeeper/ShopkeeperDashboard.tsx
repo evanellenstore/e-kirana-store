@@ -1,25 +1,27 @@
 import { Container, Row, Col, Card, Button, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../auth/AuthContext';
 import './ShopkeeperDashboard.css';
 
 const ShopkeeperDashboard = () => {
   const auth = useContext(AuthContext);
+  const { t } = useTranslation();
   const username = auth?.user?.username || 'Shopkeeper';
 
   const menuItems = [
     {
-      title: 'Products',
-      description: 'Browse and manage products',
+      title: t('admin.products'),
+      description: t('admin.products'),
       icon: '📦',
       link: '/shopkeeper/products',
       badge: 'View',
       color: 'primary'
     },
     {
-      title: 'Inventory',
-      description: 'Track stock levels',
+      title: t('shopkeeper.inventory'),
+      description: t('shopkeeper.inventory'),
       icon: '📊',
       link: '/shopkeeper/inventory',
       badge: 'Check',
@@ -51,13 +53,13 @@ const ShopkeeperDashboard = () => {
         <Row className="align-items-center">
           <Col>
             <Badge bg="dark" className="mb-2 px-3 py-2">
-              Shopkeeper Panel
+              {t('shopkeeper.store')}
             </Badge>
             <h2 className="header-title">
-              Welcome, <span>{username}</span>
+              {t('shopkeeper.welcome')}, <span>{username}</span>
             </h2>
             <p className="header-subtitle">
-              Manage your store operations from one place
+              {t('shopkeeper.title')}
             </p>
           </Col>
 

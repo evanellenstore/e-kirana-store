@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Container,
   Row,
@@ -44,6 +45,7 @@ interface Brand {
 ======================= */
 
 const CategoryBrandMapping: React.FC = () => {
+  const { t } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [allBrands, setAllBrands] = useState<Brand[]>([]);
   const [mappedBrands, setMappedBrands] = useState<Brand[]>([]);
@@ -82,7 +84,7 @@ const CategoryBrandMapping: React.FC = () => {
         setSelectedCategory(categoriesRes.data[0].id);
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to load data');
+      setError(err?.response?.data?.message || t('categoryBrandMapping.failedToLoad'));
     } finally {
       setLoading(false);
     }
@@ -129,7 +131,7 @@ const CategoryBrandMapping: React.FC = () => {
 
   const handleAddMapping = async () => {
     if (!selectedCategory || !selectedBrand) {
-      setError('Please select both category and brand');
+      setError(t('categoryBrandMapping.pleaseSelectCategory'));
       return;
     }
 
@@ -139,7 +141,7 @@ const CategoryBrandMapping: React.FC = () => {
 
       await mapBrandToCategory(selectedCategory, selectedBrand);
 
-      setSuccess('✅ Brand mapped successfully!');
+      setSuccess(`✅ ${t('categoryBrandMapping.mapped')}`);
       setSelectedBrand(null);
 
       // Reload mapped brands
@@ -151,7 +153,7 @@ const CategoryBrandMapping: React.FC = () => {
       const available = allBrands.filter(b => !mappedIds.includes(b.id));
       setAvailableBrands(available);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to add mapping');
+      setError(err?.response?.data?.message || t('categoryBrandMapping.failedToAdd'));
       console.error('Add mapping error:', err);
     } finally {
       setLoading(false);
@@ -165,7 +167,7 @@ const CategoryBrandMapping: React.FC = () => {
   const handleRemoveMapping = async (brandId: number) => {
     if (!selectedCategory) return;
 
-    if (!window.confirm('Remove this brand mapping?')) return;
+    if (!window.confirm(t('categoryBrandMapping.confirmRemove'))) return;
 
     try {
       setLoading(true);
@@ -173,7 +175,7 @@ const CategoryBrandMapping: React.FC = () => {
 
       await unmapBrandFromCategory(selectedCategory, brandId);
 
-      setSuccess('✅ Brand unmapped successfully!');
+      setSuccess(`✅ ${t('categoryBrandMapping.unmapped')}`);
 
       // Reload mapped brands
       const response = await getBrandsByCategory(selectedCategory);
@@ -184,7 +186,7 @@ const CategoryBrandMapping: React.FC = () => {
       const available = allBrands.filter(b => !mappedIds.includes(b.id));
       setAvailableBrands(available);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to remove mapping');
+      setError(err?.response?.data?.message || t('categoryBrandMapping.failedToRemove'));
       console.error('Remove mapping error:', err);
     } finally {
       setLoading(false);
@@ -207,7 +209,7 @@ const CategoryBrandMapping: React.FC = () => {
     return (
       <div className="text-center mt-5">
         <Spinner animation="border" />
-        <div className="text-muted mt-2">Loading...</div>
+        <div className="text-muted mt-2">{t('categoryBrandMapping.loading')}</div>
       </div>
     );
   }
@@ -218,7 +220,7 @@ const CategoryBrandMapping: React.FC = () => {
 
       <Container className="mt-4 mb-5">
         <h2 className="text-center mb-4">
-          📋 Category & Brand Mapping
+          📋 {t('categoryBrandMapping.pageTitle')}
         </h2>
 
         {error && <Alert variant="danger">{error}</Alert>}
@@ -233,22 +235,22 @@ const CategoryBrandMapping: React.FC = () => {
             <Card className="shadow-sm h-100">
               <Card.Header className="bg-primary text-white">
                 <Card.Title className="mb-0">
-                  📁 Categories
+                  {t('categoryBrandMapping.selectCategories')}
                 </Card.Title>
               </Card.Header>
 
               <Card.Body>
                 <Form.Group className="mb-3">
-                  <Form.Label className="fw-bold">Select Category</Form.Label>
+                  <Form.Label className="fw-bold">{t('categoryBrandMapping.selectCategoryLabel')}</Form.Label>
                   <Form.Select
                     value={selectedCategory || ''}
                     onChange={e => setSelectedCategory(Number(e.target.value))}
                   >
-                    <option value="">-- Select Category --</option>
+                    <option value="">{t('categoryBrandMapping.selectCategoryPlaceholder')}</option>
                     {categories.map(cat => (
                       <option key={cat.id} value={cat.id}>
                         {cat.category}
-                        {!cat.isActive && ' (inactive)'}
+                        {!cat.isActive && ` (${t('categoryBrandMapping.inactive')})`}
                       </option>
                     ))}
                   </Form.Select>
@@ -256,7 +258,7 @@ const CategoryBrandMapping: React.FC = () => {
 
                 {selectedCategory && (
                   <Alert variant="info" className="mb-0">
-                    <strong>Selected:</strong> {getCategoryName()}
+                    <strong>{t('categoryBrandMapping.selected')}</strong> {getCategoryName()}
                   </Alert>
                 )}
               </Card.Body>
@@ -271,19 +273,19 @@ const CategoryBrandMapping: React.FC = () => {
             <Card className="shadow-sm h-100">
               <Card.Header className="bg-success text-white">
                 <Card.Title className="mb-0">
-                  ➕ Add Brand Mapping
+                  {t('categoryBrandMapping.addBrandMapping')}
                 </Card.Title>
               </Card.Header>
 
               <Card.Body>
                 <Form.Group className="mb-3">
-                  <Form.Label className="fw-bold">Available Brands</Form.Label>
+                  <Form.Label className="fw-bold">{t('categoryBrandMapping.availableBrands')}</Form.Label>
                   <Form.Select
                     value={selectedBrand || ''}
                     onChange={e => setSelectedBrand(Number(e.target.value) || null)}
                     disabled={!selectedCategory || availableBrands.length === 0}
                   >
-                    <option value="">-- Select Brand --</option>
+                    <option value="">{t('categoryBrandMapping.selectBrand')}</option>
                     {availableBrands.map(brand => (
                       <option key={brand.id} value={brand.id}>
                         {brand.brand}
@@ -294,13 +296,13 @@ const CategoryBrandMapping: React.FC = () => {
 
                 {!selectedCategory && (
                   <Alert variant="warning" className="small mb-3">
-                    Please select a category first
+                    {t('categoryBrandMapping.pleaseSelectCategory')}
                   </Alert>
                 )}
 
                 {selectedCategory && availableBrands.length === 0 && (
                   <Alert variant="info" className="small mb-3">
-                    All brands are already mapped to this category
+                    {t('categoryBrandMapping.allBrandsMapped')}
                   </Alert>
                 )}
 
@@ -310,7 +312,7 @@ const CategoryBrandMapping: React.FC = () => {
                   disabled={!selectedCategory || !selectedBrand || loading}
                   onClick={handleAddMapping}
                 >
-                  {loading ? 'Adding...' : '✓ Add Mapping'}
+                  {loading ? t('categoryBrandMapping.adding') : t('categoryBrandMapping.addMapping')}
                 </Button>
               </Card.Body>
             </Card>
@@ -324,14 +326,14 @@ const CategoryBrandMapping: React.FC = () => {
             <Card className="shadow-sm h-100">
               <Card.Header className="bg-info text-white">
                 <Card.Title className="mb-0">
-                  ✓ Mapped Brands ({mappedBrands.length})
+                  ✓ {t('categoryBrandMapping.mappedBrands')} ({mappedBrands.length})
                 </Card.Title>
               </Card.Header>
 
               <Card.Body className="p-0">
                 {mappedBrands.length === 0 ? (
                   <div className="p-3 text-muted text-center">
-                    <small>No brands mapped yet</small>
+                    <small>{t('categoryBrandMapping.noBrandsMapped')}</small>
                   </div>
                 ) : (
                   <ListGroup variant="flush">
@@ -344,7 +346,7 @@ const CategoryBrandMapping: React.FC = () => {
                           <div className="fw-semibold">{brand.brand}</div>
                           {!brand.isActive && (
                             <Badge bg="warning" className="small">
-                              Inactive
+                              {t('categoryBrandMapping.inactive')}
                             </Badge>
                           )}
                         </div>
@@ -354,7 +356,7 @@ const CategoryBrandMapping: React.FC = () => {
                           variant="danger"
                           onClick={() => handleRemoveMapping(brand.id)}
                           disabled={loading}
-                          title="Remove mapping"
+                          title={t('categoryBrandMapping.removeMapping')}
                         >
                           ✕
                         </Button>
@@ -378,27 +380,27 @@ const CategoryBrandMapping: React.FC = () => {
                 <div className="fs-5 fw-bold text-primary">
                   {categories.length}
                 </div>
-                <small className="text-muted">Total Categories</small>
+                <small className="text-muted">{t('categoryBrandMapping.totalCategories')}</small>
               </Col>
               <Col md={3}>
                 <div className="fs-5 fw-bold text-success">
                   {allBrands.length}
                 </div>
-                <small className="text-muted">Total Brands</small>
+                <small className="text-muted">{t('categoryBrandMapping.totalBrands')}</small>
               </Col>
               <Col md={3}>
                 <div className="fs-5 fw-bold text-info">
                   {mappedBrands.length}
                 </div>
                 <small className="text-muted">
-                  Brands in {getCategoryName()}
+                  {t('categoryBrandMapping.brandsInCategory')} {getCategoryName()}
                 </small>
               </Col>
               <Col md={3}>
                 <div className="fs-5 fw-bold text-warning">
                   {availableBrands.length}
                 </div>
-                <small className="text-muted">Available to Map</small>
+                <small className="text-muted">{t('categoryBrandMapping.availableToMap')}</small>
               </Col>
             </Row>
           </Card.Body>

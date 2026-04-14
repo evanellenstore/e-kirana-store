@@ -5,6 +5,7 @@ import {
   Form,
   Spinner
 } from "react-bootstrap";
+import { useTranslation } from "react-i18next";
 import AdminHeader from "../../components/AdminHeader";
 import api from "../../services/api";
 import {
@@ -26,6 +27,7 @@ interface Category {
 }
 
 const AdminProducts: React.FC = () => {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -162,7 +164,7 @@ const AdminProducts: React.FC = () => {
    */
   const handleBarcodeScan = async () => {
     if (!barcodeInput.trim()) {
-      setScanError("❌ Please enter a barcode");
+      setScanError("❌ " + t('validation.required'));
       return;
     }
 
@@ -235,7 +237,7 @@ const AdminProducts: React.FC = () => {
 
   const removeProduct = (id?: number) => {
     if (!id) return;
-    if (window.confirm("Delete this product?")) {
+    if (window.confirm(t('products.deleteProduct') + "?")) {
       deleteProduct(id).then(() => {
         setCurrentPage(1); // Reset to page 1 after deletion
         loadProducts(1, itemsPerPage);
@@ -283,7 +285,7 @@ const AdminProducts: React.FC = () => {
     return (
       <div className="admin-product-loading-container">
         <div className="admin-product-spinner"></div>
-        <p>Loading products...</p>
+        <p>{t('common.loading')}</p>
       </div>
     );
   }
@@ -292,24 +294,24 @@ const AdminProducts: React.FC = () => {
     <div className="admin-product-page-container">
       <div className="admin-product-content">
         <AdminHeader 
-          title="Product Management"
-          description="Create, edit, and manage all products in your system"
+          title={t('products.management')}
+          description={t('products.manageDesc')}
         />
 
         {/* Search & Filters Section */}
         <div className="admin-product-toolbar">
           <div className="admin-product-search-card">
             <div className="admin-product-search-header">
-              <h3 className="admin-product-search-title">🔍 Search & Filter Products</h3>
+              <h3 className="admin-product-search-title">🔍 {t('products.search')}</h3>
               <div className="admin-product-count-badge">
-                {filteredProducts.length} Products
+                {filteredProducts.length} {t('admin.products')}
               </div>
             </div>
             <div className="admin-product-search-body">
               {/* Search Input */}
               <div className="admin-product-search-input-group">
                 <Form.Control
-                  placeholder="Search by SKU or Product Name"
+                  placeholder={t('products.searchPlaceholder')}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="admin-product-input"
@@ -327,7 +329,7 @@ const AdminProducts: React.FC = () => {
                 {/* Category Filter */}
                 <Form.Group className="mb-0">
                   <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
-                    📁 Category
+                    📁 {t('products.category')}
                   </Form.Label>
                   <Form.Select
                     value={filterCategory}
@@ -344,7 +346,7 @@ const AdminProducts: React.FC = () => {
                     }}
                     style={{ fontSize: "13px", padding: "8px 12px" }}
                   >
-                    <option value="">All Categories</option>
+                    <option value="">{t('common.language')} {t('admin.categories')}</option>
                     {categories
                       .filter(cat => cat.isActive)
                       .map(cat => (
@@ -358,7 +360,7 @@ const AdminProducts: React.FC = () => {
                 {/* Brand Filter */}
                 <Form.Group className="mb-0">
                   <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
-                    🏷️ Brand
+                    🏷️ {t('products.brand')}
                   </Form.Label>
                   <Form.Select
                     value={filterBrand}
@@ -366,7 +368,7 @@ const AdminProducts: React.FC = () => {
                     disabled={!filterCategory}
                     style={{ fontSize: "13px", padding: "8px 12px" }}
                   >
-                    <option value="">All Brands</option>
+                    <option value="">{t('common.language')} {t('products.brand')}s</option>
                     {brands
                       .map(brand => (
                         <option key={brand.id} value={brand.id}>
@@ -379,18 +381,18 @@ const AdminProducts: React.FC = () => {
                 {/* Items Per Page Filter */}
                 <Form.Group className="mb-0">
                   <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
-                    📄 Items Per Page
+                    📄 {t('products.itemsPerPage')}
                   </Form.Label>
                   <Form.Select
                     value={itemsPerPage}
                     onChange={e => setItemsPerPage(Number(e.target.value))}
                     style={{ fontSize: "13px", padding: "8px 12px" }}
                   >
-                    <option value={5}>5 items</option>
-                    <option value={10}>10 items</option>
-                    <option value={20}>20 items</option>
-                    <option value={50}>50 items</option>
-                    <option value={100}>100 items</option>
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
                   </Form.Select>
                 </Form.Group>
               </div>
@@ -479,7 +481,7 @@ const AdminProducts: React.FC = () => {
             onClick={() => openModal()}
           >
             <span className="add-icon">+</span>
-            <span className="add-text">Add Product</span>
+            <span className="add-text">{t('products.addProduct')}</span>
           </button>
         </div>
 
@@ -502,7 +504,7 @@ const AdminProducts: React.FC = () => {
               <strong style={{ color: "#667eea" }}>{filteredProducts.length}</strong> products found
             </div>
             <div style={{ fontSize: "13px", color: "#999" }}>
-              Page <strong style={{ color: "#667eea" }}>{currentPage}</strong> of <strong style={{ color: "#667eea" }}>{totalPages}</strong>
+              {t('products.page')} <strong style={{ color: "#667eea" }}>{currentPage}</strong> {t('products.of')} <strong style={{ color: "#667eea" }}>{totalPages}</strong>
             </div>
           </div>
         )}
@@ -514,7 +516,7 @@ const AdminProducts: React.FC = () => {
               <div className="admin-product-card-header">
                 <div className="admin-product-card-title-section">
                   <h4 className="admin-product-name">{p.name}</h4>
-                  <div className="admin-product-sku">SKU: {p.sku}</div>
+                  <div className="admin-product-sku">{t('products.sku')}: {p.sku}</div>
                 </div>
                 <Badge 
                   className={`admin-product-status-badge ${p.status === "ACTIVE" ? "badge-active" : "badge-inactive"}`}
@@ -530,27 +532,27 @@ const AdminProducts: React.FC = () => {
                     <span className="info-value">{p.id}</span>
                   </div>
                   <div className="admin-product-info-item">
-                    <span className="info-label">Category</span>
+                    <span className="info-label">{t('products.category')}</span>
                     <span className="info-value">{p.category || "N/A"}</span>
                   </div>
                   <div className="admin-product-info-item">
-                    <span className="info-label">Brand</span>
+                    <span className="info-label">{t('products.brand')}</span>
                     <span className="info-value">{p.brandName || "N/A"}</span>
                   </div>
                   <div className="admin-product-info-item">
-                    <span className="info-label">Unit</span>
+                    <span className="info-label">{t('products.unit')}</span>
                     <span className="info-value">{p.unit || "N/A"}</span>
                   </div>
                 </div>
 
                 <div className="admin-product-pricing-section">
                   <div className="price-item">
-                    <span className="price-label">Price</span>
+                    <span className="price-label">{t('products.price')}</span>
                     <span className="price-value">₹{p.price}</span>
                   </div>
                   {p.discountAmount ? (
                     <div className="discount-item">
-                      <span className="discount-label">Discount</span>
+                      <span className="discount-label">{t('products.discount')}</span>
                       <span className="discount-value">₹{p.discountAmount}</span>
                     </div>
                   ) : null}
@@ -579,13 +581,13 @@ const AdminProducts: React.FC = () => {
                   className="admin-product-btn admin-product-btn-edit"
                   onClick={() => openModal(p)}
                 >
-                  ✏️ Edit
+                  ✏️ {t('products.edit')}
                 </button>
                 <button 
                   className="admin-product-btn admin-product-btn-delete"
                   onClick={() => removeProduct(p.id)}
                 >
-                  🗑️ Delete
+                  🗑️ {t('products.delete')}
                 </button>
               </div>
             </div>
@@ -596,7 +598,7 @@ const AdminProducts: React.FC = () => {
         {filteredProducts.length === 0 && (
           <div className="admin-product-empty-state">
             <div className="admin-product-empty-icon">📭</div>
-            <p className="admin-product-empty-text">No products found</p>
+            <p className="admin-product-empty-text">{t('products.noProducts')}</p>
           </div>
         )}
 
@@ -625,9 +627,9 @@ const AdminProducts: React.FC = () => {
               flex: "1 1 auto"
             }}>
               <span>
-                Showing <strong style={{ color: "#667eea" }}>{startIndex + 1}</strong> to{" "}
-                <strong style={{ color: "#667eea" }}>{Math.min(endIndex, filteredProducts.length)}</strong> of{" "}
-                <strong style={{ color: "#667eea" }}>{filteredProducts.length}</strong> products
+                {t('products.showing')} <strong style={{ color: "#667eea" }}>{startIndex + 1}</strong> {t('products.to')}{" "}
+                <strong style={{ color: "#667eea" }}>{Math.min(endIndex, filteredProducts.length)}</strong> {t('products.of')}{" "}
+                <strong style={{ color: "#667eea" }}>{filteredProducts.length}</strong> {t('admin.products')}
               </span>
             </div>
 
@@ -654,7 +656,7 @@ const AdminProducts: React.FC = () => {
                   transition: "all 0.3s ease"
                 }}
               >
-                ← Previous
+                ← {t('products.previous')}
               </button>
 
               {/* Page Numbers */}
@@ -719,7 +721,7 @@ const AdminProducts: React.FC = () => {
                   transition: "all 0.3s ease"
                 }}
               >
-                Next →
+                {t('products.next')} →
               </button>
 
               {/* Page Info */}
@@ -731,7 +733,7 @@ const AdminProducts: React.FC = () => {
                 paddingLeft: "12px",
                 borderLeft: "2px solid rgba(102, 126, 234, 0.2)"
               }}>
-                Page <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
+                {t('products.page')} <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
               </div>
             </div>
           </div>
@@ -741,7 +743,7 @@ const AdminProducts: React.FC = () => {
       {/* Add/Edit Product Modal */}
       <Modal show={show} onHide={() => setShow(false)} size="lg">
         <Modal.Header closeButton>
-          <Modal.Title>{editing ? "Edit Product" : "Add New Product"}</Modal.Title>
+          <Modal.Title>{editing ? t('products.editProduct') : t('products.addProduct')}</Modal.Title>
         </Modal.Header>
 
         <Modal.Body className="admin-product-modal-body">
@@ -778,7 +780,7 @@ const AdminProducts: React.FC = () => {
                     transition: "all 0.2s ease"
                   }}
                 >
-                  ✏️ Manual
+                  ✏️ {t('products.manualMode')}
                 </div>
 
                 {/* Barcode Scan Option */}
@@ -799,7 +801,7 @@ const AdminProducts: React.FC = () => {
                     transition: "all 0.2s ease"
                   }}
                 >
-                  📱 Scan
+                  📱 {t('products.scanMode')}
                 </div>
               </div>
             </div>
@@ -818,9 +820,9 @@ const AdminProducts: React.FC = () => {
                 color: "white",
                 marginBottom: "16px"
               }}>
-                <h5 style={{ margin: 0, fontWeight: 600, fontSize: "16px" }}>📱 Scan Product Barcode</h5>
+                <h5 style={{ margin: 0, fontWeight: 600, fontSize: "16px" }}>📱 {t('products.scanBarcode')}</h5>
                 <p style={{ margin: "4px 0 0 0", fontSize: "13px", opacity: 0.9 }}>
-                  Scan SKU or external barcode to quickly find existing products
+                  {t('products.scanDesc')}
                 </p>
               </div>
 
@@ -833,7 +835,7 @@ const AdminProducts: React.FC = () => {
               }}>
                 <Form.Group className="mb-0">
                   <Form.Control
-                    placeholder="Enter or scan barcode..."
+                    placeholder={t('products.enterOrScan')}
                     value={barcodeInput}
                     onChange={(e) => {
                       setBarcodeInput(e.target.value);
@@ -879,10 +881,10 @@ const AdminProducts: React.FC = () => {
                   {barcodeScanning ? (
                     <>
                       <Spinner animation="border" size="sm" style={{ width: "14px", height: "14px", marginRight: "8px" }} />
-                      Searching...
+                      {t('products.searching')}
                     </>
                   ) : (
-                    "🔍 Search Product"
+                    "🔍 " + t('products.searchProduct')
                   )}
                 </button>
               </div>
@@ -918,7 +920,7 @@ const AdminProducts: React.FC = () => {
                           fontWeight: "600"
                         }}
                       >
-                        🔄 Scan Another
+                        🔄 {t('products.scanAnother')}
                       </button>
                       <button
                         className="btn btn-sm flex-grow-1"
@@ -937,7 +939,7 @@ const AdminProducts: React.FC = () => {
                           fontWeight: "600"
                         }}
                       >
-                        👁️ View Details
+                        👁️ {t('products.viewDetails')}
                       </button>
                     </div>
                   )}
@@ -955,7 +957,7 @@ const AdminProducts: React.FC = () => {
                         fontWeight: "600"
                       }}
                     >
-                      ➕ Create New Product
+                      ➕ {t('products.createNew')}
                     </button>
                   )}
                 </div>
@@ -971,7 +973,7 @@ const AdminProducts: React.FC = () => {
                   alignItems: "center"
                 }}>
                   <span>💡</span>
-                  <span>Accepts SKU or barcode format (press Enter or click Search)</span>
+                  <span>{t('products.helperText')}</span>
                 </div>
               )}
             </div>
@@ -982,7 +984,7 @@ const AdminProducts: React.FC = () => {
             <>
           {/* Category */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Category *</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.category')} *</Form.Label>
             <Form.Select
               value={formData.category}
               onChange={e => {
@@ -991,7 +993,7 @@ const AdminProducts: React.FC = () => {
               }}
               className="admin-product-form-select"
             >
-              <option value="">Select a category</option>
+              <option value="">{t('products.selectCategory')}</option>
               {categories
                 .filter(cat => cat.isActive)
                 .map(cat => (
@@ -1004,15 +1006,15 @@ const AdminProducts: React.FC = () => {
 
           {/* Brand */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">🏷️ Brand *</Form.Label>
+            <Form.Label className="admin-product-form-label">🏷️ {t('products.brand')} *</Form.Label>
             {!formData.category ? (
               <Form.Select disabled className="admin-product-form-select">
-                <option value="">👆 Select Category First</option>
+                <option value="">{t('products.selectCategoryFirst')}</option>
               </Form.Select>
             ) : loadingBrands ? (
               <div className="admin-product-loading-info">
                 <Spinner animation="border" size="sm" className="me-2" />
-                Loading brands...
+                {t('products.loadingBrands')}
               </div>
             ) : brands.length > 0 ? (
               <Form.Select
@@ -1028,7 +1030,7 @@ const AdminProducts: React.FC = () => {
                 }}
                 className="admin-product-form-select"
               >
-                <option value="">-- Select Brand --</option>
+                <option value="">{t('products.selectBrand')}</option>
                 {brands.map((brand) => (
                   <option key={brand.id} value={brand.id}>
                     {brand.brand}
@@ -1037,16 +1039,16 @@ const AdminProducts: React.FC = () => {
               </Form.Select>
             ) : (
               <div className="admin-product-warning-info">
-                ⚠️ No brands mapped to this category
+                {t('products.noBrandsMapped')}
               </div>
             )}
           </Form.Group>
 
           {/* Product Name */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Product Name *</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.name')} *</Form.Label>
             <Form.Control
-              placeholder="Enter product name"
+              placeholder={t('products.name')}
               value={formData.name}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
               className="admin-product-form-input"
@@ -1055,9 +1057,9 @@ const AdminProducts: React.FC = () => {
 
           {/* Unit */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Unit *</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.unit')} *</Form.Label>
             <Form.Control
-              placeholder="e.g., kg, liters, pieces"
+              placeholder={t('products.unit')}
               value={formData.unit}
               onChange={e => setFormData({ ...formData, unit: e.target.value })}
               className="admin-product-form-input"
@@ -1066,10 +1068,10 @@ const AdminProducts: React.FC = () => {
 
           {/* Price */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Price (₹) *</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.price')} (₹) *</Form.Label>
             <Form.Control
               type="text"
-              placeholder="Enter price"
+              placeholder={t('products.price')}
               value={formData.price || ""}
               onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
               className="admin-product-form-input"
@@ -1078,10 +1080,10 @@ const AdminProducts: React.FC = () => {
 
           {/* Discount */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Discount (₹)</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.discount')} (₹)</Form.Label>
             <Form.Control
               type="text"
-              placeholder="Enter discount amount"
+              placeholder={t('products.discount')}
               value={formData.discountAmount || ""}
               onChange={e => setFormData({ ...formData, discountAmount: parseFloat(e.target.value) || 0 })}
               className="admin-product-form-input"
@@ -1090,7 +1092,7 @@ const AdminProducts: React.FC = () => {
 
           {/* Status */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">Status</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.status')}</Form.Label>
             <Form.Select
               value={formData.status}
               onChange={e => setFormData({ ...formData, status: e.target.value as any })}
@@ -1103,9 +1105,9 @@ const AdminProducts: React.FC = () => {
 
           {/* External Barcode Field - Show for both creating and editing */}
           <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">External Barcode</Form.Label>
+            <Form.Label className="admin-product-form-label">{t('products.externalBarcode')}</Form.Label>
             <Form.Control
-              placeholder="External Barcode Number (optional)"
+              placeholder={t('products.externalBarcode')}
               value={formData.externalBarcode || ""}
               onChange={e =>
                 setFormData({ ...formData, externalBarcode: e.target.value })
@@ -1114,8 +1116,8 @@ const AdminProducts: React.FC = () => {
             />
             <small className="form-text text-muted">
               {editing 
-                ? "Edit the barcode number for this product."
-                : "Unique barcode number for quick lookup (e.g., manufacturer barcode). If not provided, a unique barcode will be auto-generated (PRD-timestamp-random)."
+                ? t('products.editBarcode')
+                : t('products.barcodeInfo')
               }
             </small>
           </Form.Group>
@@ -1128,13 +1130,13 @@ const AdminProducts: React.FC = () => {
             className="admin-product-modal-btn admin-product-modal-btn-cancel"
             onClick={() => setShow(false)}
           >
-            Cancel
+            {t('products.cancel')}
           </button>
           <button 
             className="admin-product-modal-btn admin-product-modal-btn-save"
             onClick={saveProduct}
           >
-            {editing ? '💾 Update' : '➕ Create'}
+            {editing ? '💾 ' + t('products.update') : '➕ ' + t('products.create')}
           </button>
         </Modal.Footer>
       </Modal>
@@ -1142,18 +1144,18 @@ const AdminProducts: React.FC = () => {
       {/* Barcode Preview Modal */}
       <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
         <Modal.Header closeButton>
-          <Modal.Title>Barcode Preview</Modal.Title>
+          <Modal.Title>{t('products.barcodePreview')}</Modal.Title>
         </Modal.Header>
         <Modal.Body className="text-center">
           {barcodePreview ? (
             <>
               <img src={`data:image/png;base64,${barcodePreview}`} alt="barcode" style={{maxWidth: '100%'}} />
               <div className="mt-3">
-                <a href={`data:image/png;base64,${barcodePreview}`} download="barcode.png" className="btn btn-outline-primary btn-sm">Download</a>
+                <a href={`data:image/png;base64,${barcodePreview}`} download="barcode.png" className="btn btn-outline-primary btn-sm">{t('products.download')}</a>
               </div>
             </>
           ) : (
-            <div className="text-muted">No preview available</div>
+            <div className="text-muted">{t('products.noProducts')}</div>
           )}
         </Modal.Body>
       </Modal>
