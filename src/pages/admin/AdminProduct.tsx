@@ -42,7 +42,7 @@ const AdminProducts: React.FC = () => {
 
   /* 📄 Pagination */
   const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const emptyProduct: Product = {
     sku: "",
@@ -69,10 +69,18 @@ const AdminProducts: React.FC = () => {
   // Input mode: "manual" or "barcode"
   const [inputMode, setInputMode] = useState<"manual" | "barcode">("manual");
 
-  const loadProducts = () => {
+  const loadProducts = (page: number = 1, limit: number = itemsPerPage) => {
     setLoading(true);
-    getAllProducts()
-      .then(res => setProducts(res.data))
+    console.log(`📡 Loading products: page=${page}, limit=${limit}`);
+    getAllProducts(page, limit)
+      .then(res => {
+        console.log('✅ Products loaded:', res.data);
+        setProducts(res.data);
+      })
+      .catch(err => {
+        console.error('❌ Failed to load products:', err);
+        setProducts([]);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -101,9 +109,14 @@ const AdminProducts: React.FC = () => {
   };
 
   useEffect(() => {
-    loadProducts();
-    loadCategories();
+    loadCategories(); // Only load categories on mount
   }, []);
+
+  // Load products when page or itemsPerPage changes (including on initial render)
+  useEffect(() => {
+    console.log(`📡 Loading products: page=${currentPage}, itemsPerPage=${itemsPerPage}`);
+    loadProducts(currentPage, itemsPerPage);
+  }, [currentPage, itemsPerPage]);
 
   // Load brands when category changes in form
   useEffect(() => {
@@ -214,7 +227,8 @@ const AdminProducts: React.FC = () => {
       : createProduct(dataToSave);
 
     apiCall.then(() => {
-      loadProducts();
+      setCurrentPage(1); // Reset to page 1 after adding/editing
+      loadProducts(1, itemsPerPage);
       setShow(false);
     });
   };
@@ -222,7 +236,10 @@ const AdminProducts: React.FC = () => {
   const removeProduct = (id?: number) => {
     if (!id) return;
     if (window.confirm("Delete this product?")) {
-      deleteProduct(id).then(loadProducts);
+      deleteProduct(id).then(() => {
+        setCurrentPage(1); // Reset to page 1 after deletion
+        loadProducts(1, itemsPerPage);
+      });
     }
   };
 
@@ -244,13 +261,22 @@ const AdminProducts: React.FC = () => {
 
   // Reset to page 1 when filters change
   useEffect(() => {
+    console.log('🔄 Filters changed, resetting to page 1');
     setCurrentPage(1);
   }, [search, filterCategory, filterBrand]);
 
+  // Trigger API call when page or itemsPerPage changes
+  useEffect(() => {
+    console.log(`📡 Pagination changed: page=${currentPage}, itemsPerPage=${itemsPerPage}`);
+    loadProducts(currentPage, itemsPerPage);
+  }, [currentPage, itemsPerPage]);
+
   // Pagination calculations
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
-  const startIndex = (currentPage - 1) * productsPerPage;
-  const endIndex = startIndex + productsPerPage;
+  // Note: This is client-side pagination on the already-paginated server results
+  // combined with client-side filtering
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
   const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
 
   if (loading) {
@@ -294,7 +320,7 @@ const AdminProducts: React.FC = () => {
               {/* Category & Brand Filters */}
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "1fr 1fr 1fr",
                 gap: "12px",
                 marginTop: "12px"
               }}>
@@ -349,6 +375,24 @@ const AdminProducts: React.FC = () => {
                       ))}
                   </Form.Select>
                 </Form.Group>
+
+                {/* Items Per Page Filter */}
+                <Form.Group className="mb-0">
+                  <Form.Label style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                    📄 Items Per Page
+                  </Form.Label>
+                  <Form.Select
+                    value={itemsPerPage}
+                    onChange={e => setItemsPerPage(Number(e.target.value))}
+                    style={{ fontSize: "13px", padding: "8px 12px" }}
+                  >
+                    <option value={5}>5 items</option>
+                    <option value={10}>10 items</option>
+                    <option value={20}>20 items</option>
+                    <option value={50}>50 items</option>
+                    <option value={100}>100 items</option>
+                  </Form.Select>
+                </Form.Group>
               </div>
 
               {/* Active Filters Display */}
@@ -357,7 +401,8 @@ const AdminProducts: React.FC = () => {
                   marginTop: "10px",
                   display: "flex",
                   gap: "8px",
-                  flexWrap: "wrap"
+                  flexWrap: "wrap",
+                  alignItems: "center"
                 }}>
                   {filterCategory && (
                     <span style={{
@@ -395,6 +440,35 @@ const AdminProducts: React.FC = () => {
                       </span>
                     </span>
                   )}
+                  <button
+                    onClick={() => {
+                      setFilterCategory("");
+                      setFilterBrand("");
+                      setSearch("");
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      background: "rgba(255, 107, 107, 0.1)",
+                      border: "1px solid rgba(255, 107, 107, 0.3)",
+                      color: "#ff6b6b",
+                      padding: "4px 10px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                      transition: "all 0.2s"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 107, 107, 0.2)";
+                      e.currentTarget.style.borderColor = "rgba(255, 107, 107, 0.5)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 107, 107, 0.1)";
+                      e.currentTarget.style.borderColor = "rgba(255, 107, 107, 0.3)";
+                    }}
+                  >
+                    ✕ Clear All
+                  </button>
                 </div>
               )}
             </div>
@@ -408,6 +482,30 @@ const AdminProducts: React.FC = () => {
             <span className="add-text">Add Product</span>
           </button>
         </div>
+
+        {/* Products Grid */}
+        {filteredProducts.length > 0 && (
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.03) 100%)",
+            border: "1px solid rgba(102, 126, 234, 0.1)",
+            borderRadius: "12px",
+            marginBottom: "20px",
+            fontSize: "14px",
+            fontWeight: "500",
+            color: "#4b5563"
+          }}>
+            <div>
+              <strong style={{ color: "#667eea" }}>{filteredProducts.length}</strong> products found
+            </div>
+            <div style={{ fontSize: "13px", color: "#999" }}>
+              Page <strong style={{ color: "#667eea" }}>{currentPage}</strong> of <strong style={{ color: "#667eea" }}>{totalPages}</strong>
+            </div>
+          </div>
+        )}
 
         {/* Products Grid */}
         <div className="admin-product-grid">
@@ -506,86 +604,135 @@ const AdminProducts: React.FC = () => {
         {filteredProducts.length > 0 && (
           <div style={{
             display: "flex",
-            justifyContent: "center",
+            justifyContent: "space-between",
             alignItems: "center",
-            gap: "12px",
+            gap: "16px",
             marginTop: "32px",
             padding: "20px",
-            background: "#f8f9fa",
-            borderRadius: "10px"
+            background: "linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.03) 100%)",
+            border: "1px solid rgba(102, 126, 234, 0.1)",
+            borderRadius: "12px",
+            flexWrap: "wrap"
           }}>
-            {/* Previous Button */}
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              style={{
-                padding: "8px 16px",
-                background: currentPage === 1 ? "#e9ecef" : "#667eea",
-                color: currentPage === 1 ? "#999" : "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                fontWeight: "600",
-                fontSize: "13px"
-              }}
-            >
-              ← Previous
-            </button>
-
-            {/* Page Numbers */}
-            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  style={{
-                    padding: "8px 12px",
-                    background: currentPage === page ? "#667eea" : "#fff",
-                    color: currentPage === page ? "white" : "#333",
-                    border: currentPage === page ? "none" : "1px solid #ddd",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: currentPage === page ? "600" : "500",
-                    fontSize: "13px"
-                  }}
-                >
-                  {page}
-                </button>
-              ))}
+            {/* Results Summary */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "1rem",
+              fontSize: "14px",
+              color: "#4b5563",
+              fontWeight: "500",
+              flex: "1 1 auto"
+            }}>
+              <span>
+                Showing <strong style={{ color: "#667eea" }}>{startIndex + 1}</strong> to{" "}
+                <strong style={{ color: "#667eea" }}>{Math.min(endIndex, filteredProducts.length)}</strong> of{" "}
+                <strong style={{ color: "#667eea" }}>{filteredProducts.length}</strong> products
+              </span>
             </div>
 
-            {/* Next Button */}
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              style={{
-                padding: "8px 16px",
-                background: currentPage === totalPages ? "#e9ecef" : "#667eea",
-                color: currentPage === totalPages ? "#999" : "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-                fontWeight: "600",
-                fontSize: "13px"
-              }}
-            >
-              Next →
-            </button>
-
-            {/* Page Info */}
+            {/* Navigation Buttons */}
             <div style={{
-              marginLeft: "16px",
-              fontSize: "13px",
-              fontWeight: "500",
-              color: "#666",
-              paddingLeft: "16px",
-              borderLeft: "2px solid #ddd"
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              flexWrap: "wrap"
             }}>
-              Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
-              <br />
-              <span style={{ fontSize: "12px", color: "#999" }}>
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length}
-              </span>
+              {/* Previous Button */}
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: "8px 16px",
+                  background: currentPage === 1 ? "#e9ecef" : "white",
+                  color: currentPage === 1 ? "#999" : "#667eea",
+                  border: currentPage === 1 ? "1px solid #e9ecef" : "2px solid #667eea",
+                  borderRadius: "8px",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                  fontWeight: "600",
+                  fontSize: "13px",
+                  transition: "all 0.3s ease"
+                }}
+              >
+                ← Previous
+              </button>
+
+              {/* Page Numbers */}
+              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  const page = i + 1;
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      style={{
+                        padding: "8px 12px",
+                        background: currentPage === page ? "#667eea" : "white",
+                        color: currentPage === page ? "white" : "#333",
+                        border: currentPage === page ? "none" : "1px solid #ddd",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        fontWeight: currentPage === page ? "600" : "500",
+                        fontSize: "13px",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+                {totalPages > 5 && (
+                  <>
+                    <span style={{ color: "#999" }}>...</span>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      style={{
+                        padding: "8px 12px",
+                        background: currentPage === totalPages ? "#667eea" : "white",
+                        color: currentPage === totalPages ? "white" : "#333",
+                        border: currentPage === totalPages ? "none" : "1px solid #ddd",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        fontWeight: currentPage === totalPages ? "600" : "500",
+                        fontSize: "13px"
+                      }}
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Next Button */}
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: "8px 16px",
+                  background: currentPage === totalPages ? "#e9ecef" : "white",
+                  color: currentPage === totalPages ? "#999" : "#667eea",
+                  border: currentPage === totalPages ? "1px solid #e9ecef" : "2px solid #667eea",
+                  borderRadius: "8px",
+                  cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                  fontWeight: "600",
+                  fontSize: "13px",
+                  transition: "all 0.3s ease"
+                }}
+              >
+                Next →
+              </button>
+
+              {/* Page Info */}
+              <div style={{
+                marginLeft: "8px",
+                fontSize: "13px",
+                fontWeight: "600",
+                color: "#667eea",
+                paddingLeft: "12px",
+                borderLeft: "2px solid rgba(102, 126, 234, 0.2)"
+              }}>
+                Page <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
+              </div>
             </div>
           </div>
         )}

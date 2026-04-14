@@ -29,7 +29,12 @@ export interface Brand {
 }
 
 // GET all products
-export const getAllProducts = () => api.get<Product[]>("/products");
+export const getAllProducts = (page?: number, limit?: number) => {
+  if (page !== undefined && limit !== undefined) {
+    return api.get<Product[]>("/products", { params: { page, limit } });
+  }
+  return api.get<Product[]>("/products");
+};
 
 // GET categories → returns Category[] (includes inactive for admin)
 export const getCategories = () => api.get<Category[]>("/products/categories");

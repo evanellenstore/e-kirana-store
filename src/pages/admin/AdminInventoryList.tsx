@@ -324,34 +324,52 @@ const InventoryList: React.FC = () => {
 
   return (
     <div className="inventory-list-container">
-      {/* Search & Filter Header */}
-      <div className="inventory-search-header">
-        <div className="header-top">
-          <h2 className="search-title">📦 Inventory Overview</h2>
-          <div className="search-input-wrapper">
-            <span className="search-icon">🔍</span>
-            <input
-              type="text"
-              placeholder="Search SKU / Product Name"
-              value={search}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setSearch(e.target.value);
+      {/* Filter Panel */}
+      <div className="filter-panel">
+        <div className="filter-panel-header">
+          <h2 className="filter-panel-title">🔍 Advanced Filters</h2>
+          {(search || filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
+            <button
+              onClick={() => {
+                setSearch("");
+                setFilterCategory("");
+                setFilterBrand("");
+                setFilterStockStatus("all");
+                setFilterExpiryStatus("all");
+                setBrands([]);
                 setCurrentPage(1);
               }}
-              className="search-input"
-            />
-          </div>
+              className="clear-filters-btn"
+            >
+              ✕ Clear All Filters
+            </button>
+          )}
         </div>
 
-        {/* Filter Controls */}
-        <div className="filter-controls">
+        {/* Search Bar */}
+        <div className="search-bar-container">
+          <span className="search-icon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search by SKU or Product Name..."
+            value={search}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="search-input-large"
+          />
+        </div>
+
+        {/* Filter Grid */}
+        <div className="filter-grid">
           {/* Category Filter */}
-          <div className="filter-group">
-            <label className="filter-label">📁 Category:</label>
+          <div className="filter-item">
+            <label className="filter-item-label">📁 Category</label>
             <select
               value={filterCategory}
               onChange={(e) => handleCategoryChange(e.target.value)}
-              className="filter-select"
+              className="filter-item-select"
               disabled={loading}
             >
               <option value="">All Categories</option>
@@ -366,8 +384,8 @@ const InventoryList: React.FC = () => {
           </div>
 
           {/* Brand Filter */}
-          <div className="filter-group">
-            <label className="filter-label">🏷️ Brand:</label>
+          <div className="filter-item">
+            <label className="filter-item-label">🏷️ Brand</label>
             <select
               value={filterBrand}
               onChange={(e) => {
@@ -376,7 +394,7 @@ const InventoryList: React.FC = () => {
                 setCurrentPage(1);
               }}
               disabled={!filterCategory || loadingBrands}
-              className="filter-select"
+              className="filter-item-select"
             >
               <option value="">
                 {!filterCategory ? 'Select Category First' : loadingBrands ? 'Loading...' : 'All Brands'}
@@ -390,106 +408,87 @@ const InventoryList: React.FC = () => {
           </div>
 
           {/* Stock Status Filter */}
-          <div className="filter-group">
-            <label className="filter-label">Stock Status:</label>
+          <div className="filter-item">
+            <label className="filter-item-label">📦 Stock Status</label>
             <select
               value={filterStockStatus}
               onChange={(e) => {
                 setFilterStockStatus(e.target.value as "all" | "low" | "in-stock");
                 setCurrentPage(1);
               }}
-              className="filter-select"
+              className="filter-item-select"
             >
               <option value="all">All Stock</option>
-              <option value="in-stock">In Stock</option>
-              <option value="low">Low Stock</option>
+              <option value="in-stock">✅ In Stock</option>
+              <option value="low">⚠️ Low Stock</option>
             </select>
           </div>
 
-          <div className="filter-group">
-            <label className="filter-label">Expiry Status:</label>
+          {/* Expiry Status Filter */}
+          <div className="filter-item">
+            <label className="filter-item-label">⏰ Expiry Status</label>
             <select
               value={filterExpiryStatus}
               onChange={(e) => {
                 setFilterExpiryStatus(e.target.value as "all" | "valid" | "near-expiry" | "expired");
                 setCurrentPage(1);
               }}
-              className="filter-select"
+              className="filter-item-select"
             >
               <option value="all">All Items</option>
-              <option value="valid">Valid</option>
-              <option value="near-expiry">Near Expiry</option>
-              <option value="expired">Expired</option>
+              <option value="valid">✅ Valid</option>
+              <option value="near-expiry">🔔 Near Expiry</option>
+              <option value="expired">❌ Expired</option>
             </select>
           </div>
 
-          {/* Clear Filters Button */}
-          {(search || filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
-            <button
-              onClick={() => {
-                setSearch("");
-                setFilterCategory("");
-                setFilterBrand("");
-                setFilterStockStatus("all");
-                setFilterExpiryStatus("all");
-                setBrands([]);
-                setCurrentPage(1);
-              }}
-              className="clear-filters-btn"
+          {/* Items Per Page */}
+          <div className="filter-item">
+            <label className="filter-item-label">📄 Items Per Page</label>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              className="filter-item-select"
             >
-              ✕ Clear Filters
-            </button>
-          )}
+              <option value={5}>5 items</option>
+              <option value={10}>10 items</option>
+              <option value={20}>20 items</option>
+              <option value={50}>50 items</option>
+              <option value={100}>100 items</option>
+            </select>
+          </div>
         </div>
 
-        {/* Page Size Selector */}
-        <div style={{
-          marginTop: "12px",
-          display: "flex",
-          alignItems: "center",
-          gap: "10px"
-        }}>
-          <label style={{ fontSize: "13px", fontWeight: "600", marginBottom: 0 }}>
-            📄 Items per page:
-          </label>
-          <select
-            value={itemsPerPage}
-            onChange={(e) => setItemsPerPage(Number(e.target.value))}
-            style={{
-              fontSize: "13px",
-              padding: "6px 10px",
-              borderRadius: "4px",
-              border: "1px solid #ddd",
-              cursor: "pointer"
-            }}
-          >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
-        </div>
+        {/* Active Filters Display */}
+        {(search || filterCategory || filterBrand || filterStockStatus !== "all" || filterExpiryStatus !== "all") && (
+          <div className="active-filters">
+            <span className="active-filters-label">Active Filters:</span>
+            {search && <span className="filter-badge">🔍 {search}</span>}
+            {filterCategory && <span className="filter-badge">📁 {filterCategory}</span>}
+            {filterBrand && <span className="filter-badge">🏷️ Brand: {filterBrand}</span>}
+            {filterStockStatus !== "all" && <span className="filter-badge">📦 {filterStockStatus.replace('-', ' ').toUpperCase()}</span>}
+            {filterExpiryStatus !== "all" && <span className="filter-badge">⏰ {filterExpiryStatus.replace('-', ' ').toUpperCase()}</span>}
+          </div>
+        )}
       </div>
 
-      {/* Results Info */}
+      {/* Results Information */}
       {totalRecords > 0 && (
-        <div className="results-info" style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "12px",
-          background: "#f5f5f5",
-          borderRadius: "4px",
-          marginBottom: "16px"
-        }}>
-          <div>
-            Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to{" "}
-            <strong>{Math.min(currentPage * itemsPerPage, totalRecords)}</strong> of{" "}
-            <strong>{totalRecords}</strong> products
+        <div className="results-summary">
+          <div className="summary-left">
+            <span className="summary-stat">
+              <strong>{totalRecords}</strong> Products Found
+            </span>
+            <span className="summary-divider">•</span>
+            <span className="summary-stat">
+              Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong> to{" "}
+              <strong>{Math.min(currentPage * itemsPerPage, totalRecords)}</strong>
+            </span>
           </div>
-          <div style={{ fontSize: "13px", color: "#666" }}>
-            Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+          <div className="summary-right">
+            <span className="summary-page">
+              Page <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
+            </span>
           </div>
         </div>
       )}
