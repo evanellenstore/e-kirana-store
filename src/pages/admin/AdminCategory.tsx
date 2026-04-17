@@ -127,6 +127,9 @@ const AdminCategory: React.FC = () => {
       if (isEditing && editingId) {
         // Update category
         console.log(`✏️ Updating category: ${formData.category} (ID: ${editingId})`);
+        await api.put(`/products/categories/${editingId}`, {
+          category: formData.category
+        });
         setSuccess(`✅ ${t('categories.updatedSuccessfully', { name: formData.category })}`);
       } else {
         // Create new category
