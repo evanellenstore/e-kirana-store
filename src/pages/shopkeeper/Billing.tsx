@@ -20,6 +20,8 @@ import {
   finalizeBill,
   cancelBill,
   getSummary,
+  checkBillRefundStatus,
+  markBillAsRefunded,
   type CartItem
 } from "../../services/billingApi";
 import {
@@ -38,6 +40,7 @@ import {
 import {
   getReservedItems,
   releaseInventory,
+  adjustInventory,
   type ReservedItem
 } from "../../services/inventoryService";
 
@@ -104,6 +107,7 @@ const Billing = () => {
   const [billTaxAmount, setBillTaxAmount] = useState<number>(0);
   const [billTotalAmount, setBillTotalAmount] = useState<number>(0);
   const [loadingBillDetails, setLoadingBillDetails] = useState(false);
+  const [billRefunded, setBillRefunded] = useState(false);
 
   // Release/Refund state
   const [showReleaseModal, setShowReleaseModal] = useState(false);
@@ -112,6 +116,27 @@ const Billing = () => {
   const [selectedReservedItem, setSelectedReservedItem] = useState<ReservedItem | null>(null);
   const [releaseQty, setReleaseQty] = useState<number>(1);
   const [isReleasing, setIsReleasing] = useState(false);
+
+  // Refund Search state
+  const [refundSearchMobile, setRefundSearchMobile] = useState<string>("");
+  const [refundSearchBillId, setRefundSearchBillId] = useState<string>("");
+  const [refundSearchResults, setRefundSearchResults] = useState<any[]>([]);
+  const [loadingRefundSearch, setLoadingRefundSearch] = useState(false);
+  const [selectedRefundBill, setSelectedRefundBill] = useState<any>(null);
+  const [refundSearchError, setRefundSearchError] = useState<string | null>(null);
+
+  // Return Item state
+  const [showReturnItemModal, setShowReturnItemModal] = useState(false);
+  const [returnItemSelection, setReturnItemSelection] = useState<{ [key: number]: number }>({});
+  const [processingReturn, setProcessingReturn] = useState(false);
+  const [returnError, setReturnError] = useState<string | null>(null);
+
+  // Payment Method Dialog for return
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [paymentMethodType, setPaymentMethodType] = useState<'cash' | 'wallet' | 'mixed'>('cash');
+  const [walletAmountUsed, setWalletAmountUsed] = useState<number>(0);
+  const [walletAmountInput, setWalletAmountInput] = useState<string>("");
+  const [discountReversalOption, setDiscountReversalOption] = useState<'yes' | 'no'>('yes');
 
   // Inventory Check Modal state
   const [showInventoryModal, setShowInventoryModal] = useState(false);
@@ -468,6 +493,13 @@ const Billing = () => {
       return () => clearTimeout(timer);
     }
   }, [selectedCategory, selectedBrand]);
+
+  // Auto-fetch bill details when a refund bill is selected
+  useEffect(() => {
+    if (selectedRefundBill && selectedRefundBill.billId) {
+      handleViewBillDetails(selectedRefundBill.billId, selectedRefundBill.date);
+    }
+  }, [selectedRefundBill?.billId]);
 
   
   /* =====================
@@ -886,6 +918,15 @@ const Billing = () => {
       setBillTaxAmount(billData?.taxAmount || 0);
       setBillTotalAmount(billData?.totalAmount || 0);
       
+      // Check if bill has already been refunded
+      try {
+        const refundCheckRes = await checkBillRefundStatus(billId);
+        setBillRefunded(refundCheckRes.data?.isRefunded || false);
+      } catch (err) {
+        // If endpoint fails, assume not refunded
+        setBillRefunded(false);
+      }
+      
       console.log('✅ Bill details loaded:', { billId, items, discount: billData?.discount, total: billData?.totalAmount });
     } catch (err: any) {
       console.error('Failed to load bill details', err);
@@ -895,8 +936,271 @@ const Billing = () => {
       setBillSubTotal(0);
       setBillTaxAmount(0);
       setBillTotalAmount(0);
+      setBillRefunded(false);
     } finally {
       setLoadingBillDetails(false);
+    }
+  };
+
+  // Search for bills by mobile number or bill ID for refund
+  const searchRefundBills = async () => {
+    if (!refundSearchMobile.trim() && !refundSearchBillId.trim()) {
+      setRefundSearchError('Please enter either a mobile number or bill ID');
+      setRefundSearchResults([]);
+      return;
+    }
+
+    setLoadingRefundSearch(true);
+    setRefundSearchError(null);
+    try {
+      let results: any[] = [];
+
+      // Search by mobile number - fetch customer and then paginated bills
+      if (refundSearchMobile.trim()) {
+        try {
+          // Fetch customer details by mobile
+          const customerRes = await getCustomerByMobile(refundSearchMobile.trim());
+          const customerData = customerRes.data;
+          console.log('✅ Customer fetched:', customerData);
+
+          // Fetch paginated bills for this customer
+          const billRes = await getBillingTransactionsPaginated(customerData.id || '', 0, 10);
+          const bills = billRes.data?.content || [];
+          
+          results = bills.map((bill: any) => {
+            // Format date properly - ensure we have a valid date
+            let formattedDate = 'N/A';
+            if (bill.billedAt) {
+              try {
+                const dateObj = new Date(bill.billedAt);
+                formattedDate = dateObj.toLocaleDateString('en-IN', { 
+                  year: 'numeric', 
+                  month: '2-digit', 
+                  day: '2-digit' 
+                });
+              } catch (e) {
+                formattedDate = bill.billedAt;
+              }
+            }
+            
+            return {
+              id: bill.id,
+              billId: bill.billId || `BILL_${bill.id}`,
+              amount: bill.totalAmount || 0,
+              discount: bill.discount || 0,
+              date: formattedDate,
+              rawDate: bill.billedAt,
+              customerId: customerData?.id || '',
+              customerMobileNo: refundSearchMobile.trim(),
+              customerWalletBalance: customerData?.walletBalance || 0,
+              isCustomer: false
+            };
+          });
+          
+          console.log('✅ Paginated bills fetched for customer:', customerData.id, 'Results:', results);
+        } catch (err) {
+          console.warn("Could not fetch bills by mobile", err);
+          setRefundSearchError('Error fetching bills for this mobile number');
+        }
+      }
+
+      // If bill ID is provided, search specifically for that bill
+      if (refundSearchBillId.trim()) {
+        try {
+          const billRes = await getSummary(refundSearchBillId.trim());
+          const billData = billRes.data;
+          
+          let formattedDate = 'N/A';
+          if (billData.billedAt || billData.createdAt) {
+            try {
+              const dateObj = new Date(billData.billedAt || billData.createdAt);
+              formattedDate = dateObj.toLocaleDateString('en-IN', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit' 
+              });
+            } catch (e) {
+              formattedDate = billData.billedAt || billData.createdAt;
+            }
+          }
+          
+          results = [{
+            id: billData.id || '',
+            billId: billData.billId || refundSearchBillId.trim(),
+            amount: billData.totalAmount || 0,
+            discount: billData.discount || 0,
+            date: formattedDate,
+            rawDate: billData.billedAt || billData.createdAt,
+            isCustomer: false
+          }];
+          console.log('✅ Bill fetched for ID:', refundSearchBillId, 'Result:', results);
+        } catch (err) {
+          console.warn("Could not fetch bill by ID", err);
+          setRefundSearchError('Error fetching bill by ID');
+        }
+      }
+
+      if (results.length === 0) {
+        setRefundSearchError('No results found matching your search criteria');
+        setRefundSearchResults([]);
+      } else {
+        setRefundSearchResults(results);
+        setSelectedRefundBill(results[0]); // Auto-select first result
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Search failed";
+      setRefundSearchError(msg);
+      setRefundSearchResults([]);
+    } finally {
+      setLoadingRefundSearch(false);
+    }
+  };
+
+  // Handle return of items - adjust inventory and add refund to wallet
+  const handleReturnItems = async () => {
+    // Validate selection
+    const selectedCount = Object.values(returnItemSelection).reduce((sum, qty) => sum + qty, 0);
+    if (selectedCount === 0) {
+      setReturnError('Please select at least one item to return');
+      return;
+    }
+
+    if (!selectedRefundBill || !selectedRefundBill.customerId) {
+      setReturnError('Customer information not available');
+      return;
+    }
+
+    // Show payment method selection dialog
+    setReturnError(null);
+    setShowPaymentMethodModal(true);
+  };
+
+  // Process refund after payment method selection
+  const handleProcessRefundWithPaymentMethod = async () => {
+    // Validate payment method details
+    if (paymentMethodType === 'mixed' && (walletAmountUsed <= 0 || walletAmountUsed > (billTotalAmount || 0))) {
+      setReturnError('Please enter a valid wallet amount used for original payment');
+      return;
+    }
+
+    setProcessingReturn(true);
+    setReturnError(null);
+    
+    try {
+      let totalItemRefundAmount = 0;
+      let totalWalletRefund = 0;
+      let discountRefund = 0;
+      
+      // Process each item return and adjust inventory
+      for (const [itemIndex, returnQty] of Object.entries(returnItemSelection)) {
+        if (returnQty <= 0) continue;
+
+        const itemIdx = parseInt(itemIndex);
+        const item = billItems[itemIdx];
+        
+        if (!item) continue;
+
+        const itemSubtotal = (item.quantity || 0) * (item.price || 0);
+        const proportionalDiscount = billDiscount && billSubTotal 
+          ? (billDiscount * itemSubtotal) / billSubTotal 
+          : 0;
+        const itemTotal = itemSubtotal - proportionalDiscount;
+        const refundForThisItem = (itemTotal * returnQty) / (item.quantity || 1);
+        
+        totalItemRefundAmount += refundForThisItem;
+
+        // Adjust inventory IN for returned items
+        console.log(`📦 Returning ${returnQty} units of SKU: ${item.sku}`);
+        await adjustInventory(item.productId, returnQty, 'IN', `Returned from Bill ${selectedRefundBill.billId}`);
+      }
+
+      // Calculate refunds based on payment method
+      console.log(`📊 Payment Method: ${paymentMethodType}, Wallet Used: ${walletAmountUsed}`);
+
+      // Scenario 1: All payment was from wallet - refund full amount to wallet
+      if (paymentMethodType === 'wallet') {
+        totalWalletRefund = totalItemRefundAmount;
+        console.log(`💰 Wallet Payment Reversal: ₹${totalWalletRefund.toFixed(2)}`);
+      } 
+      // Scenario 2: All payment was from cash - refund as wallet credit
+      else if (paymentMethodType === 'cash') {
+        totalWalletRefund = totalItemRefundAmount;
+        console.log(`💳 Cash Payment - Wallet Credit: ₹${totalWalletRefund.toFixed(2)}`);
+      } 
+      // Scenario 3: Mixed payment - refund based on how much came from wallet
+      else if (paymentMethodType === 'mixed') {
+        const totalOriginalPayment = billTotalAmount || 0;
+        const walletRatio = walletAmountUsed / totalOriginalPayment;
+        totalWalletRefund = totalItemRefundAmount * walletRatio;
+        console.log(`🔄 Mixed Payment - Wallet Ratio: ${(walletRatio * 100).toFixed(2)}%, Wallet Refund: ₹${totalWalletRefund.toFixed(2)}`);
+      }
+
+      // Scenario: Reverse discount if it was credited to wallet
+      if (discountReversalOption === 'yes' && billDiscount > 0) {
+        // Calculate proportional discount for returned items
+        const totalOriginalQty = billItems.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+        const returnedQty = Object.entries(returnItemSelection)
+          .reduce((sum, [idx, qty]) => sum + (qty || 0), 0);
+        
+        discountRefund = (billDiscount * returnedQty) / totalOriginalQty;
+        console.log(`⬅️ Discount Reversal: ₹${discountRefund.toFixed(2)} reverted from wallet`);
+      }
+
+      // Add total refund (item + discount) to customer wallet
+      const finalWalletCredit = totalWalletRefund + discountRefund;
+      if (finalWalletCredit > 0) {
+        console.log(`💵 Final Wallet Credit: ₹${finalWalletCredit.toFixed(2)}`);
+        
+        const description = `Refund from Bill ${selectedRefundBill.billId} 
+          (Items: ₹${totalItemRefundAmount.toFixed(2)}${discountRefund > 0 ? ` + Discount: ₹${discountRefund.toFixed(2)}` : ''})`;
+        
+        await addToWallet(
+          selectedRefundBill.customerId,
+          finalWalletCredit,
+          description
+        );
+      }
+
+      // Success notification with detailed breakdown
+      let successMsg = `✅ Return Processed!\n`;
+      successMsg += `Items Refund: ₹${totalItemRefundAmount.toFixed(2)}\n`;
+      if (discountRefund > 0) successMsg += `Discount Reversal: ₹${discountRefund.toFixed(2)}\n`;
+      successMsg += `Total to Wallet: ₹${finalWalletCredit.toFixed(2)}`;
+      
+      setNotificationMessage(successMsg);
+      setNotificationType('success');
+      setShowNotification(true);
+
+      // Mark bill as refunded to prevent duplicate refunds
+      try {
+        await markBillAsRefunded(selectedRefundBill.billId, finalWalletCredit);
+        console.log('✅ Bill marked as refunded');
+      } catch (err) {
+        console.error('⚠️ Failed to mark bill as refunded:', err);
+        // Don't fail the entire operation if marking fails
+      }
+
+      // Reset form
+      setReturnItemSelection({});
+      setShowReturnItemModal(false);
+      setShowPaymentMethodModal(false);
+      
+      // Reset bill details
+      setBillItems([]);
+      setBillDiscount(0);
+      setBillSubTotal(0);
+      setBillTaxAmount(0);
+      setBillTotalAmount(0);
+      setBillRefunded(true); // Update local state
+      setShowBillDetailsModal(false);
+
+      console.log('✅ Return completed successfully with payment method handling');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to process return";
+      console.error('❌ Return error:', err);
+      setReturnError(msg);
+    } finally {
+      setProcessingReturn(false);
     }
   };
 
@@ -1576,6 +1880,280 @@ const Billing = () => {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <h6 className="fw-bold mb-3">{t('billing.refundTitle')}</h6>
               
+              {/* Refund Search Section */}
+              <div className="card mb-4" style={{ backgroundColor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                <div className="card-body">
+                  <h6 className="fw-bold mb-3">🔍 Find Bill for Refund</h6>
+                  
+                  <div className="mb-3">
+                    <small className="text-muted d-block mb-2">Search by Mobile Number OR Bill ID</small>
+                    <InputGroup>
+                      <Form.Control
+                        placeholder="Enter mobile number (e.g., 9876543210)"
+                        value={refundSearchMobile}
+                        onChange={(e) => {
+                          setRefundSearchMobile(e.target.value);
+                          setRefundSearchBillId(""); // Clear bill ID when entering mobile
+                        }}
+                        disabled={loadingRefundSearch}
+                      />
+                    </InputGroup>
+                  </div>
+
+                  <div className="mb-3">
+                    <small className="text-muted d-block mb-2">OR</small>
+                    <InputGroup>
+                      <Form.Control
+                        placeholder="Enter Bill ID (e.g., BILL_2026-06-15_0add41)"
+                        value={refundSearchBillId}
+                        onChange={(e) => {
+                          setRefundSearchBillId(e.target.value);
+                          setRefundSearchMobile(""); // Clear mobile when entering bill ID
+                        }}
+                        disabled={loadingRefundSearch}
+                      />
+                    </InputGroup>
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={searchRefundBills}
+                    disabled={loadingRefundSearch}
+                    className="w-100"
+                  >
+                    {loadingRefundSearch ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Searching...
+                      </>
+                    ) : (
+                      '🔍 Search Bills'
+                    )}
+                  </Button>
+
+                  {refundSearchError && (
+                    <Alert variant="warning" className="mt-3 mb-0">
+                      <small>{refundSearchError}</small>
+                    </Alert>
+                  )}
+                </div>
+              </div>
+
+              {/* Search Results */}
+              {refundSearchResults.length > 0 && (
+                <div className="mb-4">
+                  <h6 className="fw-bold mb-3">📋 Found Bills ({refundSearchResults.length})</h6>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table table-hover table-sm mb-0" style={{ cursor: 'pointer' }}>
+                      <thead style={{ backgroundColor: '#e9ecef' }}>
+                        <tr>
+                          <th style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Bill ID</th>
+                          <th style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Date</th>
+                          <th style={{ fontSize: '0.85rem', fontWeight: 'bold' }} className="text-end">Amount</th>
+                          <th style={{ fontSize: '0.85rem', fontWeight: 'bold' }} className="text-end">Discount</th>
+                          <th style={{ fontSize: '0.85rem', fontWeight: 'bold' }} className="text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {refundSearchResults.map((bill, index) => (
+                          <tr
+                            key={index}
+                            style={{
+                              backgroundColor: selectedRefundBill === bill ? '#e7f1ff' : 'white',
+                              border: selectedRefundBill === bill ? '2px solid #0d6efd' : '1px solid #dee2e6',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <td style={{ wordBreak: 'break-all', fontSize: '0.85rem' }}>
+                              <span className="fw-bold" style={{ color: selectedRefundBill === bill ? '#0d6efd' : '#333' }}>
+                                {bill.billId}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '0.85rem' }}>
+                              <span className="fw-bold">{bill.date}</span>
+                            </td>
+                            <td style={{ fontSize: '0.85rem' }} className="text-end">
+                              <span className="fw-bold">₹{(bill.amount || 0).toFixed(2)}</span>
+                            </td>
+                            <td style={{ fontSize: '0.85rem' }} className="text-end">
+                              <span className="text-success fw-bold">₹{(bill.discount || 0).toFixed(2)}</span>
+                            </td>
+                            <td style={{ fontSize: '0.85rem' }} className="text-center">
+                              <Button
+                                variant="warning"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedRefundBill(bill);
+                                  // Fetch bill details when Return is clicked
+                                  handleViewBillDetails(bill.billId, bill.date);
+                                }}
+                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                              >
+                                ↩️ Return
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Reserved Items Section */}
+              {selectedRefundBill && (
+                <div className="mb-4">
+                  {/* Bill Details Card - Show Customer Info if available */}
+                  <div className="card mb-3" style={{ 
+                    backgroundColor: selectedRefundBill.customerMobileNo ? '#e7f1ff' : '#fff3cd', 
+                    border: selectedRefundBill.customerMobileNo ? '2px solid #0d6efd' : '1px solid #ffc107' 
+                  }}>
+                    <div className="card-body pb-2">
+                      {selectedRefundBill.customerMobileNo && (
+                        <>
+                          <h6 className="fw-bold mb-3">👤 Customer Details</h6>
+                          <div className="row g-2 mb-3">
+                            <div className="col">
+                              <small className="text-muted d-block">Mobile</small>
+                              <small className="fw-bold" style={{ color: '#0d6efd', fontSize: '0.95rem' }}>
+                                {selectedRefundBill.customerMobileNo}
+                              </small>
+                            </div>
+                            <div className="col">
+                              <small className="text-muted d-block">Wallet Balance</small>
+                              <small className="fw-bold text-success" style={{ fontSize: '0.95rem' }}>
+                                ₹{(selectedRefundBill.customerWalletBalance || 0).toFixed(2)}
+                              </small>
+                            </div>
+                          </div>
+                          <hr className="my-2" />
+                        </>
+                      )}
+                      
+                      <h6 className="fw-bold mb-3">📋 Bill Details</h6>
+                      <div className="row g-2">
+                        <div className="col">
+                          <small className="text-muted d-block">Bill ID</small>
+                          <small className="fw-bold" style={{ wordBreak: 'break-all', color: '#0d6efd', fontSize: '0.9rem' }}>
+                            {selectedRefundBill.billId}
+                          </small>
+                        </div>
+                        <div className="col">
+                          <small className="text-muted d-block">Date</small>
+                          <small className="fw-bold">{selectedRefundBill.date}</small>
+                        </div>
+                        <div className="col">
+                          <small className="text-muted d-block">Amount</small>
+                          <small className="fw-bold">₹{(selectedRefundBill.amount || 0).toFixed(2)}</small>
+                        </div>
+                        <div className="col">
+                          <small className="text-muted d-block">Discount</small>
+                          <small className="fw-bold text-success">₹{(selectedRefundBill.discount || 0).toFixed(2)}</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bill Items Preview */}
+                  {billItems && billItems.length > 0 && (
+                    <div className="card mb-3">
+                      <div className="card-body pb-2">
+                        <h6 className="fw-bold mb-2">📦 Bill Items</h6>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="table table-sm mb-0" style={{ fontSize: '0.8rem' }}>
+                            <thead style={{ backgroundColor: '#e9ecef' }}>
+                              <tr>
+                                <th style={{ fontWeight: 'bold' }}>SKU</th>
+                                <th className="text-center" style={{ fontWeight: 'bold' }}>Qty</th>
+                                <th className="text-end" style={{ fontWeight: 'bold' }}>Price</th>
+                                <th className="text-end" style={{ fontWeight: 'bold' }}>Subtotal</th>
+                                <th className="text-end" style={{ fontWeight: 'bold' }}>Discount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {billItems.map((item: any, idx: number) => {
+                                const itemSubtotal = (item.quantity || 0) * (item.price || 0);
+                                const proportionalDiscount = billDiscount && billSubTotal 
+                                  ? (billDiscount * itemSubtotal) / billSubTotal 
+                                  : 0;
+                                
+                                return (
+                                  <tr key={idx}>
+                                    <td>
+                                      <small className="fw-bold">{item.sku}</small>
+                                    </td>
+                                    <td className="text-center">
+                                      <small>{item.quantity}</small>
+                                    </td>
+                                    <td className="text-end">
+                                      <small>₹{(item.price || 0).toFixed(2)}</small>
+                                    </td>
+                                    <td className="text-end">
+                                      <small className="fw-bold">₹{itemSubtotal.toFixed(2)}</small>
+                                    </td>
+                                    <td className="text-end">
+                                      <small className="text-success fw-bold">-₹{proportionalDiscount.toFixed(2)}</small>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <hr className="my-2" />
+                        
+                        {/* Bill Summary */}
+                        <div style={{ fontSize: '0.85rem' }}>
+                          <div className="row g-2">
+                            <div className="col-6 text-end">
+                              <small className="text-muted">Subtotal:</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="fw-bold">₹{(billSubTotal || 0).toFixed(2)}</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="text-muted">Tax:</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="fw-bold">₹{(billTaxAmount || 0).toFixed(2)}</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="text-muted">Discount:</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="fw-bold text-success">-₹{(billDiscount || 0).toFixed(2)}</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="text-muted fw-bold">Total:</small>
+                            </div>
+                            <div className="col-6 text-end">
+                              <small className="fw-bold" style={{ fontSize: '0.95rem', color: '#0d6efd' }}>
+                                ₹{(billTotalAmount || 0).toFixed(2)}
+                              </small>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fetch Bill Details Button */}
+                  {(!billItems || billItems.length === 0) && (
+                    <div className="mb-3 text-center">
+                      <Button
+                        variant="info"
+                        size="sm"
+                        onClick={() => handleViewBillDetails(selectedRefundBill.billId, selectedRefundBill.date)}
+                      >
+                        📊 View Bill Details
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {loadingReserved ? (
                 <div className="text-center p-5">
                   <div className="spinner-border text-warning mb-3" role="status">
@@ -1584,12 +2162,12 @@ const Billing = () => {
                   <p className="text-muted">{t('billing.loadingReservedItems')}</p>
                 </div>
               ) : reservedItems.length === 0 ? (
-                <div className="alert alert-warning border-warning">
+                <div className="alert alert-warning border-warning mt-3">
                   <h6 className="mb-3">{t('billing.noReservedItems')}</h6>
                   <p className="mb-2">{t('billing.noReservedItemsDesc')}</p>
                 </div>
               ) : (
-                <div>
+                <div className="mt-4">
                   {/* Reserved Items Grid */}
                   <div className="mb-4">
                     <h6 className="fw-bold mb-3">{t('billing.reservedItems', { count: reservedItems.length })}</h6>
@@ -2395,8 +2973,325 @@ const Billing = () => {
           )}
         </Modal.Body>
         <Modal.Footer>
+          {billRefunded && (
+            <Alert variant="warning" className="w-100 mb-0">
+              ⚠️ This bill has already been refunded. Cannot process return again.
+            </Alert>
+          )}
+          <Button 
+            variant="danger" 
+            disabled={billRefunded}
+            onClick={() => {
+              setReturnItemSelection({});
+              setReturnError(null);
+              setShowReturnItemModal(true);
+            }}
+          >
+            ↩️ Process Return
+          </Button>
           <Button variant="secondary" onClick={() => setShowBillDetailsModal(false)}>
             Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Return Items Modal */}
+      <Modal show={showReturnItemModal} onHide={() => setShowReturnItemModal(false)} size="lg" scrollable centered>
+        <Modal.Header closeButton>
+          <Modal.Title>↩️ Return Items from Bill {selectedRefundBill?.billId}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {returnError && <Alert variant="danger">{returnError}</Alert>}
+
+          <div className="mb-3">
+            <h6 className="fw-bold mb-3">Select items to return:</h6>
+            
+            {billItems && billItems.length > 0 ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table table-sm table-hover">
+                  <thead style={{ backgroundColor: '#e9ecef' }}>
+                    <tr>
+                      <th style={{ fontWeight: 'bold', width: '10%' }}>Select</th>
+                      <th style={{ fontWeight: 'bold' }}>SKU</th>
+                      <th className="text-center" style={{ fontWeight: 'bold' }}>Ordered</th>
+                      <th className="text-center" style={{ fontWeight: 'bold' }}>Return</th>
+                      <th className="text-end" style={{ fontWeight: 'bold' }}>Price</th>
+                      <th className="text-end" style={{ fontWeight: 'bold' }}>Refund</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billItems.map((item: any, idx: number) => {
+                      const returnQty = returnItemSelection[idx] || 0;
+                      const itemSubtotal = (item.quantity || 0) * (item.price || 0);
+                      const proportionalDiscount = billDiscount && billSubTotal 
+                        ? (billDiscount * itemSubtotal) / billSubTotal 
+                        : 0;
+                      const itemTotal = itemSubtotal - proportionalDiscount;
+                      const refundAmount = (itemTotal * returnQty) / (item.quantity || 1);
+
+                      return (
+                        <tr key={idx}>
+                          <td className="text-center">
+                            <Form.Check
+                              type="checkbox"
+                              checked={idx in returnItemSelection}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setReturnItemSelection(prev => ({ ...prev, [idx]: 1 }));
+                                } else {
+                                  setReturnItemSelection(prev => {
+                                    const copy = { ...prev };
+                                    delete copy[idx];
+                                    return copy;
+                                  });
+                                }
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <small className="fw-bold">{item.sku}</small>
+                          </td>
+                          <td className="text-center">
+                            <small>{item.quantity}</small>
+                          </td>
+                          <td className="text-center">
+                            {idx in returnItemSelection ? (
+                              <InputGroup size="sm">
+                                <Form.Control
+                                  type="number"
+                                  min="1"
+                                  max={item.quantity}
+                                  value={returnQty}
+                                  onChange={(e) => {
+                                    const val = Math.min(parseInt(e.target.value) || 0, item.quantity);
+                                    if (val > 0) {
+                                      setReturnItemSelection(prev => ({ ...prev, [idx]: val }));
+                                    }
+                                  }}
+                                  style={{ width: '60px' }}
+                                />
+                              </InputGroup>
+                            ) : (
+                              <small className="text-muted">-</small>
+                            )}
+                          </td>
+                          <td className="text-end">
+                            <small>₹{(item.price || 0).toFixed(2)}</small>
+                          </td>
+                          <td className="text-end">
+                            <small className="text-success fw-bold">
+                              {returnQty > 0 ? `₹${refundAmount.toFixed(2)}` : '₹0.00'}
+                            </small>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="alert alert-light border">
+                <small className="text-muted">No items found</small>
+              </div>
+            )}
+          </div>
+
+          {/* Refund Summary */}
+          {Object.keys(returnItemSelection).length > 0 && (
+            <div className="card mb-3">
+              <div className="card-body pb-2">
+                <h6 className="fw-bold mb-2">💰 Refund Summary</h6>
+                {billItems.map((item: any, idx: number) => {
+                  const returnQty = returnItemSelection[idx];
+                  if (!returnQty || returnQty <= 0) return null;
+
+                  const itemSubtotal = (item.quantity || 0) * (item.price || 0);
+                  const proportionalDiscount = billDiscount && billSubTotal 
+                    ? (billDiscount * itemSubtotal) / billSubTotal 
+                    : 0;
+                  const itemTotal = itemSubtotal - proportionalDiscount;
+                  const refundAmount = (itemTotal * returnQty) / (item.quantity || 1);
+
+                  return (
+                    <div key={idx} className="row g-2 mb-2" style={{ fontSize: '0.85rem' }}>
+                      <div className="col-6">
+                        <small>{item.sku} ({returnQty} × ₹{item.price})</small>
+                      </div>
+                      <div className="col-6 text-end">
+                        <small className="fw-bold text-success">₹{refundAmount.toFixed(2)}</small>
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                <hr className="my-2" />
+                
+                <div className="row g-2">
+                  <div className="col-6">
+                    <small className="fw-bold">Total Refund:</small>
+                  </div>
+                  <div className="col-6 text-end">
+                    <small className="fw-bold" style={{ fontSize: '1rem', color: '#28a745' }}>
+                      ₹{Object.entries(returnItemSelection)
+                        .reduce((sum, [idx, qty]) => {
+                          if (!qty || qty <= 0) return sum;
+                          const item = billItems[parseInt(idx)];
+                          const itemSubtotal = (item.quantity || 0) * (item.price || 0);
+                          const proportionalDiscount = billDiscount && billSubTotal 
+                            ? (billDiscount * itemSubtotal) / billSubTotal 
+                            : 0;
+                          const itemTotal = itemSubtotal - proportionalDiscount;
+                          const refundAmount = (itemTotal * qty) / (item.quantity || 1);
+                          return sum + refundAmount;
+                        }, 0).toFixed(2)}
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="success" 
+            disabled={Object.values(returnItemSelection).reduce((sum, qty) => sum + qty, 0) === 0 || processingReturn}
+            onClick={handleReturnItems}
+          >
+            {processingReturn ? '⏳ Processing...' : '✅ Confirm Return'}
+          </Button>
+          <Button 
+            variant="secondary" 
+            disabled={processingReturn}
+            onClick={() => setShowReturnItemModal(false)}
+          >
+            Cancel
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Payment Method Selection Modal for Return */}
+      <Modal show={showPaymentMethodModal} onHide={() => setShowPaymentMethodModal(false)} centered backdrop="static">
+        <Modal.Header>
+          <Modal.Title>💳 Original Payment Method</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {returnError && <Alert variant="danger">{returnError}</Alert>}
+
+          <div className="mb-4">
+            <h6 className="fw-bold mb-3">How was the original bill paid?</h6>
+            
+            <Form.Check
+              type="radio"
+              id="payment_cash"
+              label="💰 All Cash"
+              name="paymentMethod"
+              value="cash"
+              checked={paymentMethodType === 'cash'}
+              onChange={(e) => {
+                setPaymentMethodType('cash');
+                setWalletAmountInput("");
+              }}
+              className="mb-2"
+            />
+            
+            <Form.Check
+              type="radio"
+              id="payment_wallet"
+              label="💳 All Wallet"
+              name="paymentMethod"
+              value="wallet"
+              checked={paymentMethodType === 'wallet'}
+              onChange={(e) => {
+                setPaymentMethodType('wallet');
+                setWalletAmountInput("");
+              }}
+              className="mb-2"
+            />
+            
+            <Form.Check
+              type="radio"
+              id="payment_mixed"
+              label="🔄 Mixed (Cash + Wallet)"
+              name="paymentMethod"
+              value="mixed"
+              checked={paymentMethodType === 'mixed'}
+              onChange={(e) => setPaymentMethodType('mixed')}
+              className="mb-3"
+            />
+
+            {paymentMethodType === 'mixed' && (
+              <div className="card mt-3 p-3" style={{ backgroundColor: '#f0f8ff' }}>
+                <small className="text-muted mb-2">Enter the amount paid from wallet:</small>
+                <InputGroup size="sm">
+                  <InputGroup.Text>₹</InputGroup.Text>
+                  <Form.Control
+                    type="number"
+                    min="0"
+                    max={billTotalAmount || 0}
+                    step="0.01"
+                    placeholder="0.00"
+                    value={walletAmountInput}
+                    onChange={(e) => {
+                      setWalletAmountInput(e.target.value);
+                      setWalletAmountUsed(parseFloat(e.target.value) || 0);
+                    }}
+                  />
+                </InputGroup>
+                <small className="text-muted mt-2 d-block">
+                  Bill Total: ₹{(billTotalAmount || 0).toFixed(2)}
+                </small>
+              </div>
+            )}
+          </div>
+
+          <hr />
+
+          {billDiscount > 0 && (
+            <div className="mb-3">
+              <h6 className="fw-bold mb-3">Discount Handling</h6>
+              <small className="text-muted d-block mb-2">
+                This bill had a discount of <span className="fw-bold text-success">₹{billDiscount.toFixed(2)}</span>
+              </small>
+              
+              <Form.Check
+                type="radio"
+                id="discount_yes"
+                label="✅ Revert discount from wallet (recommended)"
+                name="discountReversal"
+                value="yes"
+                checked={discountReversalOption === 'yes'}
+                onChange={(e) => setDiscountReversalOption('yes')}
+                className="mb-2"
+              />
+              
+              <Form.Check
+                type="radio"
+                id="discount_no"
+                label="❌ Keep discount (no revert)"
+                name="discountReversal"
+                value="no"
+                checked={discountReversalOption === 'no'}
+                onChange={(e) => setDiscountReversalOption('no')}
+              />
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="success"
+            disabled={paymentMethodType === 'mixed' && (walletAmountUsed <= 0 || walletAmountUsed > (billTotalAmount || 0))}
+            onClick={handleProcessRefundWithPaymentMethod}
+          >
+            ✅ Continue with Return
+          </Button>
+          <Button 
+            variant="secondary"
+            onClick={() => {
+              setShowPaymentMethodModal(false);
+              setReturnError(null);
+            }}
+          >
+            Back
           </Button>
         </Modal.Footer>
       </Modal>

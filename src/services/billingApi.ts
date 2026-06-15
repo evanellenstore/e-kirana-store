@@ -42,3 +42,9 @@ export const finalizeBill = (billId: string, payload?: any) =>
 export const cancelBill = (billId: string) =>
   // Cancel bill and release all reserved items
   api.post(`/billings/${billId}/cancel`);
+
+export const checkBillRefundStatus = (billId: string) =>
+  api.get(`/billings/${billId}/check-refund`);
+
+export const markBillAsRefunded = (billId: string, amount: number) =>
+  api.post(`/billings/${billId}/mark-refunded?amount=${amount}`);
