@@ -2350,32 +2350,39 @@ const Billing = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {billItems.map((item: any, idx: number) => (
-                        <tr key={idx}>
-                          <td>
-                            <small className="fw-bold">{item.sku || 'N/A'}</small>
-                          </td>
-                          <td>
-                            <small>{item.name || item.productName || 'N/A'}</small>
-                          </td>
-                          <td className="text-center">
-                            <small className="fw-bold">{item.qty || item.quantity || 0}</small>
-                          </td>
-                          <td className="text-end">
-                            <small>₹{(item.price || 0).toFixed(2)}</small>
-                          </td>
-                          <td className="text-end">
-                            <small className="text-danger">
-                              {item.discountAmount ? '-₹' + (item.discountAmount).toFixed(2) : '-'}
-                            </small>
-                          </td>
-                          <td className="text-end">
-                            <small className="fw-bold">
-                              ₹{((item.price || 0) * (item.qty || item.quantity || 0) - (item.discountAmount || 0)).toFixed(2)}
-                            </small>
-                          </td>
-                        </tr>
-                      ))}
+                      {billItems.map((item: any, idx: number) => {
+                        const itemSubtotal = (item.price || 0) * (item.qty || item.quantity || 0);
+                        // Calculate proportional discount for this item
+                        const itemDiscount = billSubTotal > 0 ? (billDiscount * itemSubtotal) / billSubTotal : 0;
+                        const itemTotal = itemSubtotal - itemDiscount;
+                        
+                        return (
+                          <tr key={idx}>
+                            <td>
+                              <small className="fw-bold">{item.sku || 'N/A'}</small>
+                            </td>
+                            <td>
+                              <small>{item.name || item.productName || 'N/A'}</small>
+                            </td>
+                            <td className="text-center">
+                              <small className="fw-bold">{item.qty || item.quantity || 0}</small>
+                            </td>
+                            <td className="text-end">
+                              <small>₹{(item.price || 0).toFixed(2)}</small>
+                            </td>
+                            <td className="text-end">
+                              <small className="text-danger">
+                                {itemDiscount > 0 ? '-₹' + (itemDiscount).toFixed(2) : '-'}
+                              </small>
+                            </td>
+                            <td className="text-end">
+                              <small className="fw-bold">
+                                ₹{(itemTotal).toFixed(2)}
+                              </small>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </Table>
                 </div>
