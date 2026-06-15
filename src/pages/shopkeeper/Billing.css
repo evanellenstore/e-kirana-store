@@ -739,3 +739,35 @@
 .text-end {
   text-align: right;
 }
+
+/* ===================================
+   MODAL SCROLLABLE FIX
+   =================================== */
+
+.modal-dialog-scrollable .modal-content {
+  max-height: 100%;
+  max-width: 90%;
+  overflow: visible !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.modal-dialog-scrollable .modal-header {
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.modal-dialog-scrollable .modal-body {
+  flex: 1;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.modal-dialog-scrollable .modal-footer {
+  flex-shrink: 0 !important;
+  border-top: 1px solid #dee2e6 !important;
+  position: relative !important;
+  z-index: 10;
+  background: white;
+  padding: 1rem !important;
+}

@@ -19,6 +19,7 @@ import {
   addItemsBatch,
   finalizeBill,
   cancelBill,
+  getSummary,
   type CartItem
 } from "../../services/billingApi";
 import {
@@ -26,7 +27,10 @@ import {
   getCustomerByMobile,
   addToWallet,
   deductFromWallet,
-  type Customer
+  getWalletTransactions,
+  getBillingTransactions,
+  type Customer,
+  type WalletTransaction
 } from "../../services/customerApi";
 import {
   getReservedItems,
@@ -65,7 +69,22 @@ const Billing = () => {
 
   // Unified Controls Modal state
   const [showUnifiedControlsModal, setShowUnifiedControlsModal] = useState(false);
-  const [unifiedModalTab, setUnifiedModalTab] = useState<"payment" | "inventory" | "refund">("payment");
+  const [unifiedModalTab, setUnifiedModalTab] = useState<"payment" | "inventory" | "refund" | "rewards">("payment");
+
+  // Rewards state
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
+  const [billTransactions, setBillTransactions] = useState<any[]>([]);
+  const [loadingRewards, setLoadingRewards] = useState(false);
+  const [rewardsSearchMobile, setRewardsSearchMobile] = useState<string>("");
+  const [rewardsSearchedCustomer, setRewardsSearchedCustomer] = useState<Customer | null>(null);
+  const [rewardsSearchError, setRewardsSearchError] = useState<string | null>(null);
+
+  // Bill Details Modal state
+  const [showBillDetailsModal, setShowBillDetailsModal] = useState(false);
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  const [selectedBillDate, setSelectedBillDate] = useState<string | null>(null);
+  const [billItems, setBillItems] = useState<any[]>([]);
+  const [loadingBillDetails, setLoadingBillDetails] = useState(false);
 
   // Release/Refund state
   const [showReleaseModal, setShowReleaseModal] = useState(false);
@@ -669,6 +688,129 @@ const Billing = () => {
     }
   };
 
+  // Load rewards/wallet data for current customer
+  const loadRewardsForCurrentCustomer = async () => {
+    if (!customer || !customer.id) {
+      alert('Please select a customer first');
+      return;
+    }
+
+    setLoadingRewards(true);
+    try {
+      // Fetch wallet transactions
+      try {
+        const transRes = await getWalletTransactions(customer.id);
+        setWalletTransactions(transRes.data || []);
+      } catch (err) {
+        console.warn("Could not fetch wallet transactions", err);
+        setWalletTransactions([]);
+      }
+
+      // Fetch billing transactions
+      try {
+        const billRes = await getBillingTransactions(customer.id);
+        const bills = billRes.data || [];
+        const mappedBills = bills.map((bill: any) => ({
+          billId: bill.billId || `BILL_${bill.id}`,
+          amount: bill.totalAmount || 0,
+          discount: bill.discount || 0,
+          date: bill.billedAt ? new Date(bill.billedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+          itemCount: 1
+        }));
+        setBillTransactions(mappedBills);
+      } catch (err) {
+        console.warn("Could not fetch billing transactions", err);
+        setBillTransactions([]);
+      }
+
+      console.log('✅ Rewards loaded:', { walletTransactions, billTransactions });
+    } catch (e: any) {
+      console.error('Failed to load rewards', e);
+      alert('Failed to load rewards: ' + (e?.response?.data?.message || e?.message || String(e)));
+    } finally {
+      setLoadingRewards(false);
+    }
+  };
+
+  // Search for customer by mobile number in rewards section
+  const searchRewardsCustomer = async (mobileNo: string) => {
+    if (!mobileNo.trim()) {
+      setRewardsSearchError('Please enter a mobile number');
+      setRewardsSearchedCustomer(null);
+      return;
+    }
+
+    setLoadingRewards(true);
+    setRewardsSearchError(null);
+    try {
+      const customerRes = await getCustomerByMobile(mobileNo);
+      const cust = customerRes.data;
+      setRewardsSearchedCustomer(cust);
+
+      if (cust && cust.id) {
+        // Fetch wallet transactions
+        try {
+          const transRes = await getWalletTransactions(cust.id);
+          setWalletTransactions(transRes.data || []);
+        } catch (err) {
+          console.warn("Could not fetch wallet transactions", err);
+          setWalletTransactions([]);
+        }
+
+        // Fetch billing transactions
+        try {
+          const billRes = await getBillingTransactions(cust.id);
+          const bills = billRes.data || [];
+          const mappedBills = bills.map((bill: any) => ({
+            id: bill.id,
+            billId: bill.billId || `BILL_${bill.id}`,
+            amount: bill.totalAmount || 0,
+            discount: bill.discount || 0,
+            date: bill.billedAt ? new Date(bill.billedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+            itemCount: 1
+          }));
+          setBillTransactions(mappedBills);
+        } catch (err) {
+          console.warn("Could not fetch billing transactions", err);
+          setBillTransactions([]);
+        }
+
+        console.log('✅ Customer found:', { customer: cust, walletTransactions, billTransactions });
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Customer not found";
+      setRewardsSearchError(msg);
+      setRewardsSearchedCustomer(null);
+      setWalletTransactions([]);
+      setBillTransactions([]);
+    } finally {
+      setLoadingRewards(false);
+    }
+  };
+
+  // Fetch bill details and items
+  const handleViewBillDetails = async (billId: string, billDate: string) => {
+    setShowBillDetailsModal(true);
+    setSelectedBillId(billId);
+    setSelectedBillDate(billDate);
+    setLoadingBillDetails(true);
+    try {
+      // Use billId (formatted like BILL_2026-06-15_0add41) for the API call
+      const billRes = await getSummary(billId);
+      const billData = billRes.data;
+      // Extract items from bill summary
+      const items = billData?.items || [];
+      setBillItems(items);
+      console.log('✅ Bill details loaded:', { billId, items });
+    } catch (err: any) {
+      console.error('Failed to load bill details', err);
+      alert('Failed to load bill details: ' + (err?.response?.data?.message || err?.message || String(err)));
+      setBillItems([]);
+    } finally {
+      setLoadingBillDetails(false);
+    }
+  };
+
   // Release a reserved item - Enhanced with better error handling
   const handleReleaseItem = async () => {
     if (!selectedReservedItem) {
@@ -978,13 +1120,19 @@ const Billing = () => {
       </Container>
 
       {/* Unified Controls Modal - All controls in one place */}
-      <Modal show={showUnifiedControlsModal} onHide={() => setShowUnifiedControlsModal(false)} size="xl" scrollable>
+      <Modal 
+        show={showUnifiedControlsModal} 
+        onHide={() => setShowUnifiedControlsModal(false)} 
+        scrollable
+        size="lg"
+        centered
+      >
         <Modal.Header closeButton>
           <Modal.Title>{t('billing.billingControlsTitle', { billId: billId || '' })}</Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body style={{ minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
           {/* Tab Navigation */}
-          <div className="d-flex gap-2 mb-3 border-bottom">
+          <div className="d-flex gap-2 mb-3 border-bottom" style={{ flexShrink: 0 }}>
             <Button
               variant={unifiedModalTab === "payment" ? "primary" : "outline-secondary"}
               size="sm"
@@ -1017,11 +1165,24 @@ const Billing = () => {
             >
               {t('billing.tab.refund')}
             </Button>
+            <Button
+              variant={unifiedModalTab === "rewards" ? "primary" : "outline-secondary"}
+              size="sm"
+              onClick={() => {
+                setUnifiedModalTab("rewards");
+                if (customer && customer.id) {
+                  loadRewardsForCurrentCustomer();
+                }
+              }}
+              className="px-3"
+            >
+              💳 Rewards
+            </Button>
           </div>
 
           {/* TAB 1: PAYMENT */}
           {unifiedModalTab === "payment" && (
-            <div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
               <h6 className="fw-bold mb-3">{t('billing.paymentProcessing')}</h6>
               
               {/* Customer Mobile Input */}
@@ -1134,7 +1295,7 @@ const Billing = () => {
 
           {/* TAB 2: INVENTORY CHECK */}
           {unifiedModalTab === "inventory" && (
-            <div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
               <h6 className="fw-bold mb-3">{t('billing.inventoryCheck')}</h6>
               
               {!inventoryLoaded ? (
@@ -1322,7 +1483,7 @@ const Billing = () => {
 
           {/* TAB 3: REFUND */}
           {unifiedModalTab === "refund" && (
-            <div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
               <h6 className="fw-bold mb-3">{t('billing.refundTitle')}</h6>
               
               {loadingReserved ? (
@@ -1399,6 +1560,171 @@ const Billing = () => {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: REWARDS */}
+          {unifiedModalTab === "rewards" && (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <h6 className="fw-bold mb-3">💳 Rewards</h6>
+              
+              {/* Find Customer Search */}
+              <div className="card mb-4" style={{ backgroundColor: '#f0f7ff', border: '1px solid #0d6efd' }}>
+                <div className="card-body">
+                  <h6 className="fw-bold mb-3">🔍 Find Customer</h6>
+                  <Form.Group className="mb-0">
+                    <div className="d-flex gap-2">
+                      <Form.Control
+                        placeholder="Enter customer mobile number"
+                        value={rewardsSearchMobile}
+                        onChange={(e) => setRewardsSearchMobile(e.target.value)}
+                        maxLength={10}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            searchRewardsCustomer(rewardsSearchMobile);
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="primary"
+                        onClick={() => searchRewardsCustomer(rewardsSearchMobile)}
+                        disabled={loadingRewards || !rewardsSearchMobile.trim()}
+                      >
+                        {loadingRewards ? '...' : '🔍'}
+                      </Button>
+                    </div>
+                  </Form.Group>
+                  {rewardsSearchError && (
+                    <div className="alert alert-warning border-warning mt-2 mb-0" role="alert">
+                      <small>{rewardsSearchError}</small>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Display Results */}
+              {loadingRewards && rewardsSearchedCustomer === null ? (
+                <div className="text-center py-5">
+                  <div className="spinner-border text-primary mb-3" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                  </div>
+                  <p className="text-muted">Loading customer rewards...</p>
+                </div>
+              ) : rewardsSearchedCustomer ? (
+                <div>
+                  {/* Customer Details Card */}
+                  <div className="card mb-4" style={{ backgroundColor: '#f8f9fa', border: '2px solid #28a745' }}>
+                    <div className="card-body">
+                      <div className="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                          <h6 className="fw-bold mb-1">💳 Customer Details</h6>
+                          <small className="text-muted">📱 {rewardsSearchedCustomer.mobileNo || rewardsSearchMobile}</small>
+                        </div>
+                        <div>
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            onClick={() => {
+                              setRewardsSearchedCustomer(null);
+                              setRewardsSearchMobile("");
+                              setWalletTransactions([]);
+                              setBillTransactions([]);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wallet Balance Card */}
+                  <div className="card mb-4" style={{ backgroundColor: '#f8f9fa', border: '2px solid #28a745' }}>
+                    <div className="card-body">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <div>
+                          <small className="text-muted d-block mb-1">💰 Wallet Balance</small>
+                          <h4 className="text-success mb-0">₹{(rewardsSearchedCustomer.walletBalance || 0).toFixed(2)}</h4>
+                        </div>
+                        <div style={{ fontSize: '2.5rem' }}>💳</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wallet Transactions */}
+                  <div className="mb-4">
+                    <h6 className="fw-bold mb-2">📝 Wallet Transactions</h6>
+                    {walletTransactions && walletTransactions.length > 0 ? (
+                      <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+                        {walletTransactions.map((trans: any, idx: number) => (
+                          <div key={idx} style={{
+                            padding: '0.75rem',
+                            borderBottom: idx < (walletTransactions.length - 1) ? '1px solid #eee' : 'none',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ flex: 1 }}>
+                              <small className="fw-bold d-block">{trans.description || 'Transaction'}</small>
+                              <small className="text-muted">{trans.createdAt ? new Date(trans.createdAt).toLocaleDateString() : 'N/A'}</small>
+                            </div>
+                            <Badge bg={trans.amount >= 0 ? 'success' : 'danger'}>
+                              {trans.amount >= 0 ? '+' : ''}₹{Math.abs(trans.amount || 0).toFixed(2)}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="alert alert-light border mb-0" style={{ backgroundColor: '#f0f0f0' }}>
+                        <small className="text-muted">No wallet transactions</small>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Billing History */}
+                  <div>
+                    <h6 className="fw-bold mb-2">📊 Billing History</h6>
+                    {billTransactions && billTransactions.length > 0 ? (
+                      <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+                        {billTransactions.map((bill: any, idx: number) => (
+                          <div key={idx} style={{
+                            padding: '0.75rem',
+                            borderBottom: idx < (billTransactions.length - 1) ? '1px solid #eee' : 'none',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ flex: 1, wordBreak: 'break-all' }}>
+                              <small 
+                                className="fw-bold d-block" 
+                                style={{ cursor: 'pointer', color: '#0d6efd', textDecoration: 'underline' }}
+                                onClick={() => handleViewBillDetails(bill.billId, bill.date)}
+                                title="Click to view bill details"
+                              >
+                                {bill.billId}
+                              </small>
+                              <small className="text-muted">{bill.date}</small>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <small className="d-block fw-bold">₹{(bill.amount || 0).toFixed(2)}</small>
+                              {bill.discount > 0 && <small className="text-success d-block">-₹{(bill.discount || 0).toFixed(2)}</small>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="alert alert-light border mb-0" style={{ backgroundColor: '#f0f0f0' }}>
+                        <small className="text-muted">No billing history</small>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="alert alert-info">
+                  <h6 className="mb-2">📱 Search for a Customer</h6>
+                  <small>Enter a customer's mobile number above and click the search button to view their wallet balance, transactions, and billing history.</small>
                 </div>
               )}
             </div>
@@ -1794,6 +2120,97 @@ const Billing = () => {
         </Modal.Footer>
       </Modal>
       }
+
+      {/* Bill Details Modal */}
+      <Modal show={showBillDetailsModal} onHide={() => setShowBillDetailsModal(false)} size="lg" scrollable>
+        <Modal.Header closeButton>
+          <Modal.Title>📋 Bill Details</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {loadingBillDetails ? (
+            <div className="text-center py-5">
+              <div className="spinner-border text-primary mb-3" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+              <p className="text-muted">Loading bill details...</p>
+            </div>
+          ) : (
+            <div>
+              {/* Bill Header Info */}
+              <div className="card mb-4" style={{ backgroundColor: '#f0f7ff', border: '1px solid #0d6efd' }}>
+                <div className="card-body">
+                  <div className="row">
+                    <div className="col-md-6">
+                      <small className="text-muted d-block">Bill ID</small>
+                      <h6 className="fw-bold" style={{ wordBreak: 'break-all' }}>{selectedBillId}</h6>
+                    </div>
+                    <div className="col-md-6">
+                      <small className="text-muted d-block">Date</small>
+                      <h6 className="fw-bold">{selectedBillDate}</h6>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bill Items Table */}
+              <h6 className="fw-bold mb-3">📦 Items in Bill</h6>
+              {billItems && billItems.length > 0 ? (
+                <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflowX: 'auto' }}>
+                  <Table striped bordered hover className="mb-0">
+                    <thead className="table-light">
+                      <tr>
+                        <th>SKU</th>
+                        <th>Product Name</th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                        <th>Discount</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billItems.map((item: any, idx: number) => (
+                        <tr key={idx}>
+                          <td>
+                            <small className="fw-bold">{item.sku || 'N/A'}</small>
+                          </td>
+                          <td>
+                            <small>{item.name || item.productName || 'N/A'}</small>
+                          </td>
+                          <td className="text-center">
+                            <small className="fw-bold">{item.qty || item.quantity || 0}</small>
+                          </td>
+                          <td className="text-end">
+                            <small>₹{(item.price || 0).toFixed(2)}</small>
+                          </td>
+                          <td className="text-end">
+                            <small className="text-danger">
+                              {item.discountAmount ? '-₹' + (item.discountAmount).toFixed(2) : '-'}
+                            </small>
+                          </td>
+                          <td className="text-end">
+                            <small className="fw-bold">
+                              ₹{((item.price || 0) * (item.qty || item.quantity || 0) - (item.discountAmount || 0)).toFixed(2)}
+                            </small>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="alert alert-light border" style={{ backgroundColor: '#f0f0f0' }}>
+                  <small className="text-muted">No items found in this bill</small>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowBillDetailsModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* OLD Inventory Check Modal - DEPRECATED (consolidated into Unified Controls Modal) */}
       {false && <Modal show={showInventoryModal} onHide={() => setShowInventoryModal(false)} size="lg" scrollable>
