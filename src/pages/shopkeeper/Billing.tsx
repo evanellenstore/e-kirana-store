@@ -35,9 +35,11 @@ import {
 } from "../../services/inventoryService";
 
 import { AuthContext } from "../../auth/AuthContext";
+import { useTranslation } from "react-i18next";
 import "./Billing.css";
 
 const Billing = () => {
+  const { t } = useTranslation();
   console.log("Billing component mounted");
   const [billId, setBillId] = useState<string>();
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -118,7 +120,7 @@ const Billing = () => {
       const res = await startBill(uname);
       console.log('Bill started successfully:', res.data);
       setBillId(res.data.billId);
-      setNotificationMessage(`✅ New bill started: ${res.data.billId}`);
+      setNotificationMessage(t('billing.newBillStarted', { billId: res.data.billId }));
       setNotificationType("success");
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 3000);
@@ -126,7 +128,7 @@ const Billing = () => {
     } catch (error: any) {
       console.error('Error starting bill:', error);
       console.error('Error details:', error.response?.data || error.message);
-      setNotificationMessage(`❌ Failed to start billing: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+      setNotificationMessage(t('billing.failedStartBilling', { message: error.response?.data?.message || error.message || t('billing.unknownError') }));
       setNotificationType("danger");
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 5000);
@@ -232,7 +234,7 @@ const Billing = () => {
     
     // Check if bill has been started
     if (!billId) {
-      setNotificationMessage('⚠️ Please start a billing first by clicking "Start Bill" button');
+      setNotificationMessage(t('billing.startBillPrompt'));
       setNotificationType("warning");
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 4000);
@@ -249,7 +251,7 @@ const Billing = () => {
       
       // Validate product ID
       if (!pid) {
-        alert('Product not found');
+        alert(t('billing.productNotFound'));
         return;
       }
       
@@ -259,7 +261,7 @@ const Billing = () => {
   
   // Check if batch data exists before proceeding
   if (!batch || !batch.batchNo) {
-    alert('No batch information available for this product. Please check inventory.');
+    alert(t('billing.noBatchInfo'));
     return;
   }
 
@@ -272,7 +274,7 @@ const Billing = () => {
           if (prev[idx].qty + 1 > available) {
             const ok = window.confirm(`Only ${available} unit(s) available in inventory. Add one more anyway?`);
             if (!ok) {
-              alert('Not enough stock to increase quantity');
+              alert(t('billing.notEnoughStock'));
               return prev;
             }
           }
@@ -285,7 +287,7 @@ const Billing = () => {
         if (availableQty <= 0) {
           const allow = window.confirm('Product not available in inventory. Add to cart anyway?');
           if (!allow) {
-            alert('Product not added');
+            alert(t('billing.productNotAdded'));
             return prev;
           }
         }
@@ -316,7 +318,7 @@ const Billing = () => {
       if (barcodeRef.current) barcodeRef.current.value = "";
     } catch (e) {
       console.error("Barcode error", e);
-      alert("❌ Product not found");
+      alert(t('billing.productNotFound'));
     } finally {
       scanningRef.current = false;
     }
@@ -393,7 +395,7 @@ const Billing = () => {
         // don't trigger when typing in an input
         const active = document.activeElement;
         if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
-        const val = window.prompt("Enter discount (append % for percent, e.g. 10 or 5%):");
+        const val = window.prompt(t('billing.enterDiscountPrompt'));
         if (!val) return;
         const trimmed = val.trim();
         if (trimmed.endsWith("%")) {
@@ -817,8 +819,8 @@ const Billing = () => {
   return (
     <div className="billing-page-container">
       <ShopkeeperHeader 
-        title="🧾 Billing & POS"
-        description="Create and manage bills"
+        title={t('billing.pageTitle')}
+        description={t('billing.pageDescription')}
       />
       
       <Container className="billing-content" style={{ maxWidth: 1100 }}>
@@ -850,12 +852,12 @@ const Billing = () => {
                     className="fw-bold px-3"
                     style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                   >
-                    ✚ Start Bill
+                    {t('billing.startBill')}
                   </Button>
                 </div>
                 <div className="d-flex align-items-center justify-content-between gap-2">
-                  <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>Bill Details</h5>
-                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>Bill: {billId}</Badge>}
+                  <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>{t('billing.billDetails')}</h5>
+                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>{t('billing.billLabel', { billId })}</Badge>}
                 </div>
               </div>
             </div>
@@ -867,7 +869,7 @@ const Billing = () => {
               <InputGroup>
                 <Form.Control
                   ref={barcodeRef}
-                  placeholder="Scan barcode or enter SKU"
+                  placeholder={t('billing.scanPlaceholder')}
                   onKeyDown={e => {
                     if (e.key === "Enter") {
                       console.log("manual Enter pressed, value:", e.currentTarget.value);
@@ -876,7 +878,7 @@ const Billing = () => {
                   }}
                   style={{ fontSize: 18 }}
                 />
-                <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>Focus</Button>
+                <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>{t('billing.focus')}</Button>
               </InputGroup>
             </Col>
 
@@ -889,7 +891,7 @@ const Billing = () => {
                   }}
                   className="flex-grow-1"
                 >
-                  💼 Billing Controls
+                  {t('billing.billingControls')}
                 </Button>
               </Col>
           </Row>
@@ -897,12 +899,12 @@ const Billing = () => {
           <Table striped bordered hover size="sm" className="mt-3">
             <thead>
               <tr>
-                <th>Item</th>
-                <th style={{ width: 180 }}>Qty</th>
-                <th style={{ width: 120 }}>Price</th>
-                <th style={{ width: 100 }}>Discount</th>
-                <th style={{ width: 140 }}>Total</th>
-                <th style={{ width: 100 }}>Action</th>
+                <th>{t('billing.table.item')}</th>
+                <th style={{ width: 180 }}>{t('billing.table.qty')}</th>
+                <th style={{ width: 120 }}>{t('billing.table.price')}</th>
+                <th style={{ width: 100 }}>{t('billing.table.discount')}</th>
+                <th style={{ width: 140 }}>{t('billing.table.total')}</th>
+                <th style={{ width: 100 }}>{t('billing.table.action')}</th>
               </tr>
             </thead>
             <tbody>
@@ -919,7 +921,7 @@ const Billing = () => {
                         <Button size="sm" variant="outline-secondary" onClick={() => decreaseQty(i.productId, i.batchNo)}>-</Button>
                         <div className="px-3">{i.qty}</div>
                         <Button size="sm" variant="outline-secondary" onClick={() => increaseQty(i.productId, i.batchNo)}>+</Button>
-                        <div className="ms-auto small text-muted">Avl: {i.availableQty}</div>
+                        <div className="ms-auto small text-muted">{t('billing.available')}: {i.availableQty}</div>
                       </div>
                     </td>
                     <td>₹{i.price.toFixed(2)}</td>
@@ -944,20 +946,20 @@ const Billing = () => {
                 return (
                   <>
                     <div className="d-flex justify-content-between small">
-                      <div>Subtotal</div>
+                      <div>{t('billing.subtotal')}</div>
                       <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
                     </div>
                     <div className="d-flex justify-content-between small">
-                      <div>Discount {discountIsPercent ? `(${discount}%)` : ''}</div>
+                      <div>{t('billing.discountLabel')} {discountIsPercent ? `(${discount}%)` : ''}</div>
                       <div>₹{discountAmt.toFixed(2)}</div>
                     </div>
                     <div className="d-flex justify-content-between small">
-                      <div>GST</div>
+                      <div>{t('billing.gst')}</div>
                       <div>₹{gstAmt.toFixed(2)}</div>
                     </div>
                     <hr />
                     <div className="d-flex justify-content-between fw-bold">
-                      <div>Grand Total</div>
+                      <div>{t('billing.grandTotal')}</div>
                       <div>₹{grandTotal.toFixed(2)}</div>
                     </div>
                   </>
@@ -968,7 +970,7 @@ const Billing = () => {
 
           <div className="billing-total-section">
             <h4 className="billing-total-label">
-              Total: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
+              {t('billing.totalLabel')}: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
             </h4>
           </div>
             </div>
@@ -978,7 +980,7 @@ const Billing = () => {
       {/* Unified Controls Modal - All controls in one place */}
       <Modal show={showUnifiedControlsModal} onHide={() => setShowUnifiedControlsModal(false)} size="xl" scrollable>
         <Modal.Header closeButton>
-          <Modal.Title>💼 Billing Controls - {billId}</Modal.Title>
+          <Modal.Title>{t('billing.billingControlsTitle', { billId: billId || '' })}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {/* Tab Navigation */}
@@ -989,7 +991,7 @@ const Billing = () => {
               onClick={() => setUnifiedModalTab("payment")}
               className="px-3"
             >
-              💳 Payment
+              {t('billing.tab.payment')}
             </Button>
             <Button
               variant={unifiedModalTab === "inventory" ? "primary" : "outline-secondary"}
@@ -1002,7 +1004,7 @@ const Billing = () => {
               }}
               className="px-3"
             >
-              📦 Inventory
+              {t('billing.tab.inventory')}
             </Button>
             <Button
               variant={unifiedModalTab === "refund" ? "primary" : "outline-secondary"}
@@ -1013,20 +1015,20 @@ const Billing = () => {
               }}
               className="px-3"
             >
-              🔄 Refund
+              {t('billing.tab.refund')}
             </Button>
           </div>
 
           {/* TAB 1: PAYMENT */}
           {unifiedModalTab === "payment" && (
             <div>
-              <h6 className="fw-bold mb-3">💳 Payment Processing</h6>
+              <h6 className="fw-bold mb-3">{t('billing.paymentProcessing')}</h6>
               
               {/* Customer Mobile Input */}
               <Form.Group className="mb-3">
-                <Form.Label className="fw-bold">👤 Customer Mobile (optional)</Form.Label>
+                <Form.Label className="fw-bold">{t('billing.customerMobileOptional')}</Form.Label>
                 <Form.Control 
-                  placeholder="Enter 10-digit mobile number"
+                  placeholder={t('billing.customerMobilePlaceholder')}
                   maxLength={10}
                   value={customerMobile} 
                   onChange={async (e) => {
@@ -1049,7 +1051,7 @@ const Billing = () => {
                 />
                 {customerMobile.length === 10 && !customer && (
                   <small className="d-block mt-2 text-info">
-                    ℹ️ New customer - wallet will be created on payment
+                    {t('billing.newCustomerWallet')}
                   </small>
                 )}
               </Form.Group>
@@ -1065,7 +1067,7 @@ const Billing = () => {
                 
                 return (
                   <>
-                    <div className="fw-bold mb-3 text-primary">📋 Bill Summary</div>
+                    <div className="fw-bold mb-3 text-primary">{t('billing.billSummary')}</div>
                     
                     <div className="d-flex justify-content-between small mb-1">
                       <div>Subtotal</div>
@@ -1090,11 +1092,11 @@ const Billing = () => {
                     {/* Wallet Option */}
                     {customer && walletBalance > 0 && (
                       <div className="bg-success bg-opacity-10 p-3 rounded mb-3 border border-success">
-                        <div className="small fw-bold text-success mb-2">💳 Wallet Available: ₹{walletBalance.toFixed(2)}</div>
+                        <div className="small fw-bold text-success mb-2">{t('billing.walletAvailable', { amount: walletBalance.toFixed(2) })}</div>
                         <Form.Check 
                           type="checkbox"
                           id="useWalletUnified"
-                          label={`Use ₹${walletToUse.toFixed(2)} → Pay ₹${amountAfterWallet.toFixed(2)}`}
+                          label={t('billing.useWalletLabel', { walletAmount: walletToUse.toFixed(2), payAmount: amountAfterWallet.toFixed(2) })}
                           onChange={(e) => setUseWallet(e.target.checked)}
                           className="fw-bold small"
                         />
@@ -1108,23 +1110,23 @@ const Billing = () => {
 
               {/* Payment Mode */}
               <Form.Group className="mb-2">
-                <Form.Label>Payment Mode</Form.Label>
+                <Form.Label>{t('billing.paymentMode')}</Form.Label>
                 <Form.Select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
-                  <option value="CASH">Cash</option>
-                  <option value="UPI">UPI</option>
-                  <option value="CARD">Card</option>
-                  <option value="CREDIT">Credit</option>
+                  <option value="CASH">{t('billing.paymentMethod.cash')}</option>
+                  <option value="UPI">{t('billing.paymentMethod.upi')}</option>
+                  <option value="CARD">{t('billing.paymentMethod.card')}</option>
+                  <option value="CREDIT">{t('billing.paymentMethod.credit')}</option>
                 </Form.Select>
               </Form.Group>
 
               {paymentMode === 'CASH' && (
                 <Form.Group className="mb-3">
-                  <Form.Label>Cash Received</Form.Label>
+                  <Form.Label>{t('billing.cashReceived')}</Form.Label>
                   <Form.Control type="number" value={cashReceived ?? ''} onChange={e => setCashReceived(Number(e.target.value))} />
-                  <div className="small text-muted mt-1">Change: ₹{(() => {
+                  <div className="small text-muted mt-1">{t('billing.changeLabel', { amount: (() => {
                     const change = Math.max(0, (cashReceived ?? 0) - subtotalBeforeDiscount);
                     return change.toFixed(2);
-                  })()}</div>
+                  })() })}</div>
                 </Form.Group>
               )}
             </div>
@@ -1133,12 +1135,12 @@ const Billing = () => {
           {/* TAB 2: INVENTORY CHECK */}
           {unifiedModalTab === "inventory" && (
             <div>
-              <h6 className="fw-bold mb-3">📦 Inventory Check</h6>
+              <h6 className="fw-bold mb-3">{t('billing.inventoryCheck')}</h6>
               
               {!inventoryLoaded ? (
                 <div className="text-center py-5">
                   <p style={{ marginBottom: '1.5rem', fontSize: '1rem', color: '#666' }}>
-                    Click the button below to load inventory data
+                    {t('billing.clickLoadInventory')}
                   </p>
                   <Button
                     variant="primary"
@@ -1149,10 +1151,10 @@ const Billing = () => {
                     {loadingInventory ? (
                       <>
                         <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        Loading Inventory...
+                        {t('billing.loadingInventory')}
                       </>
                     ) : (
-                      '📦 Load Inventory Data'
+                      t('billing.loadInventoryData')
                     )}
                   </Button>
                 </div>
@@ -1170,7 +1172,7 @@ const Billing = () => {
                         }}
                         size="sm"
                       >
-                        <option value="">All Categories</option>
+                        <option value="">{t('billing.allCategories')}</option>
                         {categories.map((cat: string) => (
                           <option key={cat} value={cat}>{cat}</option>
                         ))}
@@ -1186,7 +1188,7 @@ const Billing = () => {
                         }}
                         size="sm"
                       >
-                        <option value="">All Brands</option>
+                        <option value="">{t('billing.allBrands')}</option>
                         {brands
                           .filter((brand: string) =>
                             !selectedCategory ||
@@ -1208,7 +1210,7 @@ const Billing = () => {
                         }}
                         style={{ whiteSpace: 'nowrap' }}
                       >
-                        Clear Filters
+                        {t('billing.clearFilters')}
                       </Button>
                     )}
                   </div>
@@ -1216,7 +1218,7 @@ const Billing = () => {
                   {!selectedCategory || !selectedBrand ? (
                     <div className="text-center text-muted py-5">
                       <p style={{ fontSize: '0.95rem' }}>
-                        {!selectedCategory ? '👈 Please select a Category' : '👈 Please select a Brand'}
+                        {!selectedCategory ? t('billing.selectCategory') : t('billing.selectBrand')}
                       </p>
                     </div>
                   ) : filterLoadingDelay ? (
@@ -1224,7 +1226,7 @@ const Billing = () => {
                       <div className="spinner-border text-primary" role="status">
                         <span className="visually-hidden">Loading...</span>
                       </div>
-                      <p className="mt-3">Loading filtered results...</p>
+                      <p className="mt-3">{t('billing.loadingFilteredResults')}</p>
                     </div>
                   ) : (() => {
                     const filteredInventory = inventoryData.filter((product: any) =>
@@ -1234,7 +1236,7 @@ const Billing = () => {
                     
                     return filteredInventory.length === 0 ? (
                       <div className="text-center text-muted py-5">
-                        <p>{inventoryData.length === 0 ? 'No inventory items found' : 'No matching items for selected filters'}</p>
+                        <p>{inventoryData.length === 0 ? t('billing.noInventoryItems') : t('billing.noMatchingFilters')}</p>
                       </div>
                     ) : (
                       <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -1290,7 +1292,7 @@ const Billing = () => {
                                       <div style={{ flex: 1 }}>
                                         <small style={{ fontWeight: '500', fontSize: '0.75rem' }}>Batch: {batch.batchNo}</small>
                                         <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.1rem' }}>
-                                          Exp: {new Date(batch.expiry).toLocaleDateString()}
+                                          {t('billing.batchExpiry')}: {new Date(batch.expiry).toLocaleDateString()}
                                         </div>
                                       </div>
                                       <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
@@ -1306,7 +1308,7 @@ const Billing = () => {
                                 })}
                               </div>
                             ) : (
-                              <small style={{ color: '#999', fontStyle: 'italic' }}>No batches available</small>
+                              <small style={{ color: '#999', fontStyle: 'italic' }}>{t('billing.noBatches')}</small>
                             )}
                           </div>
                         ))}
@@ -1321,25 +1323,25 @@ const Billing = () => {
           {/* TAB 3: REFUND */}
           {unifiedModalTab === "refund" && (
             <div>
-              <h6 className="fw-bold mb-3">🔄 Refund - Release Reserved Items</h6>
+              <h6 className="fw-bold mb-3">{t('billing.refundTitle')}</h6>
               
               {loadingReserved ? (
                 <div className="text-center p-5">
                   <div className="spinner-border text-warning mb-3" role="status">
                     <span className="visually-hidden">Loading...</span>
                   </div>
-                  <p className="text-muted">Loading reserved items...</p>
+                  <p className="text-muted">{t('billing.loadingReservedItems')}</p>
                 </div>
               ) : reservedItems.length === 0 ? (
                 <div className="alert alert-warning border-warning">
-                  <h6 className="mb-3">📋 No Reserved Items Found</h6>
-                  <p className="mb-2">There are currently no reserved items available for refund.</p>
+                  <h6 className="mb-3">{t('billing.noReservedItems')}</h6>
+                  <p className="mb-2">{t('billing.noReservedItemsDesc')}</p>
                 </div>
               ) : (
                 <div>
                   {/* Reserved Items Grid */}
                   <div className="mb-4">
-                    <h6 className="fw-bold mb-3">📋 Reserved Items ({reservedItems.length})</h6>
+                    <h6 className="fw-bold mb-3">{t('billing.reservedItems', { count: reservedItems.length })}</h6>
                     <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
                       {reservedItems.map((item, index) => (
                         <div
@@ -1372,7 +1374,7 @@ const Billing = () => {
 
                   {/* Release Form */}
                   <div className="mb-3">
-                    <h6 className="fw-bold mb-3">Release Quantity</h6>
+                    <h6 className="fw-bold mb-3">{t('billing.releaseQuantity')}</h6>
                     
                     {selectedReservedItem ? (
                       <>
@@ -1380,7 +1382,7 @@ const Billing = () => {
                           <h6 className="fw-bold mb-2">📦 {selectedReservedItem.productName || selectedReservedItem.sku}</h6>
                           <small className="d-block mb-2">Total Reserved: {selectedReservedItem.quantity} units</small>
                           <Form.Group>
-                            <Form.Label className="fw-bold">Quantity to Release</Form.Label>
+                            <Form.Label className="fw-bold">{t('billing.quantityToRelease')}</Form.Label>
                             <Form.Control
                               type="number"
                               min="1"
@@ -1393,7 +1395,7 @@ const Billing = () => {
                       </>
                     ) : (
                       <div className="alert alert-secondary mb-3">
-                        <small>Please select a reserved item from the list above</small>
+                        <small>{t('billing.selectReservedItem')}</small>
                       </div>
                     )}
                   </div>
@@ -1410,12 +1412,12 @@ const Billing = () => {
                 variant="outline-danger" 
                 onClick={handleCancelBill}
                 disabled={!billId}
-                title={!billId ? "Create a bill first" : "Cancel this bill and release all reserved items"}
+                title={!billId ? t('billing.createBillFirst') : t('billing.cancelBillTooltip')}
               >
-                ❌ Cancel Bill
+                {t('billing.cancelBill')}
               </Button>
               <Button variant="success" disabled={isPaying || !billId} onClick={async () => {
-                if (!billId) { alert('No active bill'); return; }
+                if (!billId) { alert(t('billing.noActiveBill')); return; }
                 
                 const amountToPay = subtotalBeforeDiscount;
                 let finalAmount = amountToPay;
@@ -1427,13 +1429,13 @@ const Billing = () => {
                 }
                 
                 if (paymentMode === 'CASH' && (cashReceived ?? 0) < finalAmount) {
-                  alert(`Cash received is less than amount due (₹${finalAmount.toFixed(2)})`);
+                  alert(t('billing.cashReceivedLessThanDue', { amount: finalAmount.toFixed(2) }));
                   return;
                 }
                 
                 await pay();
               }}>
-                {isPaying ? 'Processing…' : `Pay ₹${subtotalBeforeDiscount.toFixed(2)}`}
+                {isPaying ? t('billing.processing') : t('billing.payAmount', { amount: subtotalBeforeDiscount.toFixed(2) })}
               </Button>
             </>
           )}
@@ -1460,16 +1462,16 @@ const Billing = () => {
       {/* Receipt Modal */}
       <Modal show={showReceiptModal} onHide={() => setShowReceiptModal(false)} size="lg">
         <Modal.Header closeButton>
-          <Modal.Title>Receipt - {receiptData?.billId}</Modal.Title>
+          <Modal.Title>{t('billing.receiptTitle', { billId: receiptData?.billId || '' })}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {receiptData ? (
             <div id="receipt-content">
-              <h5>Store Receipt</h5>
-              <div className="small text-muted">Bill: {receiptData.billId}</div>
+              <h5>{t('billing.storeReceipt')}</h5>
+              <div className="small text-muted">{t('billing.billLabel', { billId: receiptData.billId })}</div>
               <Table size="sm" className="mt-2">
                 <thead>
-                  <tr><th>Item</th><th>Qty</th><th>Price</th><th>Discount</th><th>Total</th></tr>
+                  <tr><th>{t('billing.table.item')}</th><th>{t('billing.table.qty')}</th><th>{t('billing.table.price')}</th><th>{t('billing.table.discount')}</th><th>{t('billing.table.total')}</th></tr>
                 </thead>
                 <tbody>
                   {receiptData.items.map((it: any) => {
@@ -1491,11 +1493,11 @@ const Billing = () => {
               </Table>
 
               <div className="mt-3">
-                <div className="d-flex justify-content-between"><div>Subtotal</div><div>₹{(receiptData.totals.discountAmt + receiptData.totals.taxable).toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>Discount</div><div>₹{receiptData.totals.discountAmt.toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>GST</div><div>₹{receiptData.totals.gstAmt.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>{t('billing.subtotal')}</div><div>₹{(receiptData.totals.discountAmt + receiptData.totals.taxable).toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>{t('billing.discountLabel')}</div><div>₹{receiptData.totals.discountAmt.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>{t('billing.gst')}</div><div>₹{receiptData.totals.gstAmt.toFixed(2)}</div></div>
                 <hr />
-                <div className="d-flex justify-content-between fw-bold"><div>Grand Total</div><div>₹{receiptData.totals.grandTotal.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between fw-bold"><div>{t('billing.grandTotal')}</div><div>₹{receiptData.totals.grandTotal.toFixed(2)}</div></div>
                 
                 {/* Show wallet usage if applicable */}
                 {receiptData.walletUsed && receiptData.walletUsed > 0 && (
@@ -1519,15 +1521,15 @@ const Billing = () => {
 
               {receiptData.payment?.customerMobile && (
                 <div className="mt-3 p-2 bg-light rounded">
-                  <div className="small text-success fw-bold">✓ Customer Wallet Created</div>
-                  <div className="small">Mobile: {receiptData.payment.customerMobile}</div>
-                  <div className="small">Discount Credited: ₹{receiptData.payment.discount?.toFixed(2) || '0.00'}</div>
-                  <div className="small text-muted">Use wallet balance in future purchases</div>
+                  <div className="small text-success fw-bold">{t('billing.walletCreated')}</div>
+                  <div className="small">{t('billing.walletMobile')}: {receiptData.payment.customerMobile}</div>
+                  <div className="small">{t('billing.discountCredited', { amount: receiptData.payment.discount?.toFixed(2) || '0.00' })}</div>
+                  <div className="small text-muted">{t('billing.useWalletFuture')}</div>
                 </div>
               )}
             </div>
           ) : (
-            <div>No receipt data</div>
+            <div>{t('billing.noReceiptData')}</div>
           )}
         </Modal.Body>
         <Modal.Footer>
@@ -1537,7 +1539,7 @@ const Billing = () => {
             const content = document.getElementById('receipt-content');
             if (!content) return;
             const w = window.open('', '_blank', 'width=600,height=800');
-            if (!w) { alert('Unable to open print window'); return; }
+            if (!w) { alert(t('billing.unableToOpenPrintWindow')); return; }
             w.document.write('<html><head><title>Receipt</title><style>body{font-family:sans-serif;padding:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}</style></head><body>');
             w.document.write(content.innerHTML);
             w.document.write('</body></html>');
@@ -1558,7 +1560,7 @@ const Billing = () => {
             const uname = auth?.user?.username ?? (() => { const s = localStorage.getItem('user'); if (!s) return 'guest'; try { return JSON.parse(s).username; } catch { return 'guest'; }})();
             const res = await startBill(uname);
             setBillId(res.data.billId);
-          }}>Done</Button>
+          }}>{t('billing.done')}</Button>
         </Modal.Footer>
       </Modal>
 
@@ -1569,15 +1571,15 @@ const Billing = () => {
         </Modal.Header>
         <Modal.Body>
           <div className="alert alert-warning mb-3">
-            <strong>Are you sure you want to cancel this bill?</strong>
+            <strong>{t('billing.cancelBillConfirm')}</strong>
           </div>
-          <p>This action will:</p>
+          <p>{t('billing.cancelBillWill')}</p>
           <ul>
-            <li>Release all reserved items back to inventory</li>
-            <li>Cancel the current billing session</li>
-            <li>Allow you to start a new bill</li>
+            <li>{t('billing.cancelBillList.release')}</li>
+            <li>{t('billing.cancelBillList.cancelSession')}</li>
+            <li>{t('billing.cancelBillList.allowRestart')}</li>
           </ul>
-          <p className="text-muted mb-0">This action cannot be undone.</p>
+          <p className="text-muted mb-0">{t('billing.cannotUndo')}</p>
         </Modal.Body>
         <Modal.Footer>
           <Button 
@@ -1585,14 +1587,14 @@ const Billing = () => {
             onClick={() => setShowCancelConfirmModal(false)}
             disabled={isCancelling}
           >
-            Keep Bill
+            {t('billing.keepBill')}
           </Button>
           <Button 
             variant="danger" 
             onClick={confirmCancelBill}
             disabled={isCancelling}
           >
-            {isCancelling ? '🔄 Cancelling...' : '❌ Cancel Bill'}
+            {isCancelling ? t('billing.cancelling') : t('billing.cancelBill')}
           </Button>
         </Modal.Footer>
       </Modal>
@@ -1882,12 +1884,12 @@ const Billing = () => {
               <div className="spinner-border text-primary" role="status">
                 <span className="visually-hidden">Loading...</span>
               </div>
-              <p className="mt-3">Loading inventory...</p>
+              <p className="mt-3">{t('billing.loadingInventory')}</p>
             </div>
           ) : !selectedCategory || !selectedBrand ? (
             <div className="text-center text-muted py-5">
               <p style={{ fontSize: '0.95rem' }}>
-                {!selectedCategory ? '👈 Please select a Category' : '👈 Please select a Brand'}
+                {!selectedCategory ? t('billing.selectCategory') : t('billing.selectBrand')}
               </p>
             </div>
           ) : filterLoadingDelay ? (
@@ -1990,9 +1992,9 @@ const Billing = () => {
                             border: '1px solid #ddd'
                           }}>
                             <div style={{ flex: 1 }}>
-                              <small style={{ fontWeight: '500', fontSize: '0.75rem' }}>Batch: {batch.batchNo}</small>
+                              <small style={{ fontWeight: '500', fontSize: '0.75rem' }}>{t('billing.batchLabel')} {batch.batchNo}</small>
                               <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.1rem' }}>
-                                Exp: {new Date(batch.expiry).toLocaleDateString()}
+                                {t('billing.batchExpiry')}: {new Date(batch.expiry).toLocaleDateString()}
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
