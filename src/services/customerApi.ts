@@ -22,6 +22,16 @@ export interface WalletTransaction {
   createdAt?: string;
 }
 
+export interface PaginatedResponse<T> {
+  content: T[];
+  pageNumber: number;
+  pageSize: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
 // Get or create customer
 export const getOrCreateCustomer = (mobileNo: string, billingId?: string) =>
   api.post<Customer>(`/users/customers/getOrCreate`, { mobileNo, billingId });
@@ -46,6 +56,18 @@ export const deductFromWallet = (customerId: string, amount: number, description
 export const getWalletTransactions = (customerId: string) =>
   api.get<WalletTransaction[]>(`/users/customers/${customerId}/wallet/transactions`);
 
+// Get wallet transactions with pagination
+export const getWalletTransactionsPaginated = (customerId: string, page: number = 0, size: number = 10) =>
+  api.get<PaginatedResponse<WalletTransaction>>(`/users/customers/${customerId}/wallet/transactions/paginated`, {
+    params: { page, size }
+  });
+
 // Get billing transactions (from billing service)
 export const getBillingTransactions = (customerId: string) =>
   api.get<any[]>(`/billings/customer/${customerId}`);
+
+// Get billing transactions with pagination
+export const getBillingTransactionsPaginated = (customerId: string, page: number = 0, size: number = 10) =>
+  api.get<PaginatedResponse<any>>(`/billings/customer/${customerId}/paginated`, {
+    params: { page, size }
+  });

@@ -28,9 +28,12 @@ import {
   addToWallet,
   deductFromWallet,
   getWalletTransactions,
+  getWalletTransactionsPaginated,
   getBillingTransactions,
+  getBillingTransactionsPaginated,
   type Customer,
-  type WalletTransaction
+  type WalletTransaction,
+  type PaginatedResponse
 } from "../../services/customerApi";
 import {
   getReservedItems,
@@ -79,11 +82,27 @@ const Billing = () => {
   const [rewardsSearchedCustomer, setRewardsSearchedCustomer] = useState<Customer | null>(null);
   const [rewardsSearchError, setRewardsSearchError] = useState<string | null>(null);
 
+  // Wallet Transactions Pagination state
+  const [walletCurrentPage, setWalletCurrentPage] = useState<number>(0);
+  const [walletPageSize] = useState<number>(10);
+  const [walletTotalPages, setWalletTotalPages] = useState<number>(0);
+  const [walletTotalElements, setWalletTotalElements] = useState<number>(0);
+
+  // Billing History Pagination state
+  const [billCurrentPage, setBillCurrentPage] = useState<number>(0);
+  const [billPageSize] = useState<number>(10);
+  const [billTotalPages, setBillTotalPages] = useState<number>(0);
+  const [billTotalElements, setBillTotalElements] = useState<number>(0);
+
   // Bill Details Modal state
   const [showBillDetailsModal, setShowBillDetailsModal] = useState(false);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const [selectedBillDate, setSelectedBillDate] = useState<string | null>(null);
   const [billItems, setBillItems] = useState<any[]>([]);
+  const [billDiscount, setBillDiscount] = useState<number>(0);
+  const [billSubTotal, setBillSubTotal] = useState<number>(0);
+  const [billTaxAmount, setBillTaxAmount] = useState<number>(0);
+  const [billTotalAmount, setBillTotalAmount] = useState<number>(0);
   const [loadingBillDetails, setLoadingBillDetails] = useState(false);
 
   // Release/Refund state
@@ -748,20 +767,27 @@ const Billing = () => {
       setRewardsSearchedCustomer(cust);
 
       if (cust && cust.id) {
-        // Fetch wallet transactions
+        // Fetch wallet transactions with pagination
         try {
-          const transRes = await getWalletTransactions(cust.id);
-          setWalletTransactions(transRes.data || []);
+          setWalletCurrentPage(0); // Reset to first page
+          const transRes = await getWalletTransactionsPaginated(cust.id, 0, walletPageSize);
+          const paginatedData = transRes.data as PaginatedResponse<WalletTransaction>;
+          setWalletTransactions(paginatedData.content || []);
+          setWalletTotalPages(paginatedData.totalPages);
+          setWalletTotalElements(paginatedData.totalElements);
         } catch (err) {
           console.warn("Could not fetch wallet transactions", err);
           setWalletTransactions([]);
+          setWalletTotalPages(0);
+          setWalletTotalElements(0);
         }
 
-        // Fetch billing transactions
+        // Fetch billing transactions with pagination
         try {
-          const billRes = await getBillingTransactions(cust.id);
-          const bills = billRes.data || [];
-          const mappedBills = bills.map((bill: any) => ({
+          setBillCurrentPage(0); // Reset to first page
+          const billRes = await getBillingTransactionsPaginated(cust.id, 0, billPageSize);
+          const paginatedData = billRes.data as PaginatedResponse<any>;
+          const mappedBills = paginatedData.content.map((bill: any) => ({
             id: bill.id,
             billId: bill.billId || `BILL_${bill.id}`,
             amount: bill.totalAmount || 0,
@@ -770,9 +796,13 @@ const Billing = () => {
             itemCount: 1
           }));
           setBillTransactions(mappedBills);
+          setBillTotalPages(paginatedData.totalPages);
+          setBillTotalElements(paginatedData.totalElements);
         } catch (err) {
           console.warn("Could not fetch billing transactions", err);
           setBillTransactions([]);
+          setBillTotalPages(0);
+          setBillTotalElements(0);
         }
 
         console.log('✅ Customer found:', { customer: cust, walletTransactions, billTransactions });
@@ -782,6 +812,54 @@ const Billing = () => {
       setRewardsSearchError(msg);
       setRewardsSearchedCustomer(null);
       setWalletTransactions([]);
+      setBillTransactions([]);
+    } finally {
+      setLoadingRewards(false);
+    }
+  };
+
+  // Handle wallet transactions page change
+  const handleWalletPageChange = async (newPage: number) => {
+    if (!rewardsSearchedCustomer?.id) return;
+    
+    setWalletCurrentPage(newPage);
+    setLoadingRewards(true);
+    try {
+      const transRes = await getWalletTransactionsPaginated(rewardsSearchedCustomer.id, newPage, walletPageSize);
+      const paginatedData = transRes.data as PaginatedResponse<WalletTransaction>;
+      setWalletTransactions(paginatedData.content || []);
+      setWalletTotalPages(paginatedData.totalPages);
+      setWalletTotalElements(paginatedData.totalElements);
+    } catch (err) {
+      console.warn("Could not fetch wallet transactions", err);
+      setWalletTransactions([]);
+    } finally {
+      setLoadingRewards(false);
+    }
+  };
+
+  // Handle billing history page change
+  const handleBillPageChange = async (newPage: number) => {
+    if (!rewardsSearchedCustomer?.id) return;
+    
+    setBillCurrentPage(newPage);
+    setLoadingRewards(true);
+    try {
+      const billRes = await getBillingTransactionsPaginated(rewardsSearchedCustomer.id, newPage, billPageSize);
+      const paginatedData = billRes.data as PaginatedResponse<any>;
+      const mappedBills = paginatedData.content.map((bill: any) => ({
+        id: bill.id,
+        billId: bill.billId || `BILL_${bill.id}`,
+        amount: bill.totalAmount || 0,
+        discount: bill.discount || 0,
+        date: bill.billedAt ? new Date(bill.billedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+        itemCount: 1
+      }));
+      setBillTransactions(mappedBills);
+      setBillTotalPages(paginatedData.totalPages);
+      setBillTotalElements(paginatedData.totalElements);
+    } catch (err) {
+      console.warn("Could not fetch billing transactions", err);
       setBillTransactions([]);
     } finally {
       setLoadingRewards(false);
@@ -801,11 +879,22 @@ const Billing = () => {
       // Extract items from bill summary
       const items = billData?.items || [];
       setBillItems(items);
-      console.log('✅ Bill details loaded:', { billId, items });
+      
+      // Extract discount and totals from bill summary
+      setBillDiscount(billData?.discount || 0);
+      setBillSubTotal(billData?.subTotal || 0);
+      setBillTaxAmount(billData?.taxAmount || 0);
+      setBillTotalAmount(billData?.totalAmount || 0);
+      
+      console.log('✅ Bill details loaded:', { billId, items, discount: billData?.discount, total: billData?.totalAmount });
     } catch (err: any) {
       console.error('Failed to load bill details', err);
       alert('Failed to load bill details: ' + (err?.response?.data?.message || err?.message || String(err)));
       setBillItems([]);
+      setBillDiscount(0);
+      setBillSubTotal(0);
+      setBillTaxAmount(0);
+      setBillTotalAmount(0);
     } finally {
       setLoadingBillDetails(false);
     }
@@ -938,7 +1027,8 @@ const Billing = () => {
       
       // Add discount to wallet if this is a new customer
       if (discountAmount > 0 && cust) {
-        await addToWallet(cust.id || '', discountAmount, 'Discount credited');
+        const discountDescription = billId ? `Discount credited from Bill ${billId}` : 'Discount credited';
+        await addToWallet(cust.id || '', discountAmount, discountDescription);
         setCustomer({...cust, walletBalance: (cust.walletBalance || 0) + discountAmount});
       }
       
@@ -1657,25 +1747,65 @@ const Billing = () => {
                   <div className="mb-4">
                     <h6 className="fw-bold mb-2">📝 Wallet Transactions</h6>
                     {walletTransactions && walletTransactions.length > 0 ? (
-                      <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
-                        {walletTransactions.map((trans: any, idx: number) => (
-                          <div key={idx} style={{
-                            padding: '0.75rem',
-                            borderBottom: idx < (walletTransactions.length - 1) ? '1px solid #eee' : 'none',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}>
-                            <div style={{ flex: 1 }}>
-                              <small className="fw-bold d-block">{trans.description || 'Transaction'}</small>
-                              <small className="text-muted">{trans.createdAt ? new Date(trans.createdAt).toLocaleDateString() : 'N/A'}</small>
-                            </div>
-                            <Badge bg={trans.amount >= 0 ? 'success' : 'danger'}>
-                              {trans.amount >= 0 ? '+' : ''}₹{Math.abs(trans.amount || 0).toFixed(2)}
-                            </Badge>
+                      <>
+                        <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+                          <Table striped bordered hover size="sm" className="mb-0">
+                            <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8f9fa', zIndex: 10 }}>
+                              <tr>
+                                <th style={{ fontSize: '0.85rem', padding: '0.5rem' }}>Date</th>
+                                <th style={{ fontSize: '0.85rem', padding: '0.5rem' }}>Type</th>
+                                <th style={{ fontSize: '0.85rem', padding: '0.5rem' }}>Amount</th>
+                                <th style={{ fontSize: '0.85rem', padding: '0.5rem' }}>Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {walletTransactions.map((trans: any, idx: number) => (
+                                <tr key={idx}>
+                                  <td style={{ fontSize: '0.85rem', padding: '0.5rem' }}>
+                                    {trans.createdAt ? new Date(trans.createdAt).toLocaleDateString() : 'N/A'}
+                                  </td>
+                                  <td style={{ fontSize: '0.85rem', padding: '0.5rem' }}>
+                                    <Badge bg={trans.type === 'CREDIT' ? 'success' : 'danger'}>
+                                      {trans.type === 'CREDIT' ? '✅ CREDIT' : '❌ DEBIT'}
+                                    </Badge>
+                                  </td>
+                                  <td style={{ fontSize: '0.85rem', padding: '0.5rem', fontWeight: 'bold', color: trans.type === 'CREDIT' ? '#28a745' : '#dc3545' }}>
+                                    {trans.type === 'CREDIT' ? '+' : '-'}₹{Math.abs(trans.amount || 0).toFixed(2)}
+                                  </td>
+                                  <td style={{ fontSize: '0.85rem', padding: '0.5rem' }}>
+                                    {trans.description || 'Transaction'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </div>
+                        {/* Pagination Controls */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', padding: '0.5rem' }}>
+                          <small style={{ color: '#666' }}>
+                            Page {walletCurrentPage + 1} of {walletTotalPages} | Total: {walletTotalElements} transactions
+                          </small>
+                          <div>
+                            <Button 
+                              size="sm" 
+                              variant="outline-secondary" 
+                              disabled={walletCurrentPage === 0 || loadingRewards}
+                              onClick={() => handleWalletPageChange(walletCurrentPage - 1)}
+                              style={{ marginRight: '0.5rem' }}
+                            >
+                              ← Prev
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline-secondary" 
+                              disabled={walletCurrentPage >= walletTotalPages - 1 || loadingRewards}
+                              onClick={() => handleWalletPageChange(walletCurrentPage + 1)}
+                            >
+                              Next →
+                            </Button>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      </>
                     ) : (
                       <div className="alert alert-light border mb-0" style={{ backgroundColor: '#f0f0f0' }}>
                         <small className="text-muted">No wallet transactions</small>
@@ -1687,33 +1817,60 @@ const Billing = () => {
                   <div>
                     <h6 className="fw-bold mb-2">📊 Billing History</h6>
                     {billTransactions && billTransactions.length > 0 ? (
-                      <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
-                        {billTransactions.map((bill: any, idx: number) => (
-                          <div key={idx} style={{
-                            padding: '0.75rem',
-                            borderBottom: idx < (billTransactions.length - 1) ? '1px solid #eee' : 'none',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}>
-                            <div style={{ flex: 1, wordBreak: 'break-all' }}>
-                              <small 
-                                className="fw-bold d-block" 
-                                style={{ cursor: 'pointer', color: '#0d6efd', textDecoration: 'underline' }}
-                                onClick={() => handleViewBillDetails(bill.billId, bill.date)}
-                                title="Click to view bill details"
-                              >
-                                {bill.billId}
-                              </small>
-                              <small className="text-muted">{bill.date}</small>
+                      <>
+                        <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+                          {billTransactions.map((bill: any, idx: number) => (
+                            <div key={idx} style={{
+                              padding: '0.75rem',
+                              borderBottom: idx < (billTransactions.length - 1) ? '1px solid #eee' : 'none',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}>
+                              <div style={{ flex: 1, wordBreak: 'break-all' }}>
+                                <small 
+                                  className="fw-bold d-block" 
+                                  style={{ cursor: 'pointer', color: '#0d6efd', textDecoration: 'underline' }}
+                                  onClick={() => handleViewBillDetails(bill.billId, bill.date)}
+                                  title="Click to view bill details"
+                                >
+                                  {bill.billId}
+                                </small>
+                                <small className="text-muted">{bill.date}</small>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <small className="d-block fw-bold">₹{(bill.amount || 0).toFixed(2)}</small>
+                                {bill.discount > 0 && <small className="text-success d-block">-₹{(bill.discount || 0).toFixed(2)}</small>}
+                              </div>
                             </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <small className="d-block fw-bold">₹{(bill.amount || 0).toFixed(2)}</small>
-                              {bill.discount > 0 && <small className="text-success d-block">-₹{(bill.discount || 0).toFixed(2)}</small>}
-                            </div>
+                          ))}
+                        </div>
+                        {/* Pagination Controls */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', padding: '0.5rem' }}>
+                          <small style={{ color: '#666' }}>
+                            Page {billCurrentPage + 1} of {billTotalPages} | Total: {billTotalElements} bills
+                          </small>
+                          <div>
+                            <Button 
+                              size="sm" 
+                              variant="outline-secondary" 
+                              disabled={billCurrentPage === 0 || loadingRewards}
+                              onClick={() => handleBillPageChange(billCurrentPage - 1)}
+                              style={{ marginRight: '0.5rem' }}
+                            >
+                              ← Prev
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline-secondary" 
+                              disabled={billCurrentPage >= billTotalPages - 1 || loadingRewards}
+                              onClick={() => handleBillPageChange(billCurrentPage + 1)}
+                            >
+                              Next →
+                            </Button>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      </>
                     ) : (
                       <div className="alert alert-light border mb-0" style={{ backgroundColor: '#f0f0f0' }}>
                         <small className="text-muted">No billing history</small>
@@ -2147,6 +2304,31 @@ const Billing = () => {
                     <div className="col-md-6">
                       <small className="text-muted d-block">Date</small>
                       <h6 className="fw-bold">{selectedBillDate}</h6>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bill Summary / Totals */}
+              <div className="card mb-4" style={{ backgroundColor: '#f9f9f9', border: '1px solid #ddd' }}>
+                <div className="card-body">
+                  <h6 className="fw-bold mb-3">💰 Bill Summary</h6>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <small className="text-muted d-block">Subtotal</small>
+                      <h6 className="fw-bold">₹{billSubTotal.toFixed(2)}</h6>
+                    </div>
+                    <div className="col-md-6">
+                      <small className="text-muted d-block">Tax</small>
+                      <h6 className="fw-bold">₹{billTaxAmount.toFixed(2)}</h6>
+                    </div>
+                    <div className="col-md-6">
+                      <small className="text-muted d-block">Discount</small>
+                      <h6 className="fw-bold text-success" style={{ color: '#28a745' }}>-₹{billDiscount.toFixed(2)}</h6>
+                    </div>
+                    <div className="col-md-6">
+                      <small className="text-muted d-block">Total Amount</small>
+                      <h6 className="fw-bold" style={{ color: '#0d6efd', fontSize: '1.1rem' }}>₹{billTotalAmount.toFixed(2)}</h6>
                     </div>
                   </div>
                 </div>
