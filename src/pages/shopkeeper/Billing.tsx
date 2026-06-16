@@ -71,6 +71,8 @@ const Billing = () => {
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
+  const [showRefundSlip, setShowRefundSlip] = useState(false);
+  const [refundSlipData, setRefundSlipData] = useState<any>(null);
   const [useWallet, setUseWallet] = useState<boolean>(false);
 
   // Unified Controls Modal state
@@ -424,6 +426,36 @@ const Billing = () => {
       return s + (priceAfterDiscount * (i.qty ?? 0));
     }, 0));
   }, [cart]);
+
+  // Auto-fetch customer when mobile number is entered (debounced)
+  useEffect(() => {
+    if (!customerMobile || !customerMobile.trim()) {
+      return;
+    }
+
+    const mobile = customerMobile.trim();
+    // simple debounce to avoid spamming API while typing
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getCustomerByMobile(mobile);
+        const cust = res.data;
+        if (cust && cust.id) {
+          setCustomer(cust);
+          // if walletBalance present, allow using wallet
+          if ((cust.walletBalance || 0) > 0) setUseWallet(true);
+        } else {
+          setCustomer(null);
+          setUseWallet(false);
+        }
+      } catch (err) {
+        // ignore errors silently - customer may not exist
+        setCustomer(null);
+        setUseWallet(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [customerMobile]);
 
   // Helper: compute discount, gst and grand total
   const computeTotals = () => {
@@ -1191,7 +1223,6 @@ const Billing = () => {
     
     try {
       let totalItemRefundAmount = 0;
-      let totalWalletRefund = 0;
       let discountRefund = 0;
       
       // Process each item return and adjust inventory
@@ -1217,80 +1248,102 @@ const Billing = () => {
         await adjustInventory(item.productId, returnQty, 'IN', `Returned from Bill ${selectedRefundBill.billId}`);
       }
 
-      // Calculate refunds based on payment method
-      console.log(`📊 Payment Method: ${paymentMethodType}, Wallet Used: ${walletAmountUsed}`);
-
-      // Scenario 1: All payment was from wallet - refund full amount to wallet
-      if (paymentMethodType === 'wallet') {
-        totalWalletRefund = totalItemRefundAmount;
-        console.log(`💰 Wallet Payment Reversal: ₹${totalWalletRefund.toFixed(2)}`);
-      } 
-      // Scenario 2: All payment was from cash - refund as wallet credit
-      else if (paymentMethodType === 'cash') {
-        totalWalletRefund = totalItemRefundAmount;
-        console.log(`💳 Cash Payment - Wallet Credit: ₹${totalWalletRefund.toFixed(2)}`);
-      } 
-      // Scenario 3: Mixed payment - refund based on how much came from wallet
-      else if (paymentMethodType === 'mixed') {
-        const totalOriginalPayment = billTotalAmount || 0;
-        const walletRatio = walletAmountUsed / totalOriginalPayment;
-        totalWalletRefund = totalItemRefundAmount * walletRatio;
-        console.log(`🔄 Mixed Payment - Wallet Ratio: ${(walletRatio * 100).toFixed(2)}%, Wallet Refund: ₹${totalWalletRefund.toFixed(2)}`);
+      // Re-fetch authoritative bill summary to decide how to split refunds
+      let billData: any = null;
+      try {
+        const sres = await getSummary(selectedRefundBill.billId);
+        billData = sres?.data || null;
+      } catch (err) {
+        console.warn('Could not re-fetch bill summary, using local values', err);
+        billData = null;
       }
 
-      // Scenario: Reverse discount if it was credited to wallet
-      if (discountReversalOption === 'yes' && billDiscount > 0) {
-        // Calculate proportional discount for returned items
-        const totalOriginalQty = billItems.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-        const returnedQty = Object.entries(returnItemSelection)
-          .reduce((sum, [_idx, qty]) => sum + (qty || 0), 0);
-        
-        discountRefund = (billDiscount * returnedQty) / totalOriginalQty;
-        console.log(`⬅️ Discount Reversal: ₹${discountRefund.toFixed(2)} reverted from wallet`);
-      }
+      const totalOriginalPayment = billData?.totalAmount || billTotalAmount || 0;
+      const walletUsedOnBill = billData?.payment?.walletUsed ?? billData?.walletUsed ?? walletAmountUsed ?? 0;
 
-      // Split item refund between wallet and cash based on original payment method
+      console.log(`📊 Payment Method: ${paymentMethodType}, Wallet Used on Bill: ${walletUsedOnBill}`);
+
+      // Determine wallet portion for item refunds
       let walletItemsRefund = 0;
-      if (paymentMethodType === 'wallet') {
-        // original paid fully by wallet => refund items to wallet
-        walletItemsRefund = totalItemRefundAmount;
-      } else if (paymentMethodType === 'cash') {
-        // paid fully by cash => no wallet credit for items
+      if (Number(walletUsedOnBill) && totalOriginalPayment > 0) {
+        // If wallet covered entire bill (or effectively equals total), refund items to wallet
+        if (Math.abs(Number(walletUsedOnBill) - Number(totalOriginalPayment)) < 0.01) {
+          walletItemsRefund = totalItemRefundAmount;
+        } else {
+          // Mixed payment: proportionally refund to wallet
+          const walletRatio = Number(walletUsedOnBill) / Number(totalOriginalPayment);
+          walletItemsRefund = totalItemRefundAmount * walletRatio;
+        }
+      } else {
+        // No wallet used -> do not credit wallet for items
         walletItemsRefund = 0;
-      } else if (paymentMethodType === 'mixed') {
-        const totalOriginalPayment = billTotalAmount || 0;
-        const walletRatio = totalOriginalPayment > 0 ? (walletAmountUsed / totalOriginalPayment) : 0;
-        walletItemsRefund = totalItemRefundAmount * walletRatio;
       }
 
-      // Wallet actions:
-      // - Credit walletItemsRefund (items portion that should go to wallet)
-      // - If discount reversal requested, deduct discountRefund from wallet (remove previously credited discount)
-      let walletCreditDone = 0;
-      let walletDebitDone = 0;
-
-      if (walletItemsRefund > 0) {
-        const descItems = `Items refund from Bill ${selectedRefundBill.billId} (items portion: ₹${walletItemsRefund.toFixed(2)})`;
-        await addToWallet(selectedRefundBill.customerId, walletItemsRefund, descItems);
-        walletCreditDone = walletItemsRefund;
-        console.log(`💵 Credited wallet with items portion: ₹${walletItemsRefund.toFixed(2)}`);
-      }
-
-      if (discountRefund > 0 && discountReversalOption === 'yes') {
+      // Determine if discount was actually credited to wallet for this bill (search wallet transactions)
+      let shouldReverseDiscount = false;
+      if (discountReversalOption === 'yes' && billDiscount > 0) {
         try {
-          const descDisc = `Revert discount from Bill ${selectedRefundBill.billId} (₹${discountRefund.toFixed(2)})`;
-          await deductFromWallet(selectedRefundBill.customerId, discountRefund, descDisc);
-          walletDebitDone = discountRefund;
-          console.log(`⬇️ Deducted discount from wallet: ₹${discountRefund.toFixed(2)}`);
+          const transRes = await getWalletTransactions(selectedRefundBill.customerId);
+          const txs = transRes.data || [];
+          // Look for a credit transaction that references this bill id (common description used earlier)
+          shouldReverseDiscount = txs.some((tx: any) => {
+            const desc = (tx.description || '') + '';
+            const amt = Number(tx.amount ?? tx.value ?? 0);
+            // Heuristic: description contains billId and transaction is a credit
+            return desc.includes(selectedRefundBill.billId) && amt > 0 && (tx.type === 'CREDIT' || (tx.credit && Number(tx.credit) > 0));
+          });
         } catch (err) {
-          console.error('Failed to deduct discount from wallet (may have insufficient balance):', err);
-          // If deduct fails, fall back to crediting discount back to wallet to avoid leaving customer worse off
-          await addToWallet(selectedRefundBill.customerId, discountRefund, `Fallback credit for discount reversal from Bill ${selectedRefundBill.billId}`);
-          walletCreditDone += discountRefund;
+          console.warn('Could not fetch wallet transactions to verify discount credit:', err);
+          shouldReverseDiscount = false;
         }
       }
 
-      const cashRefundAmount = Math.max(0, totalItemRefundAmount - (walletItemsRefund || 0));
+      // Calculate proportional discount for returned items only if discount was credited earlier
+      if (shouldReverseDiscount) {
+        const totalOriginalQty = billItems.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+        const returnedQty = Object.entries(returnItemSelection)
+          .reduce((sum, [_idx, qty]) => sum + (qty || 0), 0);
+        discountRefund = totalOriginalQty > 0 ? (billDiscount * returnedQty) / totalOriginalQty : 0;
+        console.log(`⬅️ Discount Reversal (verified): ₹${discountRefund.toFixed(2)} to debit from wallet`);
+      } else {
+        discountRefund = 0;
+        if (billDiscount > 0 && discountReversalOption === 'yes') {
+          console.log('ℹ️ Discount was not previously credited to wallet; skipping discount reversal');
+        }
+      }
+
+      // Wallet actions: compute desired credit and debit, then perform a single net operation
+      let walletCreditDone = 0;
+      let walletDebitDone = 0;
+
+      const desiredCredit = walletItemsRefund > 0 ? walletItemsRefund : 0;
+      const desiredDebit = discountRefund > 0 ? discountRefund : 0;
+      const netWallet = Number((desiredCredit - desiredDebit).toFixed(2));
+
+      if (netWallet > 0) {
+        // Net credit to wallet
+        const desc = `Refund net wallet credit for Bill ${selectedRefundBill.billId} (items: ₹${desiredCredit.toFixed(2)}, discount reversed: ₹${desiredDebit.toFixed(2)})`;
+        await addToWallet(selectedRefundBill.customerId, netWallet, desc);
+        walletCreditDone = netWallet;
+        console.log(`💵 Net wallet credit: ₹${netWallet.toFixed(2)} (credit ${desiredCredit.toFixed(2)} - debit ${desiredDebit.toFixed(2)})`);
+      } else if (netWallet < 0) {
+        // Net debit from wallet
+        const toDeduct = Math.abs(netWallet);
+        try {
+          const desc = `Refund net wallet debit for Bill ${selectedRefundBill.billId} (items: ₹${desiredCredit.toFixed(2)}, discount reversed: ₹${desiredDebit.toFixed(2)})`;
+          await deductFromWallet(selectedRefundBill.customerId, toDeduct, desc);
+          walletDebitDone = toDeduct;
+          console.log(`⬇️ Net wallet debit: ₹${toDeduct.toFixed(2)} (debit ${desiredDebit.toFixed(2)} - credit ${desiredCredit.toFixed(2)})`);
+        } catch (err) {
+          console.error('Failed to deduct net amount from wallet (insufficient balance or error):', err);
+          setReturnError('⚠️ Discount reversal failed: customer wallet has insufficient balance. Please process cash/card reversal manually.');
+        }
+      } else {
+        // netWallet === 0 -> no wallet op needed
+        console.log('ℹ️ Net wallet change is zero; skipping wallet API calls');
+      }
+
+      const cashRefundAmount = Math.max(0, totalItemRefundAmount - (desiredCredit || 0));
 
       // Success notification with breakdown
       let successMsg = `✅ Return Processed!\n`;
@@ -1305,6 +1358,38 @@ const Billing = () => {
       setNotificationMessage(successMsg);
       setNotificationType('success');
       setShowNotification(true);
+
+      // Prepare refund slip data and show printable refund slip
+      try {
+        const refundSlip = {
+          billId: selectedRefundBill.billId,
+          date: new Date().toLocaleString(),
+          customerId: selectedRefundBill.customerId,
+          items: Object.entries(returnItemSelection).map(([idx, qty]) => {
+            const item = billItems[parseInt(idx)];
+            return {
+              sku: item?.sku || item?.name,
+              qty,
+              unitPrice: item?.price || 0,
+              gross: (item?.price || 0) * (qty || 0)
+            };
+          }),
+          totals: {
+            totalGross: Object.entries(returnItemSelection).reduce((s, [idx, qty]) => {
+              const it = billItems[parseInt(idx)];
+              return s + ((it?.price || 0) * (qty || 0));
+            }, 0),
+            walletCredit: walletCreditDone,
+            discountReversed: walletDebitDone,
+            cashRefund: cashRefundAmount,
+            netWalletChange: (walletCreditDone - walletDebitDone)
+          }
+        };
+        setRefundSlipData(refundSlip);
+        setShowRefundSlip(true);
+      } catch (e) {
+        console.warn('Could not prepare refund slip', e);
+      }
 
       // Mark bill as refunded to prevent duplicate refunds
       try {
@@ -1682,7 +1767,7 @@ const Billing = () => {
                 const discountPerUnit = i.discountAmount ?? 0;
                 const totalDiscount = discountPerUnit * i.qty;
                 const priceAfterDiscount = Math.max(0, (i.price ?? 0) - discountPerUnit);
-                const itemTotal = priceAfterDiscount * i.qty;
+                const cartItemTotal = priceAfterDiscount * i.qty;
                 return (
                   <tr key={`${i.productId}-${i.batchNo}`}>
                     <td style={{ maxWidth: 300 }}>{i.sku || i.name}</td>
@@ -1696,7 +1781,7 @@ const Billing = () => {
                     </td>
                     <td>₹{i.price.toFixed(2)}</td>
                     <td>₹{totalDiscount.toFixed(2)}</td>
-                    <td>₹{itemTotal.toFixed(2)}</td>
+                    <td>₹{cartItemTotal.toFixed(2)}</td>
                     <td>
                       <Button size="sm" variant="info" onClick={() => openBatchAllocModal(i)}>
                         Split
@@ -1878,8 +1963,8 @@ const Billing = () => {
                       <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
                     </div>
 
-                    {/* Wallet Option */}
-                    {customer && walletBalance > 0 && (
+                    {/* Wallet Option (show when customer exists; disable if zero balance) */}
+                    {customer && (
                       <div className="bg-success bg-opacity-10 p-3 rounded mb-3 border border-success">
                         <div className="small fw-bold text-success mb-2">{t('billing.walletAvailable', { amount: walletBalance.toFixed(2) })}</div>
                         <Form.Check 
@@ -1888,7 +1973,11 @@ const Billing = () => {
                           label={t('billing.useWalletLabel', { walletAmount: walletToUse.toFixed(2), payAmount: amountAfterWallet.toFixed(2) })}
                           onChange={(e) => setUseWallet(e.target.checked)}
                           className="fw-bold small"
+                          disabled={walletBalance <= 0}
                         />
+                        {walletBalance <= 0 && (
+                          <div className="small text-muted mt-2">{t('billing.noWalletBalance')}</div>
+                        )}
                       </div>
                     )}
 
@@ -2754,6 +2843,58 @@ const Billing = () => {
         </Modal.Footer>
       </Modal>
 
+      {/* Refund Slip Modal */}
+      <Modal show={showRefundSlip} onHide={() => { setShowRefundSlip(false); setRefundSlipData(null); }} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Refund Slip - {refundSlipData?.billId || ''}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {refundSlipData ? (
+            <div id="refund-slip-content">
+              <h5>Refund Slip</h5>
+              <div className="small text-muted">Bill: {refundSlipData.billId}</div>
+              <div className="small text-muted">Date: {refundSlipData.date}</div>
+              <Table size="sm" className="mt-2">
+                <thead>
+                  <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Gross</th></tr>
+                </thead>
+                <tbody>
+                  {refundSlipData.items.map((it: any, i: number) => (
+                    <tr key={i}><td>{it.sku}</td><td>{it.qty}</td><td>₹{it.unitPrice.toFixed(2)}</td><td>₹{it.gross.toFixed(2)}</td></tr>
+                  ))}
+                </tbody>
+              </Table>
+
+              <div className="mt-3">
+                <div className="d-flex justify-content-between"><div>Total Gross</div><div>₹{refundSlipData.totals.totalGross.toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>Wallet Credit</div><div>₹{(refundSlipData.totals.walletCredit || 0).toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>Discount Reversed (wallet)</div><div>₹{(refundSlipData.totals.discountReversed || 0).toFixed(2)}</div></div>
+                <div className="d-flex justify-content-between"><div>Cash/Card Refund</div><div>₹{(refundSlipData.totals.cashRefund || 0).toFixed(2)}</div></div>
+                <hr />
+                <div className="d-flex justify-content-between fw-bold"><div>Net Wallet Change</div><div>₹{(refundSlipData.totals.netWalletChange || 0).toFixed(2)}</div></div>
+              </div>
+            </div>
+          ) : (
+            <div>No refund data available</div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => { setShowRefundSlip(false); setRefundSlipData(null); }}>Close</Button>
+          <Button variant="primary" onClick={() => {
+            const content = document.getElementById('refund-slip-content');
+            if (!content) return;
+            const w = window.open('', '_blank', 'width=600,height=800');
+            if (!w) { alert('Unable to open print window'); return; }
+            w.document.write('<html><head><title>Refund Slip</title><style>body{font-family:sans-serif;padding:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}</style></head><body>');
+            w.document.write(content.innerHTML);
+            w.document.write('</body></html>');
+            w.document.close();
+            w.focus();
+            setTimeout(() => { w.print(); }, 300);
+          }}>Print</Button>
+        </Modal.Footer>
+      </Modal>
+
       {/* Receipt Modal */}
       <Modal show={showReceiptModal} onHide={() => { setShowReceiptModal(false); setBillId(undefined); setReceiptData(null); setShowUnifiedControlsModal(false); if (barcodeRef.current) barcodeRef.current.value = ""; scannerBufferRef.current = ""; scannerLastTimeRef.current = null; }} size="lg">
         <Modal.Header closeButton>
@@ -2773,14 +2914,14 @@ const Billing = () => {
                     const discountPerUnit = it.discountAmount ?? 0;
                     const totalDiscount = discountPerUnit * it.qty;
                     const priceAfterDiscount = Math.max(0, (it.price ?? 0) - discountPerUnit);
-                    const itemTotal = priceAfterDiscount * it.qty;
+                    const receiptItemTotal = priceAfterDiscount * it.qty;
                     return (
                       <tr key={`${it.productId}-${it.batchNo}`}>
                         <td>{it.sku || it.name}</td>
                         <td>{it.qty}</td>
                         <td>₹{it.price.toFixed(2)}</td>
                         <td>₹{totalDiscount.toFixed(2)}</td>
-                        <td>₹{itemTotal.toFixed(2)}</td>
+                        <td>₹{receiptItemTotal.toFixed(2)}</td>
                       </tr>
                     );
                   })}
@@ -3192,7 +3333,7 @@ const Billing = () => {
                             </td>
                             <td className="text-end">
                               <small className="fw-bold">
-                                ₹{(itemTotal).toFixed(2)}
+                                    ₹{(itemTotal).toFixed(2)}
                               </small>
                             </td>
                           </tr>
@@ -3342,12 +3483,8 @@ const Billing = () => {
                   const returnQty = returnItemSelection[idx];
                   if (!returnQty || returnQty <= 0) return null;
 
-                  const itemSubtotal = (item.quantity || 0) * (item.price || 0);
-                  const proportionalDiscount = billDiscount && billSubTotal 
-                    ? (billDiscount * itemSubtotal) / billSubTotal 
-                    : 0;
-                  const itemTotal = itemSubtotal - proportionalDiscount;
-                  const refundAmount = (itemTotal * returnQty) / (item.quantity || 1);
+                  // Show gross refund (price × qty) in the UI; discount reversal handled separately
+                  const refundAmountGross = (item.price || 0) * (returnQty || 0);
 
                   return (
                     <div key={idx} className="row g-2 mb-2" style={{ fontSize: '0.85rem' }}>
@@ -3355,7 +3492,7 @@ const Billing = () => {
                         <small>{item.sku} ({returnQty} × ₹{item.price})</small>
                       </div>
                       <div className="col-6 text-end">
-                        <small className="fw-bold text-success">₹{refundAmount.toFixed(2)}</small>
+                        <small className="fw-bold text-success">₹{refundAmountGross.toFixed(2)}</small>
                       </div>
                     </div>
                   );
@@ -3373,13 +3510,8 @@ const Billing = () => {
                         .reduce((sum, [idx, qty]) => {
                           if (!qty || qty <= 0) return sum;
                           const item = billItems[parseInt(idx)];
-                          const itemSubtotal = (item.quantity || 0) * (item.price || 0);
-                          const proportionalDiscount = billDiscount && billSubTotal 
-                            ? (billDiscount * itemSubtotal) / billSubTotal 
-                            : 0;
-                          const itemTotal = itemSubtotal - proportionalDiscount;
-                          const refundAmount = (itemTotal * qty) / (item.quantity || 1);
-                          return sum + refundAmount;
+                          const refundAmountGross = (item.price || 0) * (qty || 0);
+                          return sum + refundAmountGross;
                         }, 0).toFixed(2)}
                     </small>
                   </div>
