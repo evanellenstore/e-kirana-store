@@ -139,6 +139,9 @@ const Billing = () => {
   const [walletAmountUsed, setWalletAmountUsed] = useState<number>(0);
   const [walletAmountInput, setWalletAmountInput] = useState<string>("");
   const [discountReversalOption, setDiscountReversalOption] = useState<'yes' | 'no'>('yes');
+  // fetched bill summary from API for refunds
+  const [fetchedBillSummary, setFetchedBillSummary] = useState<any>(null);
+  const [allowManualPaymentMethodEdit, setAllowManualPaymentMethodEdit] = useState<boolean>(false);
 
   // Inventory Check Modal state
   const [showInventoryModal, setShowInventoryModal] = useState(false);
@@ -615,15 +618,23 @@ const Billing = () => {
         amountToCharge = Math.max(0, amountToCharge - walletDeduction);
       }
 
+      // Compute explicit cash/wallet amounts for backend storage
+      const cashPaid = paymentMode === 'WALLET' ? 0 : (paymentMode === 'CASH' ? (cashReceived ?? amountToCharge) : amountToCharge);
+      const walletUsed = walletDeduction || 0;
+      const amountPaidTotal = Number((Number(cashPaid) + Number(walletUsed)).toFixed(2));
+
       const paymentPayload = {
-        paymentMode,
-        amountPaid: paymentMode === 'CASH' ? (cashReceived ?? amountToCharge) : amountToCharge,
-        customerMobile: customerMobile || null,
-        customerId: customerId || null,
-        discount: discountAmt,
-        walletUsed: walletDeduction,
-        gst: gstAmt,
-        grandTotal: subtotalBeforeDiscount
+        payment: {
+          mode: paymentMode || 'CASH',
+          amountPaid: amountPaidTotal,
+          cashPaid: Number(cashPaid),
+          walletUsed: Number(walletUsed),
+          customerMobile: customerMobile || null,
+          customerId: customerId || null,
+          discount: discountAmt,
+          gst: gstAmt,
+          grandTotal: subtotalBeforeDiscount
+        }
       };
 
       // Finalize bill with payment details
@@ -640,13 +651,13 @@ const Billing = () => {
         }
       }
 
-  setReceiptData({
+      setReceiptData({
         billId,
         items: cart.map(i => ({ ...i })),
-        payment: paymentPayload,
+        payment: paymentPayload.payment,
         totals: computeTotals(),
         server: serverData,
-        walletUsed: walletDeduction,
+        walletUsed: walletUsed,
         amountToCharge: amountToCharge
       });
       setShowReceiptModal(true);
@@ -1017,6 +1028,8 @@ const Billing = () => {
 
   // Search for bills by mobile number or bill ID for refund
   const searchRefundBills = async () => {
+
+
     if (!refundSearchMobile.trim() && !refundSearchBillId.trim()) {
       setRefundSearchError('Please enter either a mobile number or bill ID');
       setRefundSearchResults([]);
@@ -1146,8 +1159,8 @@ const Billing = () => {
     // Prefill/reset payment method dialog state to avoid leftover values.
     // First, fetch the authoritative bill summary by billId to determine how it was paid.
     setReturnError(null);
+    let billData: any = null;
     try {
-      let billData: any = null;
       try {
         const summaryRes = await getSummary(selectedRefundBill.billId);
         billData = summaryRes?.data || null;
@@ -1156,29 +1169,24 @@ const Billing = () => {
         billData = selectedRefundBill || null;
       }
 
-      const totalAmount = billData?.totalAmount ?? billTotalAmount ?? 0;
-      const walletUsedVal = billData?.payment?.walletUsed ?? billData?.walletUsed ?? billData?.payment?.walletAmount ?? billData?.walletAmount ?? 0;
-      const paymentModeFromBill = (billData?.payment?.paymentMode || billData?.paymentMode || '').toString().toLowerCase();
+      // store fetched summary so modal and other flows can use authoritative data
+      setFetchedBillSummary(billData);
 
-      if (walletUsedVal && Number(walletUsedVal) > 0) {
-        // If walletUsed equals total (or very close), consider full wallet payment
-        if (Math.abs(Number(walletUsedVal) - Number(totalAmount)) < 0.01) {
-          setPaymentMethodType('wallet');
-          setWalletAmountUsed(Number(walletUsedVal));
-          setWalletAmountInput(String(walletUsedVal));
-        } else {
-          // partial wallet -> mixed
-          setPaymentMethodType('mixed');
-          setWalletAmountUsed(Number(walletUsedVal));
-          setWalletAmountInput(String(walletUsedVal));
-        }
-      } else if (paymentModeFromBill.includes('wallet')) {
-        // Payment mode explicitly states wallet
+      const totalAmount = billData?.totalAmount ?? billTotalAmount ?? 0;
+      const paymentObj = billData?.payment ?? {};
+      const walletUsedVal = paymentObj?.walletUsed ?? paymentObj?.walletAmount ?? billData?.walletUsed ?? 0;
+      const mode = (paymentObj?.mode || paymentObj?.paymentMode || billData?.paymentMode || '').toString().toLowerCase();
+
+      // Prefill payment method strictly from API response; do not infer from other sources
+      if (mode === 'wallet') {
         setPaymentMethodType('wallet');
-        setWalletAmountUsed(Number(billData?.payment?.amountPaid ?? totalAmount ?? 0));
-        setWalletAmountInput(String(billData?.payment?.amountPaid ?? totalAmount ?? 0));
+        setWalletAmountUsed(Number(walletUsedVal));
+        setWalletAmountInput(String(walletUsedVal || ''));
+      } else if (mode === 'mixed') {
+        setPaymentMethodType('mixed');
+        setWalletAmountUsed(Number(walletUsedVal));
+        setWalletAmountInput(String(walletUsedVal || ''));
       } else {
-        // Default to cash
         setPaymentMethodType('cash');
         setWalletAmountUsed(0);
         setWalletAmountInput('');
@@ -1190,8 +1198,33 @@ const Billing = () => {
       setWalletAmountInput('');
     }
 
-    // Show payment method selection dialog
-    setShowPaymentMethodModal(true);
+    // Auto-apply recommended refund allocation and proceed without showing modal
+    try {
+      const recommended = billData?.refund?.recommended;
+      // If recommended is revertDiscountToWallet, set discount reversal to yes
+      if (recommended === 'revertDiscountToWallet') {
+        setDiscountReversalOption('yes');
+      } else if (typeof recommended !== 'undefined') {
+        setDiscountReversalOption('no');
+      }
+
+      // Populate original walletUsed from authoritative summary
+      const originalWalletUsed = billData?.payment?.walletUsed ?? 0;
+      setWalletAmountUsed(Number(originalWalletUsed));
+      setWalletAmountInput(String(originalWalletUsed || ''));
+
+      // Auto-select payment method from summary
+      const mode = (billData?.payment?.mode || billData?.payment?.paymentMode || '').toString().toLowerCase();
+      if (mode === 'wallet') setPaymentMethodType('wallet');
+      else if (mode === 'mixed') setPaymentMethodType('mixed');
+      else setPaymentMethodType('cash');
+
+      // proceed automatically using the selected method
+      await handleProcessRefundWithPaymentMethod();
+    } catch (err) {
+      console.error('Auto-processing refund failed, falling back to manual confirmation', err);
+      setShowPaymentMethodModal(true);
+    }
   };
 
   // Process refund after payment method selection
@@ -1262,20 +1295,26 @@ const Billing = () => {
       const walletUsedOnBill = billData?.payment?.walletUsed ?? billData?.walletUsed ?? walletAmountUsed ?? 0;
 
       console.log(`📊 Payment Method: ${paymentMethodType}, Wallet Used on Bill: ${walletUsedOnBill}`);
+      console.log(`🔍 DEBUG walletUsedOnBill sources - billData.payment.walletUsed=${billData?.payment?.walletUsed}, billData.walletUsed=${billData?.walletUsed}, walletAmountUsed=${walletAmountUsed}`);
+      console.log(`🔍 DEBUG totalOriginalPayment=${totalOriginalPayment}, totalItemRefundAmount=${totalItemRefundAmount}`);
 
       // Determine wallet portion for item refunds
       let walletItemsRefund = 0;
       if (Number(walletUsedOnBill) && totalOriginalPayment > 0) {
+        console.log(`✅ Wallet amount detected: ${walletUsedOnBill}`);
         // If wallet covered entire bill (or effectively equals total), refund items to wallet
         if (Math.abs(Number(walletUsedOnBill) - Number(totalOriginalPayment)) < 0.01) {
+          console.log(`💳 Full wallet payment - refunding entire ${totalItemRefundAmount} to wallet`);
           walletItemsRefund = totalItemRefundAmount;
         } else {
           // Mixed payment: proportionally refund to wallet
           const walletRatio = Number(walletUsedOnBill) / Number(totalOriginalPayment);
           walletItemsRefund = totalItemRefundAmount * walletRatio;
+          console.log(`💳 Mixed payment - walletRatio=${walletRatio.toFixed(4)}, walletItemsRefund=${walletItemsRefund.toFixed(2)}`);
         }
       } else {
         // No wallet used -> do not credit wallet for items
+        console.log(`❌ No wallet used (walletUsedOnBill=${walletUsedOnBill}, totalOriginalPayment=${totalOriginalPayment})`);
         walletItemsRefund = 0;
       }
 
@@ -1312,38 +1351,43 @@ const Billing = () => {
         }
       }
 
-      // Wallet actions: compute desired credit and debit, then perform a single net operation
+      // Wallet actions: (1) attempt to debit discount reversal first (creates DEBIT entry),
+      // (2) then credit the wallet-used payment portion (creates CREDIT entry).
+      // This produces two distinct ledger lines like: Debit -₹7.00 (Revert discount...), Credit +₹5.00 (Payment for Bill...)
       let walletCreditDone = 0;
       let walletDebitDone = 0;
 
-      const desiredCredit = walletItemsRefund > 0 ? walletItemsRefund : 0;
-      const desiredDebit = discountRefund > 0 ? discountRefund : 0;
-      const netWallet = Number((desiredCredit - desiredDebit).toFixed(2));
-
-      if (netWallet > 0) {
-        // Net credit to wallet
-        const desc = `Refund net wallet credit for Bill ${selectedRefundBill.billId} (items: ₹${desiredCredit.toFixed(2)}, discount reversed: ₹${desiredDebit.toFixed(2)})`;
-        await addToWallet(selectedRefundBill.customerId, netWallet, desc);
-        walletCreditDone = netWallet;
-        console.log(`💵 Net wallet credit: ₹${netWallet.toFixed(2)} (credit ${desiredCredit.toFixed(2)} - debit ${desiredDebit.toFixed(2)})`);
-      } else if (netWallet < 0) {
-        // Net debit from wallet
-        const toDeduct = Math.abs(netWallet);
+      if (discountRefund > 0) {
         try {
-          const desc = `Refund net wallet debit for Bill ${selectedRefundBill.billId} (items: ₹${desiredCredit.toFixed(2)}, discount reversed: ₹${desiredDebit.toFixed(2)})`;
-          await deductFromWallet(selectedRefundBill.customerId, toDeduct, desc);
-          walletDebitDone = toDeduct;
-          console.log(`⬇️ Net wallet debit: ₹${toDeduct.toFixed(2)} (debit ${desiredDebit.toFixed(2)} - credit ${desiredCredit.toFixed(2)})`);
+          const descDisc = `Revert discount from Bill ${selectedRefundBill.billId} (₹${discountRefund.toFixed(2)})`;
+          await deductFromWallet(selectedRefundBill.customerId, discountRefund, descDisc);
+          walletDebitDone = discountRefund;
+          console.log(`⬇️ Deducted discount from wallet: ₹${discountRefund.toFixed(2)}`);
         } catch (err) {
-          console.error('Failed to deduct net amount from wallet (insufficient balance or error):', err);
+          console.error('Failed to deduct discount from wallet (insufficient balance or error):', err);
           setReturnError('⚠️ Discount reversal failed: customer wallet has insufficient balance. Please process cash/card reversal manually.');
         }
-      } else {
-        // netWallet === 0 -> no wallet op needed
-        console.log('ℹ️ Net wallet change is zero; skipping wallet API calls');
       }
 
-      const cashRefundAmount = Math.max(0, totalItemRefundAmount - (desiredCredit || 0));
+      if (walletItemsRefund > 0) {
+        // Credit back the wallet amount that was used for payment on the original bill
+        // Use description 'Payment for Bill ...' so ledger shows a clear payment reversal credit
+        const descItems = `Payment for Bill ${selectedRefundBill.billId}`;
+        console.log(`🔄 About to add to wallet - customerId=${selectedRefundBill.customerId}, amount=${walletItemsRefund}, desc=${descItems}`);
+        try {
+          const addRes = await addToWallet(selectedRefundBill.customerId, walletItemsRefund, descItems);
+          walletCreditDone = walletItemsRefund;
+          console.log(`✅ Credited wallet with items portion: ₹${walletItemsRefund.toFixed(2)}`, addRes);
+        } catch (err) {
+          console.error('❌ Failed to credit wallet for items refund:', err);
+          // proceed — cashier can handle manual credit if necessary
+          setReturnError('⚠️ Failed to credit wallet for items refund. Please check wallet service.');
+        }
+      } else {
+        console.log(`⚠️ walletItemsRefund is 0, skipping wallet credit`);
+      }
+
+      const cashRefundAmount = Math.max(0, totalItemRefundAmount - (walletItemsRefund || 0));
 
       // Success notification with breakdown
       let successMsg = `✅ Return Processed!\n`;
@@ -1908,18 +1952,26 @@ const Billing = () => {
                   onChange={async (e) => {
                     const mobile = e.target.value;
                     setCustomerMobile(mobile);
-                    
+
                     if (mobile.length === 10) {
                       try {
                         const response = await getCustomerByMobile(mobile);
                         if (response?.data) {
-                          setCustomer(response.data);
+                          const cust = response.data;
+                          setCustomer(cust);
+                          // immediately enable wallet usage if balance exists
+                          setUseWallet((cust.walletBalance || 0) > 0);
+                        } else {
+                          setCustomer(null);
+                          setUseWallet(false);
                         }
                       } catch (err) {
                         setCustomer(null);
+                        setUseWallet(false);
                       }
                     } else if (mobile.length === 0) {
                       setCustomer(null);
+                      setUseWallet(false);
                     }
                   }}
                 />
@@ -3547,22 +3599,31 @@ const Billing = () => {
           {returnError && <Alert variant="danger">{returnError}</Alert>}
 
           <div className="mb-4">
-            <h6 className="fw-bold mb-3">How was the original bill paid?</h6>
+            <h6 className="fw-bold mb-3">Original Payment Method</h6>
+            <small className="text-muted d-block mb-2">Select or confirm the payment method used:</small>
             
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Form.Check
               type="radio"
               id="payment_cash"
-              label="💰 All Cash"
+              label="💵 All Cash"
               name="paymentMethod"
               value="cash"
               checked={paymentMethodType === 'cash'}
+              disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
               onChange={() => {
                 setPaymentMethodType('cash');
-                setWalletAmountInput("");
+                setWalletAmountUsed(0);
+                setWalletAmountInput('');
               }}
               className="mb-2"
             />
+            {fetchedBillSummary && (
+              <small className="text-muted">(from API)</small>
+            )}
+            </div>
             
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Form.Check
               type="radio"
               id="payment_wallet"
@@ -3570,13 +3631,20 @@ const Billing = () => {
               name="paymentMethod"
               value="wallet"
               checked={paymentMethodType === 'wallet'}
+              disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
               onChange={() => {
                 setPaymentMethodType('wallet');
-                setWalletAmountInput("");
+                setWalletAmountUsed(billTotalAmount || 0);
+                setWalletAmountInput(String(billTotalAmount || 0));
               }}
               className="mb-2"
             />
+            {fetchedBillSummary && (
+              <small className="text-muted">(from API)</small>
+            )}
+            </div>
             
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Form.Check
               type="radio"
               id="payment_mixed"
@@ -3584,9 +3652,14 @@ const Billing = () => {
               name="paymentMethod"
               value="mixed"
               checked={paymentMethodType === 'mixed'}
+              disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
               onChange={() => setPaymentMethodType('mixed')}
               className="mb-3"
             />
+            {fetchedBillSummary && (
+              <small className="text-muted">(from API)</small>
+            )}
+            </div>
 
             {paymentMethodType === 'mixed' && (
               <div className="card mt-3 p-3" style={{ backgroundColor: '#f0f8ff' }}>
@@ -3604,11 +3677,19 @@ const Billing = () => {
                       setWalletAmountInput(e.target.value);
                       setWalletAmountUsed(parseFloat(e.target.value) || 0);
                     }}
+                    disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
                   />
                 </InputGroup>
                 <small className="text-muted mt-2 d-block">
                   Bill Total: ₹{(billTotalAmount || 0).toFixed(2)}
                 </small>
+              </div>
+            )}
+
+            {fetchedBillSummary && !allowManualPaymentMethodEdit && (
+              <div className="mt-2">
+                <Button variant="link" size="sm" onClick={() => setAllowManualPaymentMethodEdit(true)}>Edit</Button>
+                <small className="text-muted ms-2">You can edit the payment method if needed.</small>
               </div>
             )}
           </div>
