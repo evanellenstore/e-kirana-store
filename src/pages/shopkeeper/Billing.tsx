@@ -146,6 +146,13 @@ const Billing = () => {
   const [showBarcodePreviewModal, setShowBarcodePreviewModal] = useState(false);
   const [filterLoadingDelay, setFilterLoadingDelay] = useState(false);
   const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  // Batch allocation modal state
+  const [showBatchAllocModal, setShowBatchAllocModal] = useState(false);
+  const [batchOptions, setBatchOptions] = useState<any[]>([]);
+  const [batchModalProduct, setBatchModalProduct] = useState<any | null>(null);
+  const [batchModalOriginalIndex, setBatchModalOriginalIndex] = useState<number | null>(null);
+  const [batchModalSelectedBatch, setBatchModalSelectedBatch] = useState<string>("");
+  const [batchModalQty, setBatchModalQty] = useState<number>(1);
   
   // Multi-level filter state
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -319,14 +326,28 @@ const Billing = () => {
       }
       
   // Ask server for batches preferring ones that can satisfy qty=1
-  const batchRes = await getBatches(pid, 1);
-  const batch = batchRes.data?.[0]; // server returns suitable batches first
-  
-  // Check if batch data exists before proceeding
-  if (!batch || !batch.batchNo) {
-    alert(t('billing.noBatchInfo'));
-    return;
-  }
+      const batchRes = await getBatches(pid, 1);
+      const batches = batchRes.data || [];
+
+      // If multiple batches available, open batch allocation modal so user can pick
+      if (Array.isArray(batches) && batches.length > 1) {
+        setBatchOptions(batches);
+        setBatchModalProduct({ product, pid });
+        const firstBatchNo = batches[0].batchNo ?? batches[0].batchId ?? String(batches[0].id ?? "");
+        setBatchModalSelectedBatch(firstBatchNo);
+        setBatchModalQty(1);
+        setBatchModalOriginalIndex(null);
+        setShowBatchAllocModal(true);
+        return;
+      }
+
+      const batch = batches[0]; // server returns suitable batches first
+
+      // Check if batch data exists before proceeding
+      if (!batch || !(batch.batchNo ?? batch.batchId ?? batch.id)) {
+        alert(t('billing.noBatchInfo'));
+        return;
+      }
 
       setCart(prev => {
         const batchNo = batch.batchNo ?? batch.batchId ?? String(batch.batchId ?? batch.id ?? "");
@@ -537,6 +558,18 @@ const Billing = () => {
       if (customerMobile) {
         const cust = await handleCustomerCreation(customerMobile, discountAmt, billId);
         customerId = cust?.id;
+      } else if (customer && customer.id && discountAmt > 0) {
+        // Customer already selected in UI (no mobile typed) - credit discount to their wallet
+        try {
+          const discountDescription = billId ? `Discount credited from Bill ${billId}` : 'Discount credited';
+          await addToWallet(customer.id, discountAmt, discountDescription);
+          // Update local customer state to reflect new wallet balance
+          setCustomer({ ...customer, walletBalance: (customer.walletBalance || 0) + discountAmt });
+          customerId = customer.id;
+          console.log(`Discount ₹${discountAmt} credited to existing customer ${customer.id}`);
+        } catch (err) {
+          console.error('Failed to credit discount to existing customer wallet:', err);
+        }
       }
 
       // Determine amount to charge with wallet deduction
@@ -1348,8 +1381,106 @@ const Billing = () => {
      Batch Allocation Modal Handler (DEPRECATED - Modal removed)
   ===================== */
   const openBatchAllocModal = (_cartItem: CartItem) => {
-    // Function kept for backward compatibility but batch allocation modal has been removed
-    alert('Batch allocation feature has been consolidated into the unified controls modal');
+    // Open batch allocation modal for an existing cart item (split/create with different batch)
+    (async () => {
+      try {
+        const productId = _cartItem.productId;
+        const res = await getBatches(productId, 1);
+        const batches = res.data || [];
+        if (!Array.isArray(batches) || batches.length === 0) {
+          alert(t('billing.noBatchInfo'));
+          return;
+        }
+
+        setBatchOptions(batches);
+        setBatchModalProduct({ product: _cartItem, pid: productId });
+        const firstBatchNo = batches[0].batchNo ?? batches[0].batchId ?? String(batches[0].id ?? "");
+        setBatchModalSelectedBatch(firstBatchNo);
+        setBatchModalQty(1);
+        // remember original cart item index to allow splitting
+        const idx = cart.findIndex(i => i.productId === _cartItem.productId && i.batchNo === _cartItem.batchNo);
+        setBatchModalOriginalIndex(idx !== -1 ? idx : null);
+        setShowBatchAllocModal(true);
+      } catch (err) {
+        console.error('Failed to load batches for allocation', err);
+        alert(t('billing.noBatchInfo'));
+      }
+    })();
+  };
+
+  // Apply selected batch from modal
+  const applyBatchSelection = async () => {
+    if (!batchModalProduct) return;
+
+    const selected = batchOptions.find(b => (b.batchNo ?? b.batchId ?? String(b.id ?? "")) === batchModalSelectedBatch) || batchOptions[0];
+    const batchNo = selected.batchNo ?? selected.batchId ?? String(selected.id ?? "");
+    const qtyToAdd = Math.max(1, Math.floor(batchModalQty || 1));
+
+    // If we are splitting from an existing cart item, reduce its qty
+    if (batchModalOriginalIndex !== null && cart[batchModalOriginalIndex]) {
+      setCart(prev => {
+        const copy = [...prev];
+        const orig = copy[batchModalOriginalIndex];
+        if (!orig) return prev;
+        // Ensure we don't reduce below 0
+        const reduceBy = Math.min(orig.qty, qtyToAdd);
+        orig.qty = orig.qty - reduceBy;
+        // Remove if qty becomes 0
+        const newCopy = copy.filter(i => i.qty > 0);
+
+        // Add new item for selected batch
+        const existsIdx = newCopy.findIndex(i => i.productId === orig.productId && i.batchNo === batchNo);
+        if (existsIdx !== -1) {
+          newCopy[existsIdx].qty += reduceBy;
+        } else {
+          newCopy.push({
+            productId: orig.productId,
+            batchNo: batchNo,
+            name: orig.name,
+            sku: orig.sku,
+            price: orig.price,
+            discountAmount: orig.discountAmount ?? 0,
+            qty: reduceBy,
+            availableQty: selected.availableQty ?? selected.qty ?? 0,
+            expiryDate: selected.expiryDate ?? selected.expiry ?? ''
+          });
+        }
+        return newCopy;
+      });
+    } else {
+      // Adding new cart item from scan selection
+      setCart(prev => {
+        const existsIdx = prev.findIndex(i => i.productId === batchModalProduct.pid && i.batchNo === batchNo);
+        if (existsIdx !== -1) {
+          const copy = [...prev];
+          copy[existsIdx].qty += qtyToAdd;
+          return copy;
+        }
+        const prod = batchModalProduct.product || batchModalProduct;
+        return [
+          ...prev,
+          {
+            productId: batchModalProduct.pid,
+            batchNo: batchNo,
+            name: prod.name ?? prod.title ?? batchModalProduct.productName ?? '',
+            sku: prod.sku ?? prod.skuCode ?? batchModalProduct.sku ?? '',
+            price: prod.price ?? batchModalProduct.price ?? 0,
+            discountAmount: prod.discountAmount ?? batchModalProduct.discountAmount ?? 0,
+            qty: qtyToAdd,
+            availableQty: selected.availableQty ?? selected.qty ?? 0,
+            expiryDate: selected.expiryDate ?? selected.expiry ?? ''
+          }
+        ];
+      });
+    }
+
+    // Close modal
+    setShowBatchAllocModal(false);
+    setBatchOptions([]);
+    setBatchModalProduct(null);
+    setBatchModalOriginalIndex(null);
+    setBatchModalQty(1);
+    setBatchModalSelectedBatch('');
   };
 
   return (
@@ -3565,6 +3696,46 @@ const Billing = () => {
           )}
         </Modal.Body>
       </Modal>
+
+        {/* Batch Allocation Modal */}
+        <Modal show={showBatchAllocModal} onHide={() => setShowBatchAllocModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Choose Batch / Quantity</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {batchOptions && batchOptions.length > 0 ? (
+              <div>
+                <div className="mb-2 small text-muted">Select batch</div>
+                <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                  {batchOptions.map((b: any, idx: number) => {
+                    const bNo = b.batchNo ?? b.batchId ?? String(b.id ?? '');
+                    return (
+                      <div key={idx} className="form-check mb-2">
+                        <input className="form-check-input" type="radio" name="batchSelect" id={`batch-${idx}`} checked={batchModalSelectedBatch===bNo} onChange={() => setBatchModalSelectedBatch(bNo)} />
+                        <label className="form-check-label" htmlFor={`batch-${idx}`}>
+                          {bNo} — {b.availableQty ?? b.qty ?? 0} units {b.expiryDate || b.expiry ? `— Exp: ${new Date(b.expiryDate ?? b.expiry).toLocaleDateString()}` : ''}
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3">
+                  <Form.Group>
+                    <Form.Label>Quantity</Form.Label>
+                    <Form.Control type="number" min={1} value={batchModalQty} onChange={e => setBatchModalQty(Number(e.target.value))} />
+                  </Form.Group>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-muted">No batch information available</div>
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowBatchAllocModal(false)}>Cancel</Button>
+            <Button variant="primary" onClick={applyBatchSelection}>Add</Button>
+          </Modal.Footer>
+        </Modal>
     </div>
   );
 };
