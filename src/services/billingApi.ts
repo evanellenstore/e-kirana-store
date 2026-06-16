@@ -1,4 +1,5 @@
 import api from "./api";
+import { getBatchesCached as getBatchesCachedFromInventory, getBatchesDebounced as getBatchesDebouncedFromInventory } from "./inventoryService";
 export type CartItem = {
   productId: string;
   batchNo: string;
@@ -48,3 +49,13 @@ export const checkBillRefundStatus = (billId: string) =>
 
 export const markBillAsRefunded = (billId: string, amount: number) =>
   api.post(`/billings/${billId}/mark-refunded?amount=${amount}`);
+
+export const refundBill = (billId: string, payload: { customerId?: string; walletCredit?: number; discountDebit?: number; cashRefund?: number }) =>
+  api.post(`/billings/${billId}/refund`, payload);
+
+// Expose cached batches via billingApi for UI modules that import from billingApi
+export const getBatchesCached = (productId: string | number, requiredQty?: number) =>
+  getBatchesCachedFromInventory(Number(productId), requiredQty);
+
+export const getBatchesDebounced = (productId: string | number, requiredQty?: number, waitMs?: number) =>
+  getBatchesDebouncedFromInventory(Number(productId), requiredQty, waitMs);

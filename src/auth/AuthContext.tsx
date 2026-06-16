@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import axios from "axios"; // <-- added axios
+import api from "../services/api";
 import { loginApi, refreshTokenApi } from "../services/authService";
 import RefreshSessionModal from "./RefreshSessionModal";
 import type { Role } from "../utils/constants";
@@ -25,8 +25,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const stored = localStorage.getItem("user");
     if (stored) {
       const parsedUser = JSON.parse(stored) as User;
-      // Restore axios token on page refresh
-      axios.defaults.headers.common["Authorization"] = `Bearer ${parsedUser.token}`;
+      // Restore api token on page refresh
+      api.defaults.headers.common["Authorization"] = `Bearer ${parsedUser.token}`;
       return parsedUser;
     }
     return null;
@@ -35,9 +35,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [showRefreshModal, setShowRefreshModal] = useState(false);
   const [refreshInput, setRefreshInput] = useState<string | null>(null);
   const failedQueue = useRef<Array<{ resolve: (v: any) => void; reject: (e: any) => void; config: any }>>([]);
+  const isRefreshing = useRef(false);
 
   useEffect(() => {
-    const interceptor = axios.interceptors.response.use(
+    const interceptor = api.interceptors.response.use(
       (response) => response,
       (error) => {
         const status = error?.response?.status;
@@ -46,16 +47,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           originalRequest._retry = true;
           return new Promise((resolve, reject) => {
             failedQueue.current.push({ resolve, reject, config: originalRequest });
-            // open modal so user can refresh the session
-            setRefreshInput(localStorage.getItem('refreshToken'));
-            setShowRefreshModal(true);
+
+            // Attempt silent refresh once using stored refresh token
+            const trySilentRefresh = async () => {
+              if (isRefreshing.current) return;
+              const token = localStorage.getItem('refreshToken');
+              if (!token) {
+                // show modal to let user provide refresh token
+                setRefreshInput(null);
+                setShowRefreshModal(true);
+                return;
+              }
+
+              isRefreshing.current = true;
+              try {
+                const resp = await refreshTokenApi(token);
+                const newToken = resp.data.token;
+                // update user and api defaults
+                if (user) {
+                  const updatedUser = { ...user, token: newToken };
+                  setUser(updatedUser);
+                  localStorage.setItem('user', JSON.stringify(updatedUser));
+                } else {
+                  localStorage.setItem('user', JSON.stringify({ token: newToken }));
+                }
+                api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+
+                // retry queued requests
+                failedQueue.current.forEach(({ resolve, reject, config }) => {
+                  api(config).then(resolve).catch(reject);
+                });
+                failedQueue.current = [];
+                setShowRefreshModal(false);
+              } catch (err) {
+                // silent refresh failed — show modal so user can enter/confirm refresh token
+                setRefreshInput(localStorage.getItem('refreshToken'));
+                setShowRefreshModal(true);
+              } finally {
+                isRefreshing.current = false;
+              }
+            };
+
+            void trySilentRefresh();
           });
         }
         return Promise.reject(error);
       }
     );
 
-    return () => axios.interceptors.response.eject(interceptor);
+    return () => api.interceptors.response.eject(interceptor);
   }, []);
 
   const login = async (username: string, password: string): Promise<User> => {
@@ -73,8 +113,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem("user", JSON.stringify(userData));
     if (userData.refreshToken) localStorage.setItem('refreshToken', userData.refreshToken);
 
-    // Set axios default Authorization header
-    axios.defaults.headers.common["Authorization"] = `Bearer ${userData.token}`;
+    // Set api default Authorization header
+    api.defaults.headers.common["Authorization"] = `Bearer ${userData.token}`;
 
     return userData;
   };
@@ -82,8 +122,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem("user");
-    // Clear axios default Authorization header
-    delete axios.defaults.headers.common["Authorization"];
+    // Clear api default Authorization header
+    delete api.defaults.headers.common["Authorization"];
     localStorage.removeItem('refreshToken');
   };
 
@@ -110,11 +150,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // minimal store
         localStorage.setItem('user', JSON.stringify({ token: newToken }));
       }
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
 
       // retry queued requests
       failedQueue.current.forEach(({ resolve, reject, config }) => {
-        axios(config).then(resolve).catch(reject);
+        api(config).then(resolve).catch(reject);
       });
       failedQueue.current = [];
       setShowRefreshModal(false);

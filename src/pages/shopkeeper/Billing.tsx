@@ -15,7 +15,9 @@ import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import {
   startBill,
   getProductBySku,
-  getBatches,
+  getBatches as getBatchesRaw,
+  getBatchesCached as getBatches,
+  getBatchesDebounced,
   addItemsBatch,
   finalizeBill,
   cancelBill,
@@ -167,6 +169,7 @@ const Billing = () => {
   const [brands, setBrands] = useState<string[]>([]);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const filterDebounceRef = useRef<number | null>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
   const scannerBufferRef = useRef<string>("");
   const scannerLastTimeRef = useRef<number | null>(null);
@@ -332,14 +335,14 @@ const Billing = () => {
       }
       
   // Ask server for batches preferring ones that can satisfy qty=1
-      const batchRes = await getBatches(pid, 1);
+      const batchRes = await (getBatchesDebounced ? getBatchesDebounced(pid, 1) : getBatches(pid, 1));
       const batches = batchRes.data || [];
 
       // If multiple batches available, open batch allocation modal so user can pick
       if (Array.isArray(batches) && batches.length > 1) {
         setBatchOptions(batches);
         setBatchModalProduct({ product, pid });
-        const firstBatchNo = batches[0].batchNo ?? batches[0].batchId ?? String(batches[0].id ?? "");
+        const firstBatchNo = batches[0].batchNo ?? String(batches[0].id ?? "");
         setBatchModalSelectedBatch(firstBatchNo);
         setBatchModalQty(1);
         setBatchModalOriginalIndex(null);
@@ -350,13 +353,13 @@ const Billing = () => {
       const batch = batches[0]; // server returns suitable batches first
 
       // Check if batch data exists before proceeding
-      if (!batch || !(batch.batchNo ?? batch.batchId ?? batch.id)) {
+      if (!batch || !(batch.batchNo ?? batch.id)) {
         alert(t('billing.noBatchInfo'));
         return;
       }
 
       setCart(prev => {
-        const batchNo = batch.batchNo ?? batch.batchId ?? String(batch.batchId ?? batch.id ?? "");
+        const batchNo = batch.batchNo ?? String(batch.id ?? "");
         const idx = prev.findIndex(i => i.productId === pid && i.batchNo === batchNo);
 
         if (idx !== -1) {
@@ -373,7 +376,7 @@ const Billing = () => {
           return copy;
         }
 
-        const availableQty = batch.availableQty ?? batch.qty ?? 0;
+        const availableQty = batch.availableQty ?? 0;
         if (availableQty <= 0) {
           const allow = window.confirm('Product not available in inventory. Add to cart anyway?');
           if (!allow) {
@@ -393,7 +396,7 @@ const Billing = () => {
             discountAmount: product.discountAmount ?? 0,
             qty: 1,
             availableQty: availableQty,
-            expiryDate: batch.expiryDate ?? "",
+            expiryDate: String(batch.expiryDate ?? ""),
           }
         ];
       });
@@ -821,6 +824,71 @@ const Billing = () => {
     }
   };
 
+  // Fetch inventory using filters (category / brand) from server and enrich product details
+  const fetchInventoryFiltered = async (filters: { category?: string; brand?: string } = {}) => {
+    setFilterLoadingDelay(true);
+    try {
+      const apiClient = (await import("../../services/api")).default;
+      const res = await apiClient.get("/inventory", { params: filters });
+      const inventoryList = res.data || [];
+
+      const enrichedData = await Promise.all(
+        inventoryList.map(async (product: any) => {
+          try {
+            const productRes = await apiClient.get(`/products/${product.productId}`);
+            return {
+              ...product,
+              barcode: productRes.data?.barcode || undefined,
+              category: productRes.data?.category || undefined,
+              brandName: productRes.data?.brandName || undefined
+            };
+          } catch (error) {
+            console.error(`Failed to fetch product ${product.productId}`, error);
+            return product;
+          }
+        })
+      );
+
+      setInventoryData(enrichedData);
+
+      // Keep category/brand lists intact if already present, otherwise compute
+      if (!categories || categories.length === 0) {
+        const uniqueCategories = [...new Set(enrichedData.map((p: any) => p.category).filter(Boolean))].sort();
+        setCategories(uniqueCategories);
+      }
+      if (!brands || brands.length === 0) {
+        const uniqueBrands = [...new Set(enrichedData.map((p: any) => p.brandName).filter(Boolean))].sort();
+        setBrands(uniqueBrands);
+      }
+
+      console.log("✅ Filtered inventory loaded:", filters, enrichedData);
+    } catch (err: any) {
+      console.error('Failed to load filtered inventory', err);
+      setInventoryData([]);
+    } finally {
+      // small delay for UX so spinner is visible briefly
+      setTimeout(() => setFilterLoadingDelay(false), 250);
+    }
+  };
+
+  // Schedule a debounced inventory fetch to avoid rapid repeated API calls
+  const scheduleFetchInventory = (filters: { category?: string; brand?: string } = {}, delay = 300) => {
+    if (filterDebounceRef.current) {
+      clearTimeout(filterDebounceRef.current);
+    }
+    filterDebounceRef.current = window.setTimeout(() => {
+      fetchInventoryFiltered(filters);
+      filterDebounceRef.current = null;
+    }, delay) as unknown as number;
+  };
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
+    };
+  }, []);
+
   // Load rewards/wallet data for current customer
   const loadRewardsForCurrentCustomer = async () => {
     if (!customer || !customer.id) {
@@ -931,6 +999,37 @@ const Billing = () => {
       setLoadingRewards(false);
     }
   };
+
+  // When filters change, fetch fresh batches from server for visible products (force API call every time)
+  useEffect(() => {
+    if (!inventoryLoaded) return;
+    if (!selectedCategory || !selectedBrand) return;
+
+    let cancelled = false;
+
+    const refresh = async () => {
+      try {
+        setFilterLoadingDelay(true);
+        const productsToRefresh = inventoryData.filter((p: any) => p.category === selectedCategory && p.brandName === selectedBrand);
+        await Promise.all(productsToRefresh.map(async (p: any) => {
+          try {
+            const res = await getBatchesRaw(p.productId);
+            const fetched = res?.data || [];
+            if (cancelled) return;
+            setInventoryData(prev => prev.map((item: any) => item.productId === p.productId ? { ...item, batches: fetched } : item));
+          } catch (err) {
+            console.warn('Failed to refresh batches for', p.productId, err);
+          }
+        }));
+      } finally {
+        setFilterLoadingDelay(false);
+      }
+    };
+
+    refresh();
+
+    return () => { cancelled = true; };
+  }, [selectedCategory, selectedBrand, inventoryLoaded]);
 
   // Handle wallet transactions page change
   const handleWalletPageChange = async (newPage: number) => {
@@ -1570,9 +1669,9 @@ const Billing = () => {
 
     (async () => {
       try {
-        const res = await getBatches(productId, newQty);
+        const res = await (getBatchesDebounced ? getBatchesDebounced(productId, newQty) : getBatches(productId, newQty));
         const candidate = res.data[0];
-        const avail = (candidate?.availableQty ?? candidate?.qty) ?? 0;
+        const avail = (candidate?.availableQty ?? 0) as number;
         if (avail < newQty) {
           const ok = window.confirm(`Only ${avail} unit(s) available in inventory. Increase quantity anyway?`);
           if (!ok) {
@@ -1634,7 +1733,7 @@ const Billing = () => {
     (async () => {
       try {
         const productId = _cartItem.productId;
-        const res = await getBatches(productId, 1);
+        const res = await (getBatchesDebounced ? getBatchesDebounced(productId, 1) : getBatches(productId, 1));
         const batches = res.data || [];
         if (!Array.isArray(batches) || batches.length === 0) {
           alert(t('billing.noBatchInfo'));
@@ -1643,7 +1742,7 @@ const Billing = () => {
 
         setBatchOptions(batches);
         setBatchModalProduct({ product: _cartItem, pid: productId });
-        const firstBatchNo = batches[0].batchNo ?? batches[0].batchId ?? String(batches[0].id ?? "");
+        const firstBatchNo = batches[0].batchNo ?? String(batches[0].id ?? "");
         setBatchModalSelectedBatch(firstBatchNo);
         setBatchModalQty(1);
         // remember original cart item index to allow splitting
@@ -2114,8 +2213,11 @@ const Billing = () => {
                       <Form.Select
                         value={selectedCategory}
                         onChange={(e) => {
-                          setSelectedCategory(e.target.value);
+                          const cat = e.target.value;
+                          setSelectedCategory(cat);
                           setSelectedBrand("");
+                          // Debounced fetch for selected category
+                          scheduleFetchInventory({ category: cat });
                         }}
                         size="sm"
                       >
@@ -2131,7 +2233,10 @@ const Billing = () => {
                       <Form.Select
                         value={selectedBrand}
                         onChange={(e) => {
-                          setSelectedBrand(e.target.value);
+                          const br = e.target.value;
+                          setSelectedBrand(br);
+                          // Debounced fetch for selected brand and current category
+                          scheduleFetchInventory({ category: selectedCategory || undefined, brand: br || undefined });
                         }}
                         size="sm"
                       >
@@ -2200,9 +2305,12 @@ const Billing = () => {
                                 <h6 style={{ margin: '0 0 0.15rem 0', fontWeight: 'bold', fontSize: '0.95rem' }}>{product.productName}</h6>
                                 <small style={{ color: '#666', fontSize: '0.8rem' }}>SKU: {product.productSku}</small>
                               </div>
-                              <Badge bg="primary" style={{ whiteSpace: 'nowrap', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
-                                {product.totalQty}
-                              </Badge>
+                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <Badge bg="primary" style={{ whiteSpace: 'nowrap', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+                                  {product.totalQty}
+                                </Badge>
+                                {/* Refresh Batches button removed — batches auto-refresh when filters change */}
+                              </div>
                             </div>
 
                             {product.batches && product.batches.length > 0 ? (
@@ -2266,6 +2374,10 @@ const Billing = () => {
               )}
             </div>
           )}
+
+          {/* Auto-refresh batches when filters change: always call server (raw) for latest batches */}
+          {/* Fetch fresh batches for visible products whenever selectedCategory or selectedBrand changes */}
+          
 
           {/* TAB 3: REFUND */}
           {unifiedModalTab === "refund" && (
@@ -3995,14 +4107,6 @@ const Billing = () => {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowInventoryModal(false)}>
             Close
-          </Button>
-          <Button 
-            variant="primary" 
-            onClick={() => {
-              loadInventoryForModal();
-            }}
-          >
-            🔄 Refresh
           </Button>
         </Modal.Footer>
       </Modal>

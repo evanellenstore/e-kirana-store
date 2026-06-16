@@ -23,18 +23,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Let the caller or a higher-level interceptor handle 401 (do not auto-redirect here)
     if (error.response?.status === 401) {
-      // Token expired or invalid
-      console.warn("🔐 Token expired or invalid");
-      
-      // Only redirect if we're not already on the login page
-      if (window.location.pathname !== "/login") {
-        localStorage.removeItem("user");
-        // Use a more graceful redirect with a small delay
-        setTimeout(() => {
-          window.location.href = "/login?expired=true";
-        }, 100);
-      }
+      console.warn("api.ts: received 401 — letting AuthContext handle refresh");
     }
     return Promise.reject(error);
   }
