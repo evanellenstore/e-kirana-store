@@ -126,6 +126,7 @@ const Billing = () => {
   const [loadingRefundSearch, setLoadingRefundSearch] = useState(false);
   const [selectedRefundBill, setSelectedRefundBill] = useState<any>(null);
   const [refundSearchError, setRefundSearchError] = useState<string | null>(null);
+  const [refundedMap, setRefundedMap] = useState<Record<string, boolean>>({});
 
   // Return Item state
   const [showReturnItemModal, setShowReturnItemModal] = useState(false);
@@ -550,12 +551,8 @@ const Billing = () => {
     }
   }, [selectedCategory, selectedBrand]);
 
-  // Auto-fetch bill details when a refund bill is selected
-  useEffect(() => {
-    if (selectedRefundBill && selectedRefundBill.billId) {
-      handleViewBillDetails(selectedRefundBill.billId, selectedRefundBill.date);
-    }
-  }, [selectedRefundBill?.billId]);
+  // NOTE: Do not auto-fetch bill details on selection change anymore.
+  // Bill details should be fetched explicitly when user requests them (e.g., clicks 'Return' or 'View Details').
 
   
   /* =====================
@@ -644,8 +641,9 @@ const Billing = () => {
       // Deduct from customer wallet if wallet was used
       if (walletDeduction > 0 && customerId) {
         try {
-          await deductFromWallet(customerId, walletDeduction, `Payment for Bill ${billId}`);
-          console.log(`Wallet deducted: ₹${walletDeduction} for customer ${customerId}`);
+          const desc = `Wallet payment for Bill ${billId} (₹${walletDeduction.toFixed(2)})`;
+          await deductFromWallet(customerId, walletDeduction, desc);
+          console.log(`Wallet deducted: ₹${walletDeduction} for customer ${customerId}, desc=${desc}`);
         } catch (error) {
           console.error('Error deducting from wallet:', error);
         }
@@ -983,7 +981,7 @@ const Billing = () => {
   };
 
   // Fetch bill details and items
-  const handleViewBillDetails = async (billId: string, billDate: string) => {
+  const handleViewBillDetails = async (billId: string, billDate: string, openReturnAfterLoad: boolean = false) => {
     setShowBillDetailsModal(true);
     setSelectedBillId(billId);
     setSelectedBillDate(billDate);
@@ -1023,6 +1021,10 @@ const Billing = () => {
       setBillRefunded(false);
     } finally {
       setLoadingBillDetails(false);
+      if (openReturnAfterLoad) {
+        // Open the return items modal once bill details have loaded
+        setShowReturnItemModal(true);
+      }
     }
   };
 
@@ -1131,7 +1133,20 @@ const Billing = () => {
         setRefundSearchResults([]);
       } else {
         setRefundSearchResults(results);
-        setSelectedRefundBill(results[0]); // Auto-select first result
+        // Do not auto-select a bill; require the user to click 'Return' to load details
+        setSelectedRefundBill(null);
+
+        // For each result, check refund status and annotate results so UI can show a 'Refunded' flag
+        const map: Record<string, boolean> = {};
+        await Promise.all(results.map(async (r: any) => {
+          try {
+            const res = await checkBillRefundStatus(r.billId);
+            map[r.billId] = res?.data?.isRefunded || false;
+          } catch (err) {
+            map[r.billId] = false;
+          }
+        }));
+        setRefundedMap(map);
       }
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || "Search failed";
@@ -1371,8 +1386,8 @@ const Billing = () => {
 
       if (walletItemsRefund > 0) {
         // Credit back the wallet amount that was used for payment on the original bill
-        // Use description 'Payment for Bill ...' so ledger shows a clear payment reversal credit
-        const descItems = `Payment for Bill ${selectedRefundBill.billId}`;
+        // Use a clear refund description so ledger lines reflect wallet refund (amount included)
+        const descItems = `Wallet refund for Bill ${selectedRefundBill.billId} (₹${walletItemsRefund.toFixed(2)})`;
         console.log(`🔄 About to add to wallet - customerId=${selectedRefundBill.customerId}, amount=${walletItemsRefund}, desc=${descItems}`);
         try {
           const addRes = await addToWallet(selectedRefundBill.customerId, walletItemsRefund, descItems);
@@ -1440,6 +1455,8 @@ const Billing = () => {
         const netWalletChange = (walletCreditDone - walletDebitDone);
         await markBillAsRefunded(selectedRefundBill.billId, netWalletChange);
         console.log('✅ Bill marked as refunded');
+        // Update local map so UI reflects refunded status immediately
+        setRefundedMap(prev => ({ ...prev, [selectedRefundBill.billId]: true }));
       } catch (err) {
         console.error('⚠️ Failed to mark bill as refunded:', err);
         // Don't fail the entire operation if marking fails
@@ -2355,19 +2372,23 @@ const Billing = () => {
                               <span className="text-success fw-bold">₹{(bill.discount || 0).toFixed(2)}</span>
                             </td>
                             <td style={{ fontSize: '0.85rem' }} className="text-center">
-                              <Button
-                                variant="warning"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedRefundBill(bill);
-                                  // Fetch bill details when Return is clicked
-                                  handleViewBillDetails(bill.billId, bill.date);
-                                }}
-                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                              >
-                                ↩️ Return
-                              </Button>
+                              {refundedMap[bill.billId] ? (
+                                <span className="badge bg-secondary">Already refunded</span>
+                              ) : (
+                                <Button
+                                  variant="warning"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedRefundBill(bill);
+                                    // Fetch bill details and immediately open the Return Items modal
+                                    handleViewBillDetails(bill.billId, bill.date, true);
+                                  }}
+                                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                                >
+                                  ↩️ Return
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         ))}
