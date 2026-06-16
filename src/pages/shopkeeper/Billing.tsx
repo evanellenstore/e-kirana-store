@@ -130,6 +130,12 @@ const Billing = () => {
   const [refundSearchError, setRefundSearchError] = useState<string | null>(null);
   const [refundedMap, setRefundedMap] = useState<Record<string, boolean>>({});
 
+  // Server-side pagination state for refund search results
+  const [refundPage, setRefundPage] = useState<number>(0);
+  const [refundPageSize, setRefundPageSize] = useState<number>(5);
+  const [refundTotalPages, setRefundTotalPages] = useState<number>(0);
+  const [refundTotalElements, setRefundTotalElements] = useState<number>(0);
+
   // Return Item state
   const [showReturnItemModal, setShowReturnItemModal] = useState(false);
   const [returnItemSelection, setReturnItemSelection] = useState<{ [key: number]: number }>({});
@@ -177,6 +183,10 @@ const Billing = () => {
   const scanningRef = useRef(false); // Prevent double scan
 
   const auth = useContext(AuthContext);
+
+  // Helper to avoid floating point rounding issues: operate in paise (integer)
+  const toPaise = (n: number) => Math.round((n || 0) * 100);
+  const fromPaise = (p: number) => p / 100;
 
   /* =====================
      Start Bill
@@ -449,7 +459,18 @@ const Billing = () => {
         if (cust && cust.id) {
           setCustomer(cust);
           // if walletBalance present, allow using wallet
-          if ((cust.walletBalance || 0) > 0) setUseWallet(true);
+          if ((cust.walletBalance || 0) > 0) {
+            setUseWallet(true);
+            // reflect in cashReceived immediately if payment mode is CASH
+            if (paymentMode === 'CASH') {
+              const subtotalP = toPaise(subtotalBeforeDiscount);
+              const walletP = toPaise(cust.walletBalance || 0);
+              const walletIntP = Math.floor(walletP / 100) * 100;
+              const walletToUseP = Math.min(walletIntP, subtotalP);
+              const amountAfterWalletP = Math.max(0, subtotalP - walletToUseP);
+              setCashReceived(Number(fromPaise(amountAfterWalletP).toFixed(2)));
+            }
+          }
         } else {
           setCustomer(null);
           setUseWallet(false);
@@ -481,6 +502,23 @@ const Billing = () => {
     const grandTotal = taxable + gstAmt;
     return { discountAmt, taxable, gstAmt, grandTotal };
   };
+
+  // Keep cashReceived in sync when payment mode or wallet usage changes
+  useEffect(() => {
+    if (paymentMode === 'CASH') {
+      const subtotalP = toPaise(subtotalBeforeDiscount);
+      if (useWallet && customer) {
+        const walletP = toPaise(customer.walletBalance || 0);
+        const walletIntP = Math.floor(walletP / 100) * 100; // use whole rupees only
+        const walletToUseP = Math.min(walletIntP, subtotalP);
+        const amountAfterWalletP = Math.max(0, subtotalP - walletToUseP);
+        setCashReceived(Number(fromPaise(amountAfterWalletP).toFixed(2)));
+      } else {
+        // If not using wallet, default cashReceived to full amount
+        setCashReceived(Number(fromPaise(subtotalP).toFixed(2)));
+      }
+    }
+  }, [paymentMode, useWallet, customer, subtotalBeforeDiscount]);
 
   // Safe beep: try to play /beep.mp3, fallback to WebAudio tone if unavailable
   const playBeep = async () => {
@@ -607,15 +645,19 @@ const Billing = () => {
         }
       }
 
-      // Determine amount to charge with wallet deduction
+      // Determine amount to charge with wallet deduction (use paise to avoid float issues)
       let amountToCharge = subtotalBeforeDiscount;
       let walletDeduction = 0;
-      
+
       // If using wallet, deduct wallet balance
       if (useWallet && customer) {
-        const walletBalance = customer.walletBalance || 0;
-        walletDeduction = Math.min(walletBalance, amountToCharge);
-        amountToCharge = Math.max(0, amountToCharge - walletDeduction);
+        const subtotalP = toPaise(subtotalBeforeDiscount);
+        const walletP = toPaise(customer.walletBalance || 0);
+        const walletIntP = Math.floor(walletP / 100) * 100; // only whole rupees
+        const walletDeductionP = Math.min(walletIntP, subtotalP);
+        const amountToChargeP = Math.max(0, subtotalP - walletDeductionP);
+        walletDeduction = fromPaise(walletDeductionP);
+        amountToCharge = fromPaise(amountToChargeP);
       }
 
       // Compute explicit cash/wallet amounts for backend storage
@@ -1128,7 +1170,7 @@ const Billing = () => {
   };
 
   // Search for bills by mobile number or bill ID for refund
-  const searchRefundBills = async () => {
+  const searchRefundBills = async (page: number = 0) => {
 
 
     if (!refundSearchMobile.trim() && !refundSearchBillId.trim()) {
@@ -1151,8 +1193,13 @@ const Billing = () => {
           console.log('✅ Customer fetched:', customerData);
 
           // Fetch paginated bills for this customer
-          const billRes = await getBillingTransactionsPaginated(customerData.id || '', 0, 10);
+          const billRes = await getBillingTransactionsPaginated(customerData.id || '', page, refundPageSize);
           const bills = billRes.data?.content || [];
+          const totalPages = billRes.data?.totalPages ?? 0;
+          const totalElements = billRes.data?.totalElements ?? (bills.length);
+          setRefundPage(page);
+          setRefundTotalPages(totalPages);
+          setRefundTotalElements(totalElements);
           
           results = bills.map((bill: any) => {
             // Format date properly - ensure we have a valid date
@@ -1184,7 +1231,7 @@ const Billing = () => {
             };
           });
           
-          console.log('✅ Paginated bills fetched for customer:', customerData.id, 'Results:', results);
+          console.log('✅ Paginated bills fetched for customer:', customerData.id, 'Page:', page, 'Results:', results);
         } catch (err) {
           console.warn("Could not fetch bills by mobile", err);
           setRefundSearchError('Error fetching bills for this mobile number');
@@ -1220,6 +1267,10 @@ const Billing = () => {
             rawDate: billData.billedAt || billData.createdAt,
             isCustomer: false
           }];
+          // single-item result => set pagination metadata
+          setRefundPage(0);
+          setRefundTotalPages(1);
+          setRefundTotalElements(1);
           console.log('✅ Bill fetched for ID:', refundSearchBillId, 'Result:', results);
         } catch (err) {
           console.warn("Could not fetch bill by ID", err);
@@ -1230,6 +1281,9 @@ const Billing = () => {
       if (results.length === 0) {
         setRefundSearchError('No results found matching your search criteria');
         setRefundSearchResults([]);
+        setRefundTotalElements(0);
+        setRefundTotalPages(0);
+        setRefundPage(0);
       } else {
         setRefundSearchResults(results);
         // Do not auto-select a bill; require the user to click 'Return' to load details
@@ -1254,6 +1308,12 @@ const Billing = () => {
     } finally {
       setLoadingRefundSearch(false);
     }
+  };
+
+  const handleRefundPageChange = (newPage: number) => {
+    // guard
+    if (newPage < 0 || (refundTotalPages && newPage >= refundTotalPages)) return;
+    searchRefundBills(newPage);
   };
 
   // Handle return of items - adjust inventory and add refund to wallet
@@ -2076,7 +2136,16 @@ const Billing = () => {
                           const cust = response.data;
                           setCustomer(cust);
                           // immediately enable wallet usage if balance exists
-                          setUseWallet((cust.walletBalance || 0) > 0);
+                          const hasBalance = (cust.walletBalance || 0) > 0;
+                          setUseWallet(hasBalance);
+                          if (hasBalance && paymentMode === 'CASH') {
+                            const subtotalP = toPaise(subtotalBeforeDiscount);
+                            const walletP = toPaise(cust.walletBalance || 0);
+                            const walletIntP = Math.floor(walletP / 100) * 100;
+                            const walletToUseP = Math.min(walletIntP, subtotalP);
+                            const amountAfterWalletP = Math.max(0, subtotalP - walletToUseP);
+                            setCashReceived(Number(fromPaise(amountAfterWalletP).toFixed(2)));
+                          }
                         } else {
                           setCustomer(null);
                           setUseWallet(false);
@@ -2101,11 +2170,15 @@ const Billing = () => {
               <hr className="my-3" />
 
               {/* Bill Summary */}
-              {(() => {
+                {(() => {
                 const { discountAmt, gstAmt } = computeTotals();
                 const walletBalance = customer?.walletBalance || 0;
-                const walletToUse = Math.min(walletBalance, subtotalBeforeDiscount);
-                const amountAfterWallet = Math.max(0, subtotalBeforeDiscount - walletToUse);
+                // Use only the integer-rupee portion of the wallet (floor)
+                const subtotalP_local = toPaise(subtotalBeforeDiscount);
+                const walletP_local = toPaise(walletBalance);
+                const walletIntP_local = Math.floor(walletP_local / 100) * 100; // whole rupees in paise
+                const walletToUse = fromPaise(Math.min(walletIntP_local, subtotalP_local));
+                const amountAfterWallet = fromPaise(Math.max(0, subtotalP_local - Math.min(walletIntP_local, subtotalP_local)));
                 
                 return (
                   <>
@@ -2139,7 +2212,20 @@ const Billing = () => {
                           type="checkbox"
                           id="useWalletUnified"
                           label={t('billing.useWalletLabel', { walletAmount: walletToUse.toFixed(2), payAmount: amountAfterWallet.toFixed(2) })}
-                          onChange={(e) => setUseWallet(e.target.checked)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUseWallet(checked);
+                            // If paying by cash, reflect remaining amount in cashReceived when wallet is toggled
+                            if (paymentMode === 'CASH') {
+                              const walletBalanceLocal = customer?.walletBalance || 0;
+                              const subtotalP = toPaise(subtotalBeforeDiscount);
+                              const walletP = toPaise(walletBalanceLocal);
+                              const walletIntP = Math.floor(walletP / 100) * 100;
+                              const walletToUseP = Math.min(walletIntP, subtotalP);
+                              const amountAfterWalletP = Math.max(0, subtotalP - (checked ? walletToUseP : 0));
+                              setCashReceived(Number(fromPaise(amountAfterWalletP).toFixed(2)));
+                            }
+                          }}
                           className="fw-bold small"
                           disabled={walletBalance <= 0}
                         />
@@ -2399,6 +2485,12 @@ const Billing = () => {
                           setRefundSearchMobile(e.target.value);
                           setRefundSearchBillId(""); // Clear bill ID when entering mobile
                         }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            searchRefundBills();
+                          }
+                        }}
                         disabled={loadingRefundSearch}
                       />
                     </InputGroup>
@@ -2414,6 +2506,12 @@ const Billing = () => {
                           setRefundSearchBillId(e.target.value);
                           setRefundSearchMobile(""); // Clear mobile when entering bill ID
                         }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            searchRefundBills();
+                          }
+                        }}
                         disabled={loadingRefundSearch}
                       />
                     </InputGroup>
@@ -2422,7 +2520,7 @@ const Billing = () => {
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={searchRefundBills}
+                    onClick={() => searchRefundBills()}
                     disabled={loadingRefundSearch}
                     className="w-100"
                   >
@@ -2447,7 +2545,7 @@ const Billing = () => {
               {/* Search Results */}
               {refundSearchResults.length > 0 && (
                 <div className="mb-4">
-                  <h6 className="fw-bold mb-3">📋 Found Bills ({refundSearchResults.length})</h6>
+                  <h6 className="fw-bold mb-3">📋 Found Bills ({refundTotalElements})</h6>
                   <div style={{ overflowX: 'auto' }}>
                     <table className="table table-hover table-sm mb-0" style={{ cursor: 'pointer' }}>
                       <thead style={{ backgroundColor: '#e9ecef' }}>
@@ -2506,6 +2604,16 @@ const Billing = () => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  {/* Pagination Controls */}
+                  <div className="d-flex justify-content-between align-items-center mt-2">
+                    <div>
+                      <small className="text-muted">Page {refundPage + 1} of {refundTotalPages || 1}</small>
+                    </div>
+                    <div>
+                      <Button variant="outline-secondary" size="sm" disabled={refundPage <= 0} onClick={() => handleRefundPageChange(refundPage - 1)} style={{ marginRight: '0.5rem' }}>Prev</Button>
+                      <Button variant="outline-secondary" size="sm" disabled={refundTotalPages ? refundPage + 1 >= refundTotalPages : refundSearchResults.length < refundPageSize} onClick={() => handleRefundPageChange(refundPage + 1)}>Next</Button>
+                    </div>
                   </div>
                 </div>
               )}

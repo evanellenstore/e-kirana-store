@@ -57,17 +57,23 @@ export const getWalletTransactions = (customerId: string) =>
   api.get<WalletTransaction[]>(`/users/customers/${customerId}/wallet/transactions`);
 
 // Get wallet transactions with pagination
-export const getWalletTransactionsPaginated = (customerId: string, page: number = 0, size: number = 10) =>
-  api.get<PaginatedResponse<WalletTransaction>>(`/users/customers/${customerId}/wallet/transactions/paginated`, {
-    params: { page, size }
+export const getWalletTransactionsPaginated = (customerId: string, page: number = 0, size: number = 10) => {
+  const p = Number(page ?? 0);
+  const s = Number(size ?? 10);
+  return api.get<PaginatedResponse<WalletTransaction>>(`/users/customers/${customerId}/wallet/transactions/paginated`, {
+    params: { page: p, size: s }
   });
+};
 
 // Get billing transactions (from billing service)
 export const getBillingTransactions = (customerId: string) =>
   api.get<any[]>(`/billings/customer/${customerId}`);
 
 // Get billing transactions with pagination
-export const getBillingTransactionsPaginated = (customerId: string, page: number = 0, size: number = 10) =>
-  api.get<PaginatedResponse<any>>(`/billings/customer/${customerId}/paginated`, {
-    params: { page, size }
+export const getBillingTransactionsPaginated = (customerId: string, page: number = 0, size: number = 10) => {
+  const p = Number(page ?? 0);
+  const s = Number(size ?? 10);
+  return api.get<PaginatedResponse<any>>(`/billings/customer/${customerId}/paginated`, {
+    params: { page: p, size: s }
   });
+};
