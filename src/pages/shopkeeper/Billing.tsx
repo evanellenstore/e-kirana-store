@@ -12,6 +12,7 @@ import {
   Alert
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
+import VoiceAssistant from "../../components/VoiceAssistant";
 import {
   startBill,
   getProductBySku,
@@ -4287,8 +4288,9 @@ const Billing = () => {
             <Button variant="secondary" onClick={() => setShowBatchAllocModal(false)}>Cancel</Button>
             <Button variant="primary" onClick={applyBatchSelection}>Add</Button>
           </Modal.Footer>
-        </Modal>
-    </div>
+            </Modal>
+            <VoiceAssistant />
+        </div>
   );
 };
 

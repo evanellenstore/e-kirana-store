@@ -28,7 +28,8 @@ const LoginPage: React.FC = () => {
           navigate("/admin");
           break;
         case ROLES.SHOPKEEPER:
-          navigate("/shopkeeper");
+          // Open billing page directly for shopkeepers
+          navigate("/shopkeeper/billing");
           break;
         case ROLES.CUSTOMER:
           navigate("/customer");
