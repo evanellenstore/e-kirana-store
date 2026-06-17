@@ -1,4 +1,5 @@
-import type { Dispatch, SetStateAction } from 'react';
+// voice intent handler (no React types required here)
+import api from '../../services/api';
 
 export type IntentPayload = {
   intent?: any;
@@ -22,6 +23,12 @@ export type VoiceDeps = {
   ) => void;
   setShowNotification: (b: boolean) => void;
   t?: (k: string, opts?: any) => string;
+  // Fetch batches for a productId: (productId, requiredQty) => Promise<batch[]>
+  fetchBatches?: (productId: string, requiredQty: number) => Promise<any[]>;
+  // Add items to cart: accepts array of cart-like items
+  addCartItems?: (items: any[]) => void;
+  // Optional: play feedback beep
+  playBeep?: () => Promise<void>;
 };
 
 // Build candidate string from payload
@@ -68,50 +75,9 @@ function buildCandidateString(payload: IntentPayload) {
   return parts.join(' ').toLowerCase();
 }
 
-// Collect all values recursively
-function collectStringValues(
-  obj: any,
-  out: string[] = []
-): string[] {
-  if (obj == null) {
-    return out;
-  }
+// (removed unused helper collectStringValues)
 
-  if (typeof obj === 'string') {
-    out.push(obj);
-    return out;
-  }
-
-  if (
-    typeof obj === 'number' ||
-    typeof obj === 'boolean'
-  ) {
-    out.push(String(obj));
-    return out;
-  }
-
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      collectStringValues(item, out);
-    }
-
-    return out;
-  }
-
-  if (typeof obj === 'object') {
-    for (const key of Object.keys(obj)) {
-      try {
-        collectStringValues(obj[key], out);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  return out;
-}
-
-export function handleVoiceIntent(
+export async function handleVoiceIntent(
   payload: IntentPayload,
   deps: VoiceDeps
 ) {
@@ -138,22 +104,140 @@ export function handleVoiceIntent(
 
     const candStr = buildCandidateString(payload);
 
-    const flatValues = collectStringValues(payload)
-      .map(String)
-      .join(' ')
-      .toLowerCase();
-
-    const payloadJson = (() => {
-      try {
-        return JSON.stringify(payload).toLowerCase();
-      } catch {
-        return '';
-      }
-    })();
+    // flattened values for potential use
+    // const flatValues = collectStringValues(payload).map(String).join(' ').toLowerCase();
 
     console.log('ACT:', act);
     console.log('TXT:', txt);
     console.log('CANDIDATE:', candStr);
+
+    // ==================================================
+    // ADD ITEM (voice intent)
+    // payload example: { intent: 'ADD_ITEM',productSKU: 'FORTUN-MUSTAR-1-LIT-8CBBD2', product: 'mustard oil', quantity: 1, unit: 'litre' }
+    // ==================================================
+    if (
+      String(payload?.intent || '').toLowerCase() === 'add_item' ||
+      String(payload?.action || '').toLowerCase() === 'add_item'
+    ) {
+      console.log('ADD_ITEM intent matched');
+      try {
+        const productName = String(payload?.product || payload?.text || payload?.message || '').trim();
+        const qty = Number(payload?.quantity ?? payload?.qty ?? 1) || 1;
+        if (!productName) {
+          deps.setNotificationMessage('No product specified');
+          deps.setNotificationType('warning');
+          deps.setShowNotification(true);
+          setTimeout(() => deps.setShowNotification(false), 3000);
+          return;
+        }
+
+        // Search inventory using public API
+            // Search inventory using axios `api` so Authorization header is applied
+            console.debug('voiceIntent: searching inventory for', productName);
+            const resp = await api.get('/inventory/search', { params: { name: productName } });
+            const json = resp.data;
+            const items = Array.isArray(json) ? json : (json?.results || []);
+        if (!items || items.length === 0) {
+          deps.setNotificationMessage('Product not found');
+          deps.setNotificationType('info');
+          deps.setShowNotification(true);
+          setTimeout(() => deps.setShowNotification(false), 3000);
+          return;
+        }
+
+        const product = items[0];
+        const pid = String(product.productId ?? product.id ?? product.sku ?? '');
+
+        // fetch batches via provided dep if available, else try a default endpoint
+        let batches: any[] = [];
+        if (deps.fetchBatches) {
+          try { batches = await deps.fetchBatches(pid, qty); } catch (e) { console.warn('fetchBatches failed', e); }
+        }
+        if (!batches || batches.length === 0) {
+          // fallback: try calling same inventory search endpoint for batches if available
+          try {
+            const br = await api.get('/inventory/batches', { params: { productId: pid } });
+            batches = br.data || [];
+          } catch (e) { console.warn('fallback batches fetch failed', e); }
+        }
+
+        if (!Array.isArray(batches) || batches.length === 0) {
+          deps.setNotificationMessage('No batch data available');
+          deps.setNotificationType('warning');
+          deps.setShowNotification(true);
+          setTimeout(() => deps.setShowNotification(false), 3000);
+          return;
+        }
+
+        // allocate across earliest-expiry with availableQty
+        const sorted = batches.slice().sort((a: any, b: any) => {
+          const availA = a.availableQty ?? 0;
+          const availB = b.availableQty ?? 0;
+          if ((availA > 0) !== (availB > 0)) return availB - availA;
+          const da = new Date(a.expiryDate ?? a.expiry ?? 0).getTime() || 0;
+          const db = new Date(b.expiryDate ?? b.expiry ?? 0).getTime() || 0;
+          return da - db;
+        });
+
+        let remaining = Math.max(0, Math.floor(qty));
+        const allocations: any[] = [];
+        for (const b of sorted) {
+          if (remaining <= 0) break;
+          const avail = b.availableQty ?? 0;
+          const take = Math.min(avail > 0 ? avail : remaining, remaining);
+          if (take <= 0) continue;
+          allocations.push({ batchNo: b.batchNo ?? String(b.id ?? ''), qty: take, availableQty: avail, expiryDate: b.expiryDate ?? b.expiry });
+          remaining -= take;
+        }
+
+        //alert('product.sku:--- ' + product.productSku);
+        // Build cart items
+        const cartItems = allocations.map(a => ({
+          productId: pid,
+          batchNo: a.batchNo,
+          name: product.name ?? product.title ?? product.productName ?? '',
+          sku: product.productSku ?? product.skuCode ?? '',
+          price: product.price ?? 0,
+          discountAmount: product.discountAmount ?? 0,
+          qty: a.qty,
+          availableQty: a.availableQty,
+          expiryDate: (typeof a.expiryDate === 'string') ? a.expiryDate : (a.expiryDate ? new Date(a.expiryDate).toISOString() : '')
+        }));
+
+        if (cartItems.length === 0) {
+          deps.setNotificationMessage('Could not allocate any quantity');
+          deps.setNotificationType('warning');
+          deps.setShowNotification(true);
+          setTimeout(() => deps.setShowNotification(false), 3000);
+          return;
+        }
+
+        if (deps.addCartItems) {
+          deps.addCartItems(cartItems);
+        }
+
+        if (deps.playBeep) {
+          try { await deps.playBeep(); } catch {}
+        }
+
+        if (remaining > 0) {
+          deps.setNotificationMessage(`Only ${qty - remaining} of ${qty} allocated`);
+          deps.setNotificationType('warning');
+          deps.setShowNotification(true);
+          setTimeout(() => deps.setShowNotification(false), 4000);
+        }
+
+        return;
+      } catch (e) {
+        console.error('ADD_ITEM handling failed', e);
+        deps.setNotificationMessage('Failed to add product');
+        deps.setNotificationType('danger');
+        deps.setShowNotification(true);
+        setTimeout(() => deps.setShowNotification(false), 3000);
+        return;
+      }
+    }
+    // ==================================================
 
     // ==================================================
     // START BILL
@@ -269,3 +353,8 @@ export function handleVoiceIntent(
 }
 
 export default handleVoiceIntent;
+
+// Expose for quick testing from browser console
+try {
+  if (typeof window !== 'undefined') (window as any).handleVoiceIntent = handleVoiceIntent;
+} catch {}
