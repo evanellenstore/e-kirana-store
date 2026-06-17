@@ -1834,6 +1834,7 @@ const Billing = () => {
         return;
       }
       setBatchOptions(batches);
+      console.debug('openBatchAllocModal loaded batches', { batches, cartItem: _cartItem });
       setBatchModalProduct({ product: _cartItem, pid: productId });
       // initialize selection and qty map
       const initialSelected: string[] = [];
@@ -1887,6 +1888,7 @@ const Billing = () => {
   const applyBatchSelection = async () => {
     if (!batchModalProduct) return;
 
+    console.debug('applyBatchSelection start', { batchModalProduct, batchModalOriginalIndex, batchModalSelectedBatches, batchModalQtyMap });
     const selectedBatches = batchModalSelectedBatches.slice();
     if (selectedBatches.length === 0) return;
 
@@ -1898,6 +1900,7 @@ const Billing = () => {
       // Single state update: move totalRequested (capped by original qty) from original into selected batches in order
       const totalRequested = selectedBatches.reduce((s, bNo) => s + Math.max(1, Math.floor(batchModalQtyMap[bNo] || 1)), 0);
       setCart(prev => {
+        console.debug('applyBatchSelection (fromSplit) prevCart', prev);
         const copy = [...prev];
         const origIdx = batchModalOriginalIndex ?? -1;
         if (origIdx < 0 || origIdx >= copy.length) return prev;
@@ -1936,11 +1939,13 @@ const Billing = () => {
         }
         // remove original if qty zero
         const final = copy.filter(i => !(i.productId === String(orig.productId) && i.batchNo === orig.batchNo && i.qty <= 0));
+        console.debug('applyBatchSelection (fromSplit) newCart', final);
         return final;
       });
     } else {
       // Not splitting: just add requested quantities as new/merged items
       setCart(prev => {
+        console.debug('applyBatchSelection (notSplit) prevCart', prev);
         const copy = [...prev];
         for (const bNo of selectedBatches) {
           const batchInfo = batchOptions.find(b => (b.batchNo ?? String(b.id ?? '')) === bNo) || batchOptions[0];
@@ -1964,6 +1969,7 @@ const Billing = () => {
             });
           }
         }
+        console.debug('applyBatchSelection (notSplit) newCart', copy);
         return copy;
       });
     }
