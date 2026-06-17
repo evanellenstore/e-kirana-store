@@ -1,7 +1,9 @@
 import { API_BASE } from "../config/apiConfig";
 
 export async function sendMessage(message: string) {
-  const base = API_BASE?.BASE_URL || process.env.REACT_APP_AI_SERVICE_URL || '';
+  // Use Vite env variable `VITE_AI_SERVICE_URL` (recommended) or API_BASE from config.
+  const viteEnv: any = (import.meta as any)?.env;
+  const base = API_BASE?.BASE_URL || viteEnv?.VITE_AI_SERVICE_URL || '';
   // Use the intent endpoint as requested by the user
   const url = (base ? base.replace(/\/$/, '') : '') + '/ai/intent';
 
