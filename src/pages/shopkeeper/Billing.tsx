@@ -354,6 +354,7 @@ const Billing = () => {
       const product = productRes.data || {};
 
       const pid = product.productId ?? product.id ?? product.sku ?? "";
+      const pidStr = String(pid);
       
       // Validate product ID
       if (!pid) {
@@ -379,8 +380,9 @@ const Billing = () => {
         const batchNo = batch.batchNo ?? String(batch.id ?? "");
 
         // Add one unit by default for barcode scans
+        console.debug('handleBarcode auto-add candidate', { pid: pidStr, batchNo, batch });
         setCart(prev => {
-          const idx = prev.findIndex(i => i.productId === pid && i.batchNo === batchNo);
+          const idx = prev.findIndex(i => i.productId === pidStr && i.batchNo === batchNo);
           if (idx !== -1) {
             const available = prev[idx].availableQty ?? 0;
             if (prev[idx].qty + 1 > available) {
@@ -407,7 +409,7 @@ const Billing = () => {
           return [
             ...prev,
             {
-              productId: pid,
+              productId: pidStr,
               batchNo: batchNo,
               name: product.name ?? product.title ?? "",
               sku: product.sku ?? product.skuCode ?? "",
@@ -431,9 +433,10 @@ const Billing = () => {
         return;
       }
 
+      console.debug('handleBarcode single-batch add', { pid: pidStr, batch });
       setCart(prev => {
         const batchNo = batch.batchNo ?? String(batch.id ?? "");
-        const idx = prev.findIndex(i => i.productId === pid && i.batchNo === batchNo);
+        const idx = prev.findIndex(i => i.productId === pidStr && i.batchNo === batchNo);
 
         if (idx !== -1) {
           const available = prev[idx].availableQty ?? 0;
@@ -461,7 +464,7 @@ const Billing = () => {
         return [
           ...prev,
           {
-            productId: pid,
+            productId: pidStr,
             batchNo: batchNo,
             name: product.name ?? product.title ?? "",
             sku: product.sku ?? product.skuCode ?? "",
@@ -1837,7 +1840,8 @@ const Billing = () => {
       console.debug('openBatchAllocModal loaded batches', { batches, cartItem: _cartItem });
       setBatchModalProduct({ product: _cartItem, pid: productId });
       // initialize selection and qty map
-      const initialSelected: string[] = [];
+      // Default: select all batches by default so checkboxes are checked
+      const initialSelected: string[] = batches.map((b: any) => (b.batchNo ?? String(b.id ?? '')));
       const initialQtyMap: Record<string, number> = {};
       batches.forEach((b: any) => {
         const bNo = b.batchNo ?? String(b.id ?? "");
@@ -1849,7 +1853,8 @@ const Billing = () => {
       setBatchModalTotalQty((_cartItem as any)?.qty ?? 1);
       const idx = cart.findIndex(i => i.productId === _cartItem.productId && i.batchNo === _cartItem.batchNo);
       setBatchModalOriginalIndex(idx !== -1 ? idx : null);
-      setShowBatchAllocModal(true);
+      // Only show modal when this is invoked for splitting an existing cart item
+      if (idx !== -1) setShowBatchAllocModal(true);
     } catch (err) {
       console.error('Failed to load batches for allocation', err);
       alert(t('billing.noBatchInfo'));
