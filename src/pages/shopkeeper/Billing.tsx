@@ -13,6 +13,7 @@ import {
 } from "react-bootstrap";
 import ShopkeeperHeader from "../../components/ShopkeeperHeader";
 import VoiceAssistant from "../../components/VoiceAssistant";
+import importedHandleVoiceIntent from "./voiceIntentHandler";
 import {
   startBill,
   getProductBySku,
@@ -225,6 +226,35 @@ const Billing = () => {
     }
   };
 
+
+//======================================================
+
+
+  // Delegate to central handler
+  const handleVoiceIntent = (payload: any) => {
+    try {
+      importedHandleVoiceIntent(payload, {
+        billId,
+        handleStartBilling,
+        setShowUnifiedControlsModal,
+        setUnifiedModalTab,
+        setNotificationMessage,
+        setNotificationType,
+        setShowNotification,
+        t,
+      });
+    } catch (e) {
+      console.warn('delegate handleVoiceIntent failed', e);
+    }
+  };
+
+
+
+
+//=======================================================
+
+
+
   // Handle going back to start billing screen
   const handleGoBackToBilling = () => {
     setCart([]);
@@ -297,22 +327,6 @@ const Billing = () => {
       window.removeEventListener("keydown", onKeyDown);
       if (scannerTimerRef.current) window.clearTimeout(scannerTimerRef.current);
     };
-  }, []);
-
-  /* Always keep focus for USB scanner */
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      // If clicking interactive controls, don't steal focus
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      const tag = target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
-      // also if click inside a dropdown or modal control, avoid stealing
-      if (target.closest && (target.closest('.dropdown') || target.closest('.modal'))) return;
-      barcodeRef.current?.focus();
-    };
-    window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
   }, []);
 
   /* =====================
@@ -4289,7 +4303,7 @@ const Billing = () => {
             <Button variant="primary" onClick={applyBatchSelection}>Add</Button>
           </Modal.Footer>
             </Modal>
-            <VoiceAssistant />
+            <VoiceAssistant onIntent={handleVoiceIntent} />
         </div>
   );
 };
