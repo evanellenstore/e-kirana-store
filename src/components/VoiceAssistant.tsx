@@ -20,10 +20,12 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
   
 
   const recognitionRef = useRef<any>(null);
-  const autoSendRef = useRef(false);
+  const autoSendRef = useRef(true);
 
   // keep latest send handler ref for use in recognition callbacks
   const handleSendRef = useRef<() => Promise<void> | null>(null);
+
+  
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -282,27 +284,32 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
         </div>
       ) : (
         <div style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 1600, width: 360, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'transform 240ms ease, opacity 240ms ease', opacity: visible ? 1 : 0 }}>
-          <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 10px 30px rgba(22,27,34,0.12)', background: 'white', border: '1px solid rgba(15,20,25,0.06)' }}>
+              <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 10px 30px rgba(22,27,34,0.12)', background: 'white', border: '1px solid rgba(15,20,25,0.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'linear-gradient(90deg,#f8fafc,#ffffff)', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-                  🎙️
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: listening ? '#fee2e2' : '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }} aria-hidden>
+                  <div style={{ width: 12, height: 12, borderRadius: 6, background: listening ? '#ef4444' : '#6366f1', boxShadow: listening ? '0 0 10px rgba(239,68,68,0.6)' : 'none', transition: 'all 220ms ease' }} />
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>Voice Assistant</div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>Ask questions or use speech</div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <Button size="sm" variant={listening ? 'danger' : 'primary'} onClick={() => (listening ? stopListening() : startListening())} style={{ borderRadius: 8 }}>
                   {listening ? 'Stop' : 'Listen'}
                 </Button>
+                <Button size="sm" variant="outline-primary" onClick={() => { void handleSend(); }} disabled={processing || !transcript.trim()} aria-label="Send transcript" style={{ padding: '4px 8px', display: 'none' }}>Send</Button>
+                <Button size="sm" variant="outline-secondary" onClick={() => { setTranscript(''); setError(null); }} aria-label="Clear transcript" style={{ padding: '4px 8px', display: 'none' }}>Clear</Button>
+                
                 <Button size="sm" variant="link" onClick={() => setCollapsed(true)} style={{ color: '#6b7280', textDecoration: 'none' }}>—</Button>
               </div>
             </div>
 
             <div style={{ padding: 12 }}>
-              <div aria-readonly style={{ borderRadius: 8, padding: 8, minHeight: 48, background: '#fff', border: '1px solid rgba(0,0,0,0.06)', whiteSpace: 'pre-wrap', color: '#111827' }}>{transcript || 'Type or speak your query'}</div>
+              <div role="status" aria-live="polite" aria-atomic="true" aria-label="Voice transcript" style={{ borderRadius: 8, padding: 8, minHeight: 48, background: '#fff', border: '1px solid rgba(0,0,0,0.06)', whiteSpace: 'pre-wrap', color: '#111827' }}>{transcript || 'Type or speak your query'}</div>
+
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end', fontSize: 12, color: '#6b7280' }}>{listening ? 'Listening…' : 'Idle'}</div>
 
               <div style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
                 {messages.length === 0 ? (
