@@ -1,5 +1,6 @@
 // voice intent handler (no React types required here)
 import api from '../../services/api';
+import i18n from '../../i18n/config';
 
 export type IntentPayload = {
   intent?: any;
@@ -11,47 +12,20 @@ export type IntentPayload = {
 };
 
 
-//==============================
-/*
 export type VoiceDeps = {
   billId?: string | undefined;
   handleStartBilling: () => Promise<void> | void;
   setShowUnifiedControlsModal: (v: boolean) => void;
-  setUnifiedModalTab: (t: 'payment' | 'inventory' | 'refund' | 'rewards') => void;
-  setNotificationMessage: (m: string) => void;
-  setNotificationType: (t: 'success' | 'danger' | 'warning' | 'info' ) => void;
-  setShowNotification: (b: boolean) => void;
-  t?: (k: string, opts?: any) => string;
-  // Fetch batches for a productId: (productId, requiredQty) => Promise<batch[]>
-  fetchBatches?: (productId: string, requiredQty: number) => Promise<any[]>;
-  // Add items to cart: accepts array of cart-like items
-  addCartItems?: (items: any[]) => void;
-  // Optional: play feedback beep
-  playBeep?: () => Promise<void>;
-};
-*/
-
-export type VoiceDeps = {
-  billId?: string | undefined;
-  handleStartBilling: () => Promise<void> | void;
-  setShowUnifiedControlsModal: (v: boolean) => void;
-  setUnifiedModalTab: (
-    t: 'payment' | 'inventory' | 'refund' | 'rewards'
-  ) => void;
+  setUnifiedModalTab: (t: 'payment' | 'inventory' | 'refund' | 'rewards' ) => void;
 
   setNotificationMessage: (m: string) => void;
-  setNotificationType: (
-    t: 'success' | 'danger' | 'warning' | 'info'
-  ) => void;
+  setNotificationType: (t: 'success' | 'danger' | 'warning' | 'info') => void;
 
   setShowNotification: (b: boolean) => void;
 
   t?: (k: string, opts?: any) => string;
 
-  fetchBatches?: (
-    productId: string,
-    requiredQty: number
-  ) => Promise<any[]>;
+  fetchBatches?: (productId: string, requiredQty: number ) => Promise<any[]>;
 
   addCartItems?: (items: any[]) => void;
 
@@ -110,6 +84,29 @@ function buildCandidateString(payload: IntentPayload) {
 export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) {
   try {
     console.log( 'voiceIntentHandler received payload:',payload);
+
+    // If `payload.text` is a JSON string (some callers send the entire payload
+    // as JSON inside `text`), parse and merge it so downstream code can access
+    // fields directly (e.g. productName, qty, language, intent).
+    try {
+      if (typeof payload?.text === 'string') {
+        const t = payload.text.trim();
+        if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+          try {
+            const parsed = JSON.parse(t);
+            if (parsed && typeof parsed === 'object') {
+              // Merge parsed fields into payload, giving precedence to parsed
+              // values so the nested JSON drives behavior when present.
+              // Keep original payload fields as fallback.
+              // eslint-disable-next-line no-param-reassign
+              payload = { ...(payload as any), ...parsed };
+            }
+          } catch (e) {
+            // ignore parse errors and continue with original payload
+          }
+        }
+      }
+    } catch (e) {}
     const act = String(payload?.intent || payload?.action || '').trim().toLowerCase();
     const txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
     const candStr = buildCandidateString(payload);
@@ -122,36 +119,42 @@ export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) 
 
     // ==================================================
     // ADD ITEM (voice intent)
-    // payload example: { intent: 'ADD_ITEM',productSKU: 'FORTUN-MUSTAR-1-LIT-8CBBD2', product: 'mustard oil', quantity: 1, unit: 'litre' }
+    // payload example: { intent: 'ADD_ITEM', product: 'mustard oil', quantity: 1, unit: 'litre' }
     // ==================================================
     if (String(payload?.intent || '').toLowerCase() === 'add_item' ||String(payload?.action || '').toLowerCase() === 'add_item') {
       console.log('ADD_ITEM intent matched');
       try {
-        const productName = String(payload?.product || payload?.text || payload?.message || '').trim();
-        const qty = Number(payload?.quantity ?? payload?.qty ?? 1) || 1;
+        const productName = String(payload?.productName || payload?.text || payload?.message || '').trim();
+        const qty = Number(payload?.qty ?? 1) || 1;
         //adding waring for missing product name
         if (!productName) {
-          deps.setNotificationMessage('No product specified');
-          deps.setNotificationType('warning');
-          deps.setShowNotification(true);
+           deps.speak?.(`No product with name  ${productName} found. Please try again.`);
+         // deps.setNotificationMessage('No product specified');
+         // deps.setNotificationType('warning');
+          //deps.setShowNotification(true);
           setTimeout(() => deps.setShowNotification(false), 3000);
           return;
         }
 
             
           console.debug('voiceIntent: searching inventory for', productName);
-            
-            // calling inventory search API
-            const resp = await api.get('/inventory/search', { params: { name: productName } });
+
+            // calling inventory search API - send full payload via POST (include language)
+            const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
+            const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en').trim();
+            const resp = await api.post('/inventory/search', { ...payload, language: lang });
             const json = resp.data;
             const items = Array.isArray(json) ? json : (json?.results || []);
+
+            console.log('search :=====', items);
       
         // Check if any items not found then show notification and return   
         if (!items || items.length === 0) {
-          deps.setNotificationMessage('Product not found');
-          deps.setNotificationType('info');
-          deps.setShowNotification(true);
-          setTimeout(() => deps.setShowNotification(false), 3000);
+         // deps.setNotificationMessage('Product not found');
+         // deps.setNotificationType('info');
+          //deps.setShowNotification(true);
+           deps.speak?.(`No product with name  ${productName} found. Please try again.`);
+          //setTimeout(() => deps.setShowNotification(false), 3000);
           return;
         }
 
@@ -224,7 +227,7 @@ export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) 
           return;
         }
 
-        alert('product is added ');
+       
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
          
