@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { sendMessage } from "../services/aiService";
 
 type IntentPayload = { intent?: string; action?: string; text?: string; [k: string]: any };
-type Props = { onIntent?: (payload: IntentPayload) => void };
+type Props = { onIntent?: (payload: IntentPayload, helpers?: { speak: (text: string) => void }) => void };
 
 const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
   const [listening, setListening] = useState(false);
@@ -142,12 +142,21 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
     setMessages((s) => [...s, { from: 'user', text: userText }]);
     setTranscript('');
     try {
+      //calling user voice text to AI service for intent detection and response
       const data = await sendMessage(userText);
       const txt = data?.text || data?.message || data?.response || JSON.stringify(data);
+     
       // add assistant response and auto-play audio
-      setMessages((s) => [...s, { from: 'assistant', text: String(txt) }]);
-      try { speak(String(txt)); } catch (e) { console.warn('speak failed', e); }
 
+      //===========================================================================
+      //===========================================================================
+
+      //setMessages((s) => [...s, { from: 'assistant', text: String(txt) }]);
+     // try { speak(String(txt)); } catch (e) { console.warn('speak failed', e); }
+
+      //===========================================================================
+      //===========================================================================
+      
       const payload: IntentPayload = {
         intent: data?.intent,
         action: data?.action,
@@ -155,7 +164,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
         ...data,
       };
 
-      try { onIntent?.(payload); } catch (e) { console.warn('onIntent handler failed', e); }
+      try { onIntent?.(payload, { speak }); } catch (e) { console.warn('onIntent handler failed', e); }
     } catch (err: any) {
       console.error('AI request failed', err);
       setError(err?.message || String(err));

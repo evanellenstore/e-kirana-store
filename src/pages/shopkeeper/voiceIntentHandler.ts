@@ -10,17 +10,16 @@ export type IntentPayload = {
   [k: string]: any;
 };
 
+
+//==============================
+/*
 export type VoiceDeps = {
   billId?: string | undefined;
   handleStartBilling: () => Promise<void> | void;
   setShowUnifiedControlsModal: (v: boolean) => void;
-  setUnifiedModalTab: (
-    t: 'payment' | 'inventory' | 'refund' | 'rewards'
-  ) => void;
+  setUnifiedModalTab: (t: 'payment' | 'inventory' | 'refund' | 'rewards') => void;
   setNotificationMessage: (m: string) => void;
-  setNotificationType: (
-    t: 'success' | 'danger' | 'warning' | 'info'
-  ) => void;
+  setNotificationType: (t: 'success' | 'danger' | 'warning' | 'info' ) => void;
   setShowNotification: (b: boolean) => void;
   t?: (k: string, opts?: any) => string;
   // Fetch batches for a productId: (productId, requiredQty) => Promise<batch[]>
@@ -30,7 +29,41 @@ export type VoiceDeps = {
   // Optional: play feedback beep
   playBeep?: () => Promise<void>;
 };
+*/
 
+export type VoiceDeps = {
+  billId?: string | undefined;
+  handleStartBilling: () => Promise<void> | void;
+  setShowUnifiedControlsModal: (v: boolean) => void;
+  setUnifiedModalTab: (
+    t: 'payment' | 'inventory' | 'refund' | 'rewards'
+  ) => void;
+
+  setNotificationMessage: (m: string) => void;
+  setNotificationType: (
+    t: 'success' | 'danger' | 'warning' | 'info'
+  ) => void;
+
+  setShowNotification: (b: boolean) => void;
+
+  t?: (k: string, opts?: any) => string;
+
+  fetchBatches?: (
+    productId: string,
+    requiredQty: number
+  ) => Promise<any[]>;
+
+  addCartItems?: (items: any[]) => void;
+
+  playBeep?: () => Promise<void>;
+
+  // ADD THIS
+  speak?: (text: string) => void;
+};
+
+
+
+//==================================================
 // Build candidate string from payload
 function buildCandidateString(payload: IntentPayload) {
   const parts: string[] = [];
@@ -40,10 +73,7 @@ function buildCandidateString(payload: IntentPayload) {
       parts.push(String(payload.intent));
     }
 
-    if (
-      typeof payload?.intent === 'object' &&
-      payload.intent?.name
-    ) {
+    if (typeof payload?.intent === 'object' && payload.intent?.name) {
       parts.push(String(payload.intent.name));
     }
   } catch {}
@@ -77,52 +107,29 @@ function buildCandidateString(payload: IntentPayload) {
 
 // (removed unused helper collectStringValues)
 
-export async function handleVoiceIntent(
-  payload: IntentPayload,
-  deps: VoiceDeps
-) {
+export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) {
   try {
-    console.log(
-      'voiceIntentHandler received payload:',
-      payload
-    );
-
-    const act = String(
-      payload?.intent || payload?.action || ''
-    )
-      .trim()
-      .toLowerCase();
-
-    const txt = String(
-      payload?.text ||
-        payload?.message ||
-        payload?.command ||
-        ''
-    )
-      .trim()
-      .toLowerCase();
-
+    console.log( 'voiceIntentHandler received payload:',payload);
+    const act = String(payload?.intent || payload?.action || '').trim().toLowerCase();
+    const txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
     const candStr = buildCandidateString(payload);
-
     // flattened values for potential use
     // const flatValues = collectStringValues(payload).map(String).join(' ').toLowerCase();
-
     console.log('ACT:', act);
     console.log('TXT:', txt);
     console.log('CANDIDATE:', candStr);
+
 
     // ==================================================
     // ADD ITEM (voice intent)
     // payload example: { intent: 'ADD_ITEM',productSKU: 'FORTUN-MUSTAR-1-LIT-8CBBD2', product: 'mustard oil', quantity: 1, unit: 'litre' }
     // ==================================================
-    if (
-      String(payload?.intent || '').toLowerCase() === 'add_item' ||
-      String(payload?.action || '').toLowerCase() === 'add_item'
-    ) {
+    if (String(payload?.intent || '').toLowerCase() === 'add_item' ||String(payload?.action || '').toLowerCase() === 'add_item') {
       console.log('ADD_ITEM intent matched');
       try {
         const productName = String(payload?.product || payload?.text || payload?.message || '').trim();
         const qty = Number(payload?.quantity ?? payload?.qty ?? 1) || 1;
+        //adding waring for missing product name
         if (!productName) {
           deps.setNotificationMessage('No product specified');
           deps.setNotificationType('warning');
@@ -131,12 +138,15 @@ export async function handleVoiceIntent(
           return;
         }
 
-        // Search inventory using public API
-            // Search inventory using axios `api` so Authorization header is applied
-            console.debug('voiceIntent: searching inventory for', productName);
+            
+          console.debug('voiceIntent: searching inventory for', productName);
+            
+            // calling inventory search API
             const resp = await api.get('/inventory/search', { params: { name: productName } });
             const json = resp.data;
             const items = Array.isArray(json) ? json : (json?.results || []);
+      
+        // Check if any items not found then show notification and return   
         if (!items || items.length === 0) {
           deps.setNotificationMessage('Product not found');
           deps.setNotificationType('info');
@@ -145,16 +155,18 @@ export async function handleVoiceIntent(
           return;
         }
 
+        // Use the first matching product for allocation
         const product = items[0];
-        const pid = String(product.productId ?? product.id ?? product.sku ?? '');
-
+        const pid = String(product.productId ?? product.id ?? '');
         // fetch batches via provided dep if available, else try a default endpoint
         let batches: any[] = [];
         if (deps.fetchBatches) {
           try { batches = await deps.fetchBatches(pid, qty); } catch (e) { console.warn('fetchBatches failed', e); }
         }
+
+        
         if (!batches || batches.length === 0) {
-          // fallback: try calling same inventory search endpoint for batches if available
+          //calling inventory batch api call
           try {
             const br = await api.get('/inventory/batches', { params: { productId: pid } });
             batches = br.data || [];
@@ -190,7 +202,7 @@ export async function handleVoiceIntent(
           remaining -= take;
         }
 
-        //alert('product.sku:--- ' + product.productSku);
+        
         // Build cart items
         const cartItems = allocations.map(a => ({
           productId: pid,
@@ -212,8 +224,12 @@ export async function handleVoiceIntent(
           return;
         }
 
+        alert('product is added ');
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
+         
+          const productLabel =product.productName ||product.name || productName;
+          deps.speak?.(`Added ${qty} ${productLabel}`);
         }
 
         if (deps.playBeep) {

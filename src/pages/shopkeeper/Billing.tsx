@@ -233,8 +233,9 @@ const Billing = () => {
 
 
   // Delegate to central handler
-  const handleVoiceIntent = (payload: any) => {
+  const handleVoiceIntent = (payload: any, helpers?: any) => {
     try {
+      const speak = helpers?.speak;
       importedHandleVoiceIntent(payload, {
         billId,
         handleStartBilling,
@@ -272,7 +273,8 @@ const Billing = () => {
             return copy;
           });
         },
-        playBeep: async () => { try { await playBeep(); } catch {} }
+        playBeep: async () => { try { await playBeep(); } catch {} },
+        speak: typeof speak === 'function' ? speak : undefined
       });
     } catch (e) {
       console.warn('delegate handleVoiceIntent failed', e);
