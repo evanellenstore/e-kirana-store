@@ -144,12 +144,64 @@ export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) 
             const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en').trim();
             const resp = await api.post('/inventory/search', { ...payload, language: lang });
             const json = resp.data;
-            const items = Array.isArray(json) ? json : (json?.results || []);
+            // Normalize search response shapes: support array, results, candidates, candidate
+            let items: any[] = [];
+            if (Array.isArray(json)) {
+              items = json;
+            } else if (json?.results && Array.isArray(json.results)) {
+              items = json.results;
+            } else if (json?.candidates && Array.isArray(json.candidates)) {
+              // multiple brand candidates returned from API
+              items = json.candidates;
+              // reflect into payload so downstream logic can reuse candidate/options/prompt
+              // eslint-disable-next-line no-param-reassign
+              payload.candidates = json.candidates;
+              // copy options/prompt if present
+              // eslint-disable-next-line no-param-reassign
+              payload.options = payload.options || json.options;
+              // eslint-disable-next-line no-param-reassign
+              payload.prompt = payload.prompt || json.prompt;
+            } else if (json?.candidate && typeof json.candidate === 'object') {
+              // single candidate returned from API
+              items = [json.candidate];
+              // reflect into payload for consistency
+              // eslint-disable-next-line no-param-reassign
+              payload.candidate = json.candidate;
+            } else {
+              items = [];
+            }
 
             console.log('search :=====', items);
-      
-        // Check if any items not found then show notification and return   
-        if (!items || items.length === 0) {
+
+            // If payload contains multiple explicit candidates, prompt user to choose
+            if (payload?.candidates && Array.isArray(payload.candidates) && payload.candidates.length > 1) {
+              const opts = payload.options && Array.isArray(payload.options)
+                ? payload.options
+                : payload.candidates.map((c: any) => c.brand || c.productName || c.name || String(c));
+
+              const prompt = payload.prompt || `Multiple brands found: ${opts.map((o: any, i: number) => `${i + 1}. ${o}`).join(', ')}. Which brand do you want?`;
+
+              deps.speak?.(prompt);
+              deps.setNotificationMessage(prompt);
+              deps.setNotificationType('info');
+              deps.setShowNotification(true);
+              setTimeout(() => deps.setShowNotification(false), 8000);
+              return;
+            }
+
+            // If payload contains a single explicit candidate, use it as the product
+            if (payload?.candidate && typeof payload.candidate === 'object') {
+              // normalize items array so downstream code can use same logic
+              // eslint-disable-next-line no-param-reassign
+              // prefer candidate over API results when candidate provided
+              // keep candidate shape as-is; later code reads product.productId or product.id
+              // so candidate fields should map correctly
+              // @ts-ignore
+              items.splice(0, items.length, payload.candidate);
+            }
+
+            // Check if any items not found then show notification and return
+            if (!items || items.length === 0) {
          // deps.setNotificationMessage('Product not found');
          // deps.setNotificationType('info');
           //deps.setShowNotification(true);
