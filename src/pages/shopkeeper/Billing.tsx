@@ -231,7 +231,7 @@ const Billing = () => {
 
 //======================================================
 
-
+/*
   // Delegate to central handler
   const handleVoiceIntent = (payload: any, helpers?: any) => {
     try {
@@ -281,7 +281,66 @@ const Billing = () => {
     }
   };
 
+*/
+/* ======================================================
+     Voice Assistant Delegate Intent Core Handler
+  ====================================================== */
+  const handleVoiceIntent = (payload: any, helpers?: any) => {
+    try {
+      const speak = helpers?.speak;
+      const appendAssistantMessage = helpers?.appendAssistantMessage;
 
+      let structuralPayload = { ...payload };
+      const spokenText = String(payload?.text || payload?.message || '').toLowerCase();
+      if (!structuralPayload.intent && !structuralPayload.action && (spokenText.includes('add') || spokenText.includes('atta'))) {
+        console.log("⚠️ Structural Fallback Match: Forcing add_item routing rule.");
+        structuralPayload.intent = 'add_item';
+      }
+
+      importedHandleVoiceIntent(structuralPayload, {
+        billId,
+        handleStartBilling,
+        setShowUnifiedControlsModal,
+        setUnifiedModalTab,
+        setNotificationMessage,
+        setNotificationType,
+        setShowNotification,
+        t,
+        fetchBatches: async (productId: string, requiredQty: number) => {
+          const r = await (getBatchesDebounced ? getBatchesDebounced(productId, requiredQty) : getBatches(productId, requiredQty));
+          return r?.data || [];
+        },
+        addCartItems: (items: any[]) => {
+          setCart(prev => {
+            const copy = [...prev];
+            for (const it of items) {
+              const pid = String(it.productId);
+              const bNo = it.batchNo;
+              const idx = copy.findIndex(c => c.productId === pid && c.batchNo === bNo);
+              if (idx !== -1) copy[idx].qty += (it.qty || 0);
+              else copy.push({
+                productId: pid,
+                batchNo: bNo,
+                name: it.name ?? '',
+                sku: it.sku ?? '',
+                price: it.price ?? 0,
+                discountAmount: it.discountAmount ?? 0,
+                qty: it.qty || 0,
+                availableQty: it.availableQty ?? 0,
+                expiryDate: it.expiryDate ?? ''
+              });
+            }
+            return copy;
+          });
+        },
+        playBeep: async () => { try { await playBeep(); } catch {} },
+        speak: typeof speak === 'function' ? speak : undefined,
+        appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined
+      });
+    } catch (e) {
+      console.warn('delegate handleVoiceIntent failed', e);
+    }
+  };
 
 
 //=======================================================

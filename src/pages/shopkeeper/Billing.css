@@ -771,3 +771,699 @@
   background: white;
   padding: 1rem !important;
 }
+
+
+/* Modern Billing Page Styles */
+
+:root {
+  --primary-color: #2563eb;
+  --primary-dark: #1e40af;
+  --primary-light: #3b82f6;
+  --success-color: #10b981;
+  --danger-color: #ef4444;
+  --warning-color: #f59e0b;
+  --info-color: #0ea5e9;
+  --neutral-50: #f9fafb;
+  --neutral-100: #f3f4f6;
+  --neutral-200: #e5e7eb;
+  --neutral-300: #d1d5db;
+  --neutral-400: #9ca3af;
+  --neutral-500: #6b7280;
+  --neutral-600: #4b5563;
+  --neutral-700: #374151;
+  --neutral-800: #1f2937;
+  --neutral-900: #111827;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Page Container */
+.billing-page-container {
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  min-height: 100vh;
+  padding-bottom: 2rem;
+}
+
+/* Content Container */
+.billing-content {
+  padding: 2rem 1rem;
+}
+
+/* Main Card */
+.billing-main-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  border: 1px solid var(--neutral-200);
+}
+
+/* Header Section */
+.billing-header-section {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  padding: 2rem 1.5rem;
+  color: white;
+}
+
+.billing-title-area h5 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.billing-badge {
+  font-size: 0.875rem !important;
+  padding: 0.5rem 1rem !important;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Body Section */
+.billing-body {
+  padding: 2rem 1.5rem;
+}
+
+/* Barcode Input */
+.barcode-input-group {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.barcode-input-group .form-control {
+  border-radius: 8px;
+  border: 2px solid var(--neutral-200);
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  transition: var(--transition-normal);
+}
+
+.barcode-input-group .form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  outline: none;
+}
+
+/* Cart Table */
+.cart-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.cart-table thead {
+  background-color: var(--neutral-50);
+  border-bottom: 2px solid var(--neutral-200);
+}
+
+.cart-table thead th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 700;
+  color: var(--neutral-700);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cart-table tbody tr {
+  border-bottom: 1px solid var(--neutral-200);
+  transition: var(--transition-normal);
+}
+
+.cart-table tbody tr:hover {
+  background-color: var(--neutral-50);
+}
+
+.cart-table tbody td {
+  padding: 1rem;
+  color: var(--neutral-700);
+  font-size: 0.95rem;
+}
+
+.cart-table-cell-item {
+  font-weight: 600;
+  color: var(--neutral-900);
+}
+
+.cart-table-cell-price {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.cart-table-cell-discount {
+  color: var(--warning-color);
+  font-weight: 600;
+}
+
+.qty-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--neutral-100);
+  border-radius: 6px;
+  padding: 0.25rem;
+}
+
+.qty-control button {
+  border: none;
+  background: white;
+  color: var(--primary-color);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: var(--transition-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qty-control button:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.qty-display {
+  min-width: 2rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.qty-available {
+  font-size: 0.8rem;
+  color: var(--neutral-500);
+  margin-left: 0.5rem;
+}
+
+/* Summary Section */
+.summary-section {
+  background: var(--neutral-50);
+  border-radius: 8px;
+  padding: 1.5rem;
+  border-left: 4px solid var(--primary-color);
+  margin-top: 1.5rem;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.summary-row.total {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--neutral-200);
+}
+
+.summary-row-label {
+  color: var(--neutral-600);
+}
+
+.summary-row-value {
+  font-weight: 600;
+  color: var(--neutral-900);
+}
+
+.summary-row.discount .summary-row-value {
+  color: var(--warning-color);
+}
+
+.summary-row.total .summary-row-value {
+  color: var(--success-color);
+  font-size: 1.25rem;
+}
+
+/* Buttons */
+.btn-custom {
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: var(--transition-normal);
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.btn-primary-custom {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary-custom:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-success-custom {
+  background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.btn-success-custom:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-danger-custom {
+  background: linear-gradient(135deg, var(--danger-color) 0%, #dc2626 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.btn-danger-custom:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-sm-custom {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+
+/* Modal Styles */
+.modal-header-custom {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  color: white;
+  border: none;
+  padding: 1.5rem;
+}
+
+.modal-header-custom .btn-close {
+  filter: brightness(0) invert(1);
+}
+
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 2px solid var(--neutral-200);
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: none;
+  color: var(--neutral-600);
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: var(--transition-normal);
+  font-size: 0.95rem;
+}
+
+.tab-btn:hover {
+  color: var(--primary-color);
+}
+
+.tab-btn.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* Form Styles */
+.form-group-custom {
+  margin-bottom: 1.5rem;
+}
+
+.form-label-custom {
+  font-weight: 600;
+  color: var(--neutral-700);
+  margin-bottom: 0.5rem;
+  display: block;
+  font-size: 0.95rem;
+}
+
+.form-control-custom {
+  border: 2px solid var(--neutral-200);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  transition: var(--transition-normal);
+  background-color: white;
+}
+
+.form-control-custom:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  outline: none;
+}
+
+/* Info Boxes */
+.info-box {
+  background: var(--neutral-50);
+  border-left: 4px solid var(--info-color);
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.info-box.success {
+  background: rgba(16, 185, 129, 0.05);
+  border-left-color: var(--success-color);
+}
+
+.info-box.warning {
+  background: rgba(245, 158, 11, 0.05);
+  border-left-color: var(--warning-color);
+}
+
+.info-box.danger {
+  background: rgba(239, 68, 68, 0.05);
+  border-left-color: var(--danger-color);
+}
+
+.info-box-text {
+  margin: 0;
+  color: var(--neutral-700);
+  font-size: 0.9rem;
+}
+
+/* Total Section */
+.billing-total-section {
+  text-align: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%);
+  border-top: 2px solid var(--success-color);
+}
+
+.billing-total-label {
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.billing-total-badge {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  padding: 0.75rem 1.5rem !important;
+  font-size: 1.5rem !important;
+  border-radius: 6px;
+  margin-left: 0.5rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Badges */
+.badge-custom {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.badge-primary {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary-color);
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning-color);
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
+}
+
+/* Notification Alert */
+.notification-alert {
+  border-radius: 8px;
+  border: none;
+  box-shadow: var(--shadow-lg);
+}
+
+.notification-alert.success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border-left: 4px solid var(--success-color);
+  color: var(--success-color);
+}
+
+.notification-alert.danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);
+  border-left: 4px solid var(--danger-color);
+  color: var(--danger-color);
+}
+
+.notification-alert.warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+  border-left: 4px solid var(--warning-color);
+  color: var(--warning-color);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .billing-header-section {
+    padding: 1.5rem 1rem;
+  }
+
+  .billing-body {
+    padding: 1.5rem 1rem;
+  }
+
+  .summary-section {
+    padding: 1rem;
+  }
+
+  .cart-table thead th,
+  .cart-table tbody td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .billing-title-area h5 {
+    font-size: 1.1rem;
+  }
+
+  .tab-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .btn-custom {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .billing-page-container {
+    padding-bottom: 1rem;
+  }
+
+  .billing-content {
+    padding: 1rem 0.5rem;
+  }
+
+  .billing-main-card {
+    border-radius: 8px;
+  }
+
+  .billing-header-section {
+    padding: 1.25rem 0.75rem;
+  }
+
+  .billing-body {
+    padding: 1.25rem 0.75rem;
+  }
+
+  .summary-section {
+    padding: 0.75rem;
+  }
+
+  .cart-table {
+    font-size: 0.75rem;
+  }
+
+  .cart-table thead th {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .cart-table tbody td {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .qty-control button {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.75rem;
+  }
+
+  .tab-nav {
+    gap: 0.25rem;
+  }
+
+  .tab-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .modal-header-custom {
+    padding: 1rem;
+  }
+
+  .billing-title-area h5 {
+    font-size: 1rem;
+  }
+
+  .info-box {
+    padding: 0.75rem;
+  }
+
+  .info-box-text {
+    font-size: 0.85rem;
+  }
+}
+
+/* Animations */
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.billing-main-card {
+  animation: slideInDown 0.3s ease-out;
+}
+
+/* Loading Spinner */
+.spinner-custom {
+  border: 3px solid var(--neutral-200);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--neutral-500);
+}
+
+.empty-state-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state-text {
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Wallet Card */
+.wallet-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border: 2px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.wallet-card-title {
+  font-weight: 700;
+  color: var(--success-color);
+  margin-bottom: 0.5rem;
+}
+
+.wallet-card-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--success-color);
+}
+
+/* Split Button */
+.split-btn {
+  background: linear-gradient(135deg, var(--info-color) 0%, #0284c7 100%);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-normal);
+  font-size: 0.85rem;
+}
+
+.split-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+
+
+
+/* ======================================================
+   Voice UI Conversation Log Contrast Fixes
+   ====================================================== */
+
+/* 1. ASSISTANT BUBBLE (Enhanced Contrast) */
+.voice-assistant-log-message, 
+[class*="assistant-message"],
+.assistant-bubble {
+  background-color: #d4edda !important; /* Rich, deep mint background (not washed out) */
+  border-left: 4px solid #198754 !important; /* Solid success green accent bar */
+  color: #0f5132 !important;             /* Dark forest green text for high readability */
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* 2. USER BUBBLE (Clean, Dark, Highly Readable Text) */
+[class*="user-message"],
+.user-bubble {
+  background-color: #e9ecef !important; /* Premium soft gray background */
+  border-right: 4px solid #495057 !important; /* Charcoal anchor bar on the right */
+  color: #212529 !important;             /* High contrast pitch-black/charcoal text */
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-weight: 500;
+  text-align: right;                     /* Aligns user speech to the right side */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}

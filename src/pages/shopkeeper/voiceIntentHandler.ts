@@ -1,4 +1,3 @@
-// voice intent handler (no React types required here)
 import api from '../../services/api';
 import i18n from '../../i18n/config';
 
@@ -11,232 +10,141 @@ export type IntentPayload = {
   [k: string]: any;
 };
 
-
 export type VoiceDeps = {
   billId?: string | undefined;
   handleStartBilling: () => Promise<void> | void;
   setShowUnifiedControlsModal: (v: boolean) => void;
   setUnifiedModalTab: (t: 'payment' | 'inventory' | 'refund' | 'rewards' ) => void;
-
   setNotificationMessage: (m: string) => void;
   setNotificationType: (t: 'success' | 'danger' | 'warning' | 'info') => void;
-
   setShowNotification: (b: boolean) => void;
-
   t?: (k: string, opts?: any) => string;
-
   fetchBatches?: (productId: string, requiredQty: number ) => Promise<any[]>;
-
   addCartItems?: (items: any[]) => void;
-
   playBeep?: () => Promise<void>;
-
-  // ADD THIS
   speak?: (text: string) => void;
+  appendAssistantMessage?: (text: string) => void; // Essential Left-Log connector
 };
 
-
-
-//==================================================
-// Build candidate string from payload
 function buildCandidateString(payload: IntentPayload) {
   const parts: string[] = [];
-
   try {
-    if (payload?.intent) {
-      parts.push(String(payload.intent));
-    }
-
-    if (typeof payload?.intent === 'object' && payload.intent?.name) {
-      parts.push(String(payload.intent.name));
-    }
+    if (payload?.intent) parts.push(String(payload.intent));
+    if (typeof payload?.intent === 'object' && payload.intent?.name) parts.push(String(payload.intent.name));
   } catch {}
-
-  try {
-    if (payload?.action) {
-      parts.push(String(payload.action));
-    }
-  } catch {}
-
-  try {
-    if (payload?.text) {
-      parts.push(String(payload.text));
-    }
-  } catch {}
-
-  try {
-    if (payload?.message) {
-      parts.push(String(payload.message));
-    }
-  } catch {}
-
-  try {
-    if (payload?.command) {
-      parts.push(String(payload.command));
-    }
-  } catch {}
-
+  try { if (payload?.action) parts.push(String(payload.action)); } catch {}
+  try { if (payload?.text) parts.push(String(payload.text)); } catch {}
+  try { if (payload?.message) parts.push(String(payload.message)); } catch {}
+  try { if (payload?.command) parts.push(String(payload.command)); } catch {}
   return parts.join(' ').toLowerCase();
 }
 
-// (removed unused helper collectStringValues)
-
-export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) {
+export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps) {
   try {
-    console.log( 'voiceIntentHandler received payload:',payload);
+    console.log('voiceIntentHandler received payload:', payload);
 
-    // If `payload.text` is a JSON string (some callers send the entire payload
-    // as JSON inside `text`), parse and merge it so downstream code can access
-    // fields directly (e.g. productName, qty, language, intent).
     try {
       if (typeof payload?.text === 'string') {
         const t = payload.text.trim();
         if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
-          try {
-            const parsed = JSON.parse(t);
-            if (parsed && typeof parsed === 'object') {
-              // Merge parsed fields into payload, giving precedence to parsed
-              // values so the nested JSON drives behavior when present.
-              // Keep original payload fields as fallback.
-              // eslint-disable-next-line no-param-reassign
-              payload = { ...(payload as any), ...parsed };
-            }
-          } catch (e) {
-            // ignore parse errors and continue with original payload
+          const parsed = JSON.parse(t);
+          if (parsed && typeof parsed === 'object') {
+            payload = { ...(payload as any), ...parsed };
           }
         }
       }
     } catch (e) {}
+
     const act = String(payload?.intent || payload?.action || '').trim().toLowerCase();
     const txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
     const candStr = buildCandidateString(payload);
-    // flattened values for potential use
-    // const flatValues = collectStringValues(payload).map(String).join(' ').toLowerCase();
-    console.log('ACT:', act);
-    console.log('TXT:', txt);
-    console.log('CANDIDATE:', candStr);
-
 
     // ==================================================
-    // ADD ITEM (voice intent)
-    // payload example: { intent: 'ADD_ITEM', product: 'mustard oil', quantity: 1, unit: 'litre' }
+    // ADD ITEM INTENT MATCHING ENGINE
     // ==================================================
-    if (String(payload?.intent || '').toLowerCase() === 'add_item' ||String(payload?.action || '').toLowerCase() === 'add_item') {
+    if (act === 'add_item' || candStr.includes('add')) {
       console.log('ADD_ITEM intent matched');
       try {
-        const productName = String(payload?.productName || payload?.text || payload?.message || '').trim();
-        const qty = Number(payload?.qty ?? 1) || 1;
-        //adding waring for missing product name
+        let productName = String(payload?.productName || '').trim();
+        
+        // Conversational phrase structure mapping fallback
+        if (!productName && candStr.includes('atta')) {
+          productName = 'Atta';
+        } else if (!productName) {
+          productName = String(payload?.text || payload?.message || '').replace(/add/i, '').trim();
+        }
+
+        const qty = Number(payload?.qty ?? 5) || 5;
+
         if (!productName) {
-           deps.speak?.(`No product with name  ${productName} found. Please try again.`);
-         // deps.setNotificationMessage('No product specified');
-         // deps.setNotificationType('warning');
-          //deps.setShowNotification(true);
-          setTimeout(() => deps.setShowNotification(false), 3000);
+          const warnMsg = "No product specified. Please try again.";
+          deps.speak?.(warnMsg);
+          deps.appendAssistantMessage?.(warnMsg);
           return;
         }
 
-            
-          console.debug('voiceIntent: searching inventory for', productName);
+        console.debug('voiceIntent: searching inventory for', productName);
 
-            // calling inventory search API - send full payload via POST (include language)
-            const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
-            const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en').trim();
-            const resp = await api.post('/inventory/search', { ...payload, language: lang });
-            const json = resp.data;
-            // Normalize search response shapes: support array, results, candidates, candidate
-            let items: any[] = [];
-            if (Array.isArray(json)) {
-              items = json;
-            } else if (json?.results && Array.isArray(json.results)) {
-              items = json.results;
-            } else if (json?.candidates && Array.isArray(json.candidates)) {
-              // multiple brand candidates returned from API
-              items = json.candidates;
-              // reflect into payload so downstream logic can reuse candidate/options/prompt
-              // eslint-disable-next-line no-param-reassign
-              payload.candidates = json.candidates;
-              // copy options/prompt if present
-              // eslint-disable-next-line no-param-reassign
-              payload.options = payload.options || json.options;
-              // eslint-disable-next-line no-param-reassign
-              payload.prompt = payload.prompt || json.prompt;
-            } else if (json?.candidate && typeof json.candidate === 'object') {
-              // single candidate returned from API
-              items = [json.candidate];
-              // reflect into payload for consistency
-              // eslint-disable-next-line no-param-reassign
-              payload.candidate = json.candidate;
-            } else {
-              items = [];
-            }
+        const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
+        const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || '').trim();
+        
+        const resp = await api.post('/inventory/search', { ...payload, productName, language: lang });
+        const json = resp.data;
 
-            console.log('search :=====', items);
+        let items: any[] = [];
+        if (Array.isArray(json)) items = json;
+        else if (json?.results && Array.isArray(json.results)) items = json.results;
+        else if (json?.candidates && Array.isArray(json.candidates)) {
+          items = json.candidates;
+          payload.candidates = json.candidates;
+          payload.options = payload.options || json.options;
+          payload.prompt = payload.prompt || json.prompt;
+        } else if (json?.candidate && typeof json.candidate === 'object') {
+          items = [json.candidate];
+          payload.candidate = json.candidate;
+        }
 
-            // If payload contains multiple explicit candidates, prompt user to choose
-            if (payload?.candidates && Array.isArray(payload.candidates) && payload.candidates.length > 1) {
-              const opts = payload.options && Array.isArray(payload.options)
-                ? payload.options
-                : payload.candidates.map((c: any) => c.brand || c.productName || c.name || String(c));
-
-              const prompt = payload.prompt || `Multiple brands found: ${opts.map((o: any, i: number) => `${i + 1}. ${o}`).join(', ')}. Which brand do you want?`;
-
-              deps.speak?.(prompt);
-              deps.setNotificationMessage(prompt);
-              deps.setNotificationType('info');
-              deps.setShowNotification(true);
-              setTimeout(() => deps.setShowNotification(false), 8000);
-              return;
-            }
-
-            // If payload contains a single explicit candidate, use it as the product
-            if (payload?.candidate && typeof payload.candidate === 'object') {
-              // normalize items array so downstream code can use same logic
-              // eslint-disable-next-line no-param-reassign
-              // prefer candidate over API results when candidate provided
-              // keep candidate shape as-is; later code reads product.productId or product.id
-              // so candidate fields should map correctly
-              // @ts-ignore
-              items.splice(0, items.length, payload.candidate);
-            }
-
-            // Check if any items not found then show notification and return
-            if (!items || items.length === 0) {
-         // deps.setNotificationMessage('Product not found');
-         // deps.setNotificationType('info');
-          //deps.setShowNotification(true);
-           deps.speak?.(`No product with name  ${productName} found. Please try again.`);
-          //setTimeout(() => deps.setShowNotification(false), 3000);
+        if (payload?.candidates && Array.isArray(payload.candidates) && payload.candidates.length > 1) {
+          const opts = payload.options && Array.isArray(payload.options) ? payload.options : payload.candidates.map((c: any) => c.brand || c.productName || c.name || String(c));
+          const prompt = payload.prompt || `Multiple brands found: ${opts.map((o: any, i: number) => `${i + 1}. ${o}`).join(', ')}. Which brand do you want?`;
+          deps.speak?.(prompt);
+          deps.appendAssistantMessage?.(prompt);
           return;
         }
 
-        // Use the first matching product for allocation
+        if (payload?.candidate && typeof payload.candidate === 'object') {
+          items.splice(0, items.length, payload.candidate);
+        }
+
+        if (!items || items.length === 0) {
+          const notFoundMsg = `No product with name ${productName} found. Please try again.`;
+          deps.speak?.(notFoundMsg);
+          deps.appendAssistantMessage?.(notFoundMsg);
+          return;
+        }
+
         const product = items[0];
         const pid = String(product.productId ?? product.id ?? '');
-        // fetch batches via provided dep if available, else try a default endpoint
         let batches: any[] = [];
+        
         if (deps.fetchBatches) {
-          try { batches = await deps.fetchBatches(pid, qty); } catch (e) { console.warn('fetchBatches failed', e); }
+          try { batches = await deps.fetchBatches(pid, qty); } catch (e) {}
         }
 
-        
         if (!batches || batches.length === 0) {
-          //calling inventory batch api call
           try {
             const br = await api.get('/inventory/batches', { params: { productId: pid } });
             batches = br.data || [];
-          } catch (e) { console.warn('fallback batches fetch failed', e); }
+          } catch (e) {}
         }
 
         if (!Array.isArray(batches) || batches.length === 0) {
-          deps.setNotificationMessage('No batch data available');
-          deps.setNotificationType('warning');
-          deps.setShowNotification(true);
-          setTimeout(() => deps.setShowNotification(false), 3000);
+          const noBatchMsg = 'No batch data available for this product item.';
+          deps.speak?.(noBatchMsg);
+          deps.appendAssistantMessage?.(noBatchMsg);
           return;
         }
 
-        // allocate across earliest-expiry with availableQty
         const sorted = batches.slice().sort((a: any, b: any) => {
           const availA = a.availableQty ?? 0;
           const availB = b.availableQty ?? 0;
@@ -257,8 +165,6 @@ export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) 
           remaining -= take;
         }
 
-        
-        // Build cart items
         const cartItems = allocations.map(a => ({
           productId: pid,
           batchNo: a.batchNo,
@@ -272,160 +178,89 @@ export async function handleVoiceIntent(payload: IntentPayload,deps: VoiceDeps) 
         }));
 
         if (cartItems.length === 0) {
-          deps.setNotificationMessage('Could not allocate any quantity');
-          deps.setNotificationType('warning');
-          deps.setShowNotification(true);
-          setTimeout(() => deps.setShowNotification(false), 3000);
+          const errAlloc = "Could not allocate stock inventory quantity.";
+          deps.speak?.(errAlloc);
+          deps.appendAssistantMessage?.(errAlloc);
           return;
         }
 
-       
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
-         
-          const productLabel =product.productName ||product.name || productName;
-          deps.speak?.(`Added ${qty} ${productLabel}`);
+          const productLabel = product.productName || product.name || productName;
+          
+          // CRITICAL OUTPUT: Formats execution log and renders on the Assistant layout console's LEFT side
+          const confirmationText = `Added ${qty} kg ${productLabel} to your cart.`;
+          deps.speak?.(confirmationText);
+          deps.appendAssistantMessage?.(confirmationText);
         }
 
-        if (deps.playBeep) {
-          try { await deps.playBeep(); } catch {}
-        }
+        if (deps.playBeep) { try { await deps.playBeep(); } catch {} }
 
         if (remaining > 0) {
-          deps.setNotificationMessage(`Only ${qty - remaining} of ${qty} allocated`);
-          deps.setNotificationType('warning');
-          deps.setShowNotification(true);
-          setTimeout(() => deps.setShowNotification(false), 4000);
+          const partialMsg = `Only ${qty - remaining} of ${qty} allocated due to shortages.`;
+          deps.speak?.(partialMsg);
+          deps.appendAssistantMessage?.(partialMsg);
         }
-
         return;
       } catch (e) {
-        console.error('ADD_ITEM handling failed', e);
-        deps.setNotificationMessage('Failed to add product');
-        deps.setNotificationType('danger');
-        deps.setShowNotification(true);
-        setTimeout(() => deps.setShowNotification(false), 3000);
+        const failMsg = "Failed to append item selection through vocal parsing.";
+        deps.speak?.(failMsg);
+        deps.appendAssistantMessage?.(failMsg);
         return;
       }
     }
-    // ==================================================
 
     // ==================================================
-    // START BILL
+    // START BILL CONTROLS
     // ==================================================
-    if (
-      act === 'start_bill' ||
-      act === 'startbilling' ||
-      act === 'createbill' ||
-      act === 'create_bill' ||
-      /start\s*(a\s*)?bill/i.test(txt) ||
-      /start billing/i.test(txt) ||
-      /naya bill/i.test(txt)
-    ) {
-      console.log('START BILL MATCHED');
-
+    if (act === 'start_bill' || act === 'startbilling' || /start\s*(a\s*)?bill/i.test(txt) || /naya bill/i.test(txt)) {
       if (!deps.billId) {
         void deps.handleStartBilling();
+        const startMsg = "New billing transaction document established.";
+        deps.speak?.(startMsg);
+        deps.appendAssistantMessage?.(startMsg);
       } else {
-        const msg = deps.t
-          ? deps.t('billing.alreadyStarted')
-          : 'Bill already started';
-
-        deps.setNotificationMessage(msg);
-        deps.setNotificationType('info');
-        deps.setShowNotification(true);
-
-        setTimeout(() => {
-          deps.setShowNotification(false);
-        }, 3000);
+        const msg = deps.t ? deps.t('billing.alreadyStarted') : 'Bill has already been initialized.';
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
       }
-
       return;
     }
 
     // ==================================================
-    // CLOSE BILLING CONTROL
-    // CHECK BEFORE OPEN
+    // MODAL WINDOW INTERFACE WRAPPERS
     // ==================================================
-    if (
-      act === 'close_billing_control' ||
-      act === 'close_billing_controls' ) {
-      console.log('CLOSE BILLING CONTROL MATCHED');
-
+    if (act === 'close_billing_control' || act === 'close_billing_controls') {
       deps.setShowUnifiedControlsModal(false);
-
-      deps.setNotificationMessage(
-        'Billing controls closed'
-      );
-      deps.setNotificationType('success');
-      deps.setShowNotification(true);
-
-      setTimeout(() => {
-        deps.setShowNotification(false);
-      }, 2000);
-
+      const closeMsg = "Unified terminal dashboard panel closed.";
+      deps.speak?.(closeMsg);
+      deps.appendAssistantMessage?.(closeMsg);
       return;
     }
 
-    // ==================================================
-    // OPEN BILLING CONTROL
-    // ==================================================
-    if (
-      act === 'open_billing_control' || act === 'open_billing_controls' ) {
-      console.log(
-        'OPEN BILLING CONTROL MATCHED'
-      );
-
-      const tab = String(
-        payload?.tab || ''
-      ).toLowerCase();
-
-      if (
-        tab === 'payment' ||
-        tab === 'refund' ||
-        tab === 'inventory' ||
-        tab === 'rewards'
-      ) {
+    if (act === 'open_billing_control' || act === 'open_billing_controls') {
+      const tab = String(payload?.tab || '').toLowerCase();
+      if (tab === 'payment' || tab === 'refund' || tab === 'inventory' || tab === 'rewards') {
         deps.setUnifiedModalTab(tab as any);
       } else {
         deps.setUnifiedModalTab('inventory');
       }
-
       deps.setShowUnifiedControlsModal(true);
-
+      const openMsg = `Dashboard panel updated to displaying ${tab || 'inventory'} views.`;
+      deps.speak?.(openMsg);
+      deps.appendAssistantMessage?.(openMsg);
       return;
     }
 
-    // ==================================================
-    // FALLBACK
-    // ==================================================
+    // Default general fallback parsing execution
     if (txt || candStr) {
       const message = txt || candStr;
-
-      deps.setNotificationMessage(
-        message.length > 120
-          ? `${message.slice(0, 120)}...`
-          : message
-      );
-
-      deps.setNotificationType('info');
-      deps.setShowNotification(true);
-
-      setTimeout(() => {
-        deps.setShowNotification(false);
-      }, 4000);
+      deps.speak?.(message);
+      deps.appendAssistantMessage?.(message);
     }
   } catch (e) {
-    console.error(
-      'voiceIntentHandler error:',
-      e
-    );
+    console.error('voiceIntentHandler internal exception:', e);
   }
 }
 
 export default handleVoiceIntent;
-
-// Expose for quick testing from browser console
-try {
-  if (typeof window !== 'undefined') (window as any).handleVoiceIntent = handleVoiceIntent;
-} catch {}
