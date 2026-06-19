@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Button } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import { sendMessage } from "../services/aiService";
+import "../styles/Billing.css";
 
 type IntentPayload = { intent?: string; action?: string; text?: string; [k: string]: any };
 
@@ -29,7 +30,6 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
   const mediaActivatedRef = useRef(false);
   const mediaSourceRef = useRef<{ ctx: AudioContext; src: AudioBufferSourceNode; gain: GainNode } | null>(null);
   const recognitionRef = useRef<any>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const autoSendRef = useRef(true);
   
   const listeningRef = useRef(listening);
@@ -119,7 +119,6 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
     } catch (e) {}
   };
 
-  // State log mutation function made explicit to external event streams
   const appendAssistantMessage = (text: string) => {
     setMessages((s) => [...s, { from: 'assistant', text }]);
   };
@@ -131,7 +130,6 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
     setError(null);
     setTranscript(''); 
 
-    // Visual placement tracking code: Spoken query directly appended onto the RIGHT side layout
     setMessages((s) => [...s, { from: 'user', text: userText }]);
     
     try {
@@ -173,58 +171,68 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
   return (
     <>
       {collapsed ? (
-        <div style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 1600 }}>
-          <Button onClick={() => setCollapsed(false)} style={{ borderRadius: 20, padding: '8px 10px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
-            🎙️ Voice
+        <div className="voice-floating-trigger">
+          <Button onClick={() => setCollapsed(false)}>
+            🎙️ Voice Terminal
           </Button>
         </div>
       ) : (
-        <div style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 1600, width: 360, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'transform 240ms ease, opacity 240ms ease', opacity: visible ? 1 : 0 }}>
-          <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 10px 30px rgba(22,27,34,0.12)', background: 'white', border: '1px solid rgba(15,20,25,0.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'linear-gradient(90deg,#f8fafc,#ffffff)', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+        <div 
+          className="voice-terminal-window"
+          style={{ 
+            transform: visible ? 'translateY(0)' : 'translateY(12px)', 
+            opacity: visible ? 1 : 0 
+          }}
+        >
+          <div className="voice-terminal-card">
+            
+            <div className="voice-terminal-header">
               <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>Voice Terminal Logging</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>Realtime cart status display</div>
+                <div className="voice-terminal-title">Voice Terminal Logging</div>
+                <div className="voice-terminal-subtitle">Realtime operations stream</div>
               </div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <Button size="sm" variant={listening ? 'danger' : 'primary'} onClick={() => (listening ? stopListening() : startListening())} style={{ borderRadius: 8 }}>
+              <div className="voice-terminal-header-controls">
+                <Button 
+                  size="sm" 
+                  variant={listening ? 'danger' : 'primary'} 
+                  onClick={() => (listening ? stopListening() : startListening())}
+                >
                   {listening ? 'Stop' : 'Listen'}
                 </Button>
-                <Button size="sm" variant="link" onClick={() => setCollapsed(true)} style={{ color: '#6b7280', textDecoration: 'none' }}>—</Button>
+                <Button 
+                  size="sm" 
+                  variant="link" 
+                  onClick={() => setCollapsed(true)} 
+                  className="voice-terminal-collapse-btn"
+                >
+                  —
+                </Button>
               </div>
             </div>
 
-            <div style={{ padding: 12 }}>
-              <div style={{ borderRadius: 8, padding: 8, minHeight: 48, background: '#fff', border: '1px solid rgba(0,0,0,0.06)', whiteSpace: 'pre-wrap', color: '#111827', fontSize: 13 }}>
-                {transcript || 'Awaiting live vocal audio input sequence...'}
+            <div className="voice-terminal-body">
+              <div className="voice-transcript-box">
+                {transcript || (processing ? 'Processing operation routing...' : 'Awaiting live voice input sequence...')}
               </div>
 
-              <div style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+              <div className="voice-history-stream">
                 {messages.length === 0 ? (
-                  <div style={{ fontSize: 13, color: '#6b7280' }}>No verification operations processed yet.</div>
+                  <div className="voice-empty-log">No execution records in current cycle.</div>
                 ) : (
                   messages.map((m, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: m.from === 'user' ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                      <div style={{ 
-                        background: m.from === 'user' ? '#e9ecef' : '#d4edda', 
-                        color: m.from === 'user' ? '#212529' : '#0f5132', 
-                        borderLeft: m.from === 'assistant' ? '4px solid #198754' : 'none',
-                        borderRight: m.from === 'user' ? '4px solid #495057' : 'none',
-                        padding: '8px 12px', 
-                        borderRadius: 12, 
-                        maxWidth: '78%', 
-                        whiteSpace: 'pre-wrap', 
-                        fontSize: 13, 
-                        lineHeight: 1.35,
-                        fontWeight: 500
-                      }}>
+                    <div 
+                      key={idx} 
+                      className="voice-bubble-wrapper"
+                      style={{ justifyContent: m.from === 'user' ? 'flex-end' : 'flex-start' }}
+                    >
+                      <div className={`voice-bubble ${m.from}`}>
                         {m.text}
                       </div>
                     </div>
                   ))
                 )}
               </div>
-              {error && (<div style={{ marginTop: 8, color: 'crimson', fontSize: 13 }}>{error}</div>)}
+              {error && <div className="voice-runtime-error">⚠️ {error}</div>}
             </div>
           </div>
         </div>

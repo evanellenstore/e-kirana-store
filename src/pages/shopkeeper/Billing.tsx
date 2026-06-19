@@ -50,7 +50,8 @@ import {
 
 import { AuthContext } from "../../auth/AuthContext";
 import { useTranslation } from "react-i18next";
-import "./Billing.css";
+
+import "../../styles/Billing.css";
 
 const Billing = () => {
   const { t } = useTranslation();
