@@ -17,6 +17,7 @@ export interface Product {
   loose?: boolean; // true = sold loose/bulk
   packetSize?: number;
   packetUnit?: string;
+  productSize?: number;
   
 }
 

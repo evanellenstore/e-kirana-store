@@ -76,7 +76,8 @@ const AdminProducts: React.FC = () => {
     externalBarcode: "",
     loose: false,
     packetSize: 0,
-    packetUnit: ""
+    packetUnit: "",
+    productSize: 0
   };
 
 
@@ -160,6 +161,7 @@ const AdminProducts: React.FC = () => {
     setFormData({
       ...productToEdit,
       loose: (productToEdit as any).loose ?? false,
+      productSize: (productToEdit as any).productSize ?? undefined,
       packetSize: (productToEdit as any).packetSize ?? undefined,
       packetUnit: (productToEdit as any).packetUnit ?? undefined
     } as Product);
@@ -214,7 +216,10 @@ const AdminProducts: React.FC = () => {
         price: product.price || 0,
         discountAmount: product.discountAmount || 0,
         status: product.status || "ACTIVE",
-        externalBarcode: product.externalBarcode || ""
+        externalBarcode: product.externalBarcode || "",
+        productSize: product.productSize || undefined,
+        packetSize: product.packetSize ?? undefined,
+        packetUnit: product.packetUnit ?? undefined
       });
 
       setBarcodeInput("");
@@ -565,18 +570,29 @@ const AdminProducts: React.FC = () => {
                     <span className="info-label">{t('products.brand')}</span>
                     <span className="info-value">{p.brandName || "N/A"}</span>
                   </div>
+
+{/*
                   <div className="admin-product-info-item">
                     <span className="info-label">{t('products.unit')}</span>
                     <span className="info-value">{p.unit || "N/A"}</span>
                   </div>
+*/}
+
                   <div className="admin-product-info-item">
                     <span className="info-label">{t('Is sold Loose?')}</span>
                     <span className="info-value">{p.loose ? 'Yes' : 'No'}</span>
                   </div>
-                  <div className="admin-product-info-item">
-                    <span className="info-label">{t('products.packet')}</span>
-                    <span className="info-value">{p.loose ? '-' : (p.packetSize ? `${p.packetSize} ${p.packetUnit || p.unit}` : 'N/A')}</span>
-                  </div>
+
+              <div className="admin-product-info-item">
+                 <span className="info-label">
+                  {p.loose ? t('products.size') : t('products.packet')}
+                </span>
+                <span className="info-value">
+                  {p.loose ? (p.productSize ? `${p.productSize} ${p.unit || ''}` : 'N/A') : (p.packetSize ? `${p.packetSize} ${p.packetUnit || ''}` : 'N/A') }
+                </span>
+             </div>
+
+
                 </div>
 
                 <div className="admin-product-pricing-section">
@@ -1089,20 +1105,22 @@ const AdminProducts: React.FC = () => {
             />
           </Form.Group>
 
-          {/* Unit */}
-          <Form.Group className="mb-3">
-            <Form.Label className="admin-product-form-label">{t('products.unit')} *</Form.Label>
-            <Form.Select
-              value={formData.unit}
-              onChange={e => setFormData({ ...formData, unit: e.target.value })}
-              className="admin-product-form-select"
-            >
-              <option value="">Select Product Unit</option>
-              {UNIT_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Form.Select>
-          </Form.Group>
+          {/* Unit — show only when sold loose */}
+          {formData.loose && (
+            <Form.Group className="mb-3">
+              <Form.Label className="admin-product-form-label">{t('products.unit')} *</Form.Label>
+              <Form.Select
+                value={formData.unit}
+                onChange={e => setFormData({ ...formData, unit: e.target.value })}
+                className="admin-product-form-select"
+              >
+                <option value="">Select Product Unit</option>
+                {UNIT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+          )}
 
           {/* Sold Loose Checkbox */}
           <Form.Group className="mb-3 d-flex align-items-center">
@@ -1115,13 +1133,27 @@ const AdminProducts: React.FC = () => {
             />
           </Form.Group>
 
+          {/* Product size/unit — only when sold loose */}
+          {formData.loose && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+              <Form.Group className="mb-3">
+                <Form.Label className="admin-product-form-label">{t('ProductSize')}</Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder={t('ProductSize')}
+                    value={formData.productSize ?? ''}
+                    onChange={e => setFormData({ ...formData, productSize: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  />
+              </Form.Group>
+            </div>
+          )}
           {/* Packet size/unit — only when not loose */}
           {!formData.loose && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <Form.Group className="mb-3">
                 <Form.Label className="admin-product-form-label">{t('PacketSize')}</Form.Label>
                 <Form.Control
-                  type="number"
+                  type="text"
                   placeholder={t('PacketSize')}
                   value={formData.packetSize ?? ''}
                   onChange={e => setFormData({ ...formData, packetSize: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
