@@ -26,6 +26,23 @@ interface Category {
   isActive: boolean;
 }
 
+const UNIT_OPTIONS = [
+  { value: 'G', label: 'Gram (G)' },
+  { value: 'KG', label: 'Kilogram (KG)' },
+  { value: 'MG', label: 'Milligram (MG)' },
+  { value: 'L', label: 'Liter (L)' },
+  { value: 'ML', label: 'Milliliter (ML)' },
+  { value: 'PC', label: 'Piece (PC)' },
+  { value: 'Packet', label: 'Packet' },
+  { value: 'Dozen', label: 'Dozen' }
+];
+
+const getUnitLabel = (u?: string | null) => {
+  if (!u) return 'None';
+  const found = UNIT_OPTIONS.find(opt => opt.value === u);
+  return found ? found.label : u;
+}
+
 const AdminProducts: React.FC = () => {
   const { t } = useTranslation();
   const [products, setProducts] = useState<Product[]>([]);
@@ -56,8 +73,12 @@ const AdminProducts: React.FC = () => {
     price: 0,
     discountAmount: 0,
     status: "ACTIVE",
-    externalBarcode: ""
+    externalBarcode: "",
+    loose: false,
+    packetSize: 0,
+    packetUnit: ""
   };
+
 
   const [formData, setFormData] = useState<Product>(emptyProduct);
   const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
@@ -136,7 +157,12 @@ const AdminProducts: React.FC = () => {
   const openModal = (product?: Product) => {
     setEditing(product || null);
     const productToEdit = product ?? emptyProduct;
-    setFormData(productToEdit);
+    setFormData({
+      ...productToEdit,
+      loose: (productToEdit as any).loose ?? false,
+      packetSize: (productToEdit as any).packetSize ?? undefined,
+      packetUnit: (productToEdit as any).packetUnit ?? undefined
+    } as Product);
     setInputMode("manual"); // Reset to manual when opening modal
     setBarcodeInput("");
     setScanError(null);
@@ -542,6 +568,14 @@ const AdminProducts: React.FC = () => {
                   <div className="admin-product-info-item">
                     <span className="info-label">{t('products.unit')}</span>
                     <span className="info-value">{p.unit || "N/A"}</span>
+                  </div>
+                  <div className="admin-product-info-item">
+                    <span className="info-label">{t('Is sold Loose?')}</span>
+                    <span className="info-value">{p.loose ? 'Yes' : 'No'}</span>
+                  </div>
+                  <div className="admin-product-info-item">
+                    <span className="info-label">{t('products.packet')}</span>
+                    <span className="info-value">{p.loose ? '-' : (p.packetSize ? `${p.packetSize} ${p.packetUnit || p.unit}` : 'N/A')}</span>
                   </div>
                 </div>
 
@@ -1058,13 +1092,58 @@ const AdminProducts: React.FC = () => {
           {/* Unit */}
           <Form.Group className="mb-3">
             <Form.Label className="admin-product-form-label">{t('products.unit')} *</Form.Label>
-            <Form.Control
-              placeholder={t('products.unit')}
+            <Form.Select
               value={formData.unit}
               onChange={e => setFormData({ ...formData, unit: e.target.value })}
-              className="admin-product-form-input"
+              className="admin-product-form-select"
+            >
+              <option value="">Select Product Unit</option>
+              {UNIT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          {/* Sold Loose Checkbox */}
+          <Form.Group className="mb-3 d-flex align-items-center">
+            <Form.Check
+              type="checkbox"
+              id="product-loose"
+              label={t('Is sold Loose?')}
+              checked={!!formData.loose}
+              onChange={e => setFormData({ ...formData, loose: e.target.checked })}
             />
           </Form.Group>
+
+          {/* Packet size/unit — only when not loose */}
+          {!formData.loose && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Form.Group className="mb-3">
+                <Form.Label className="admin-product-form-label">{t('PacketSize')}</Form.Label>
+                <Form.Control
+                  type="number"
+                  placeholder={t('PacketSize')}
+                  value={formData.packetSize ?? ''}
+                  onChange={e => setFormData({ ...formData, packetSize: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                />
+              </Form.Group>
+
+            <Form.Group className="mb-3">
+            <Form.Label className="admin-product-form-label">{t('PacketUnit')} *</Form.Label>
+            <Form.Select
+              value={formData.packetUnit}
+              onChange={e => setFormData({ ...formData, packetUnit: e.target.value })}
+              className="admin-product-form-select"
+            >
+              <option value="">Select Packet Unit</option>
+              {UNIT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+             
+            </div>
+          )}
 
           {/* Price */}
           <Form.Group className="mb-3">

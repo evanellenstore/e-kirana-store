@@ -160,6 +160,12 @@ const ProductList = () => {
           <Card.Title className="mt-2">{product.name || product.sku}</Card.Title>
           <Card.Text className="text-muted small flex-grow-1">
             SKU: {product.sku || 'N/A'}
+            <br />
+            {product.loose ? (
+              <span className="text-primary">Sold loose / bulk</span>
+            ) : (
+              <span>Pack: {product.packetSize ? `${product.packetSize} ${product.packetUnit || product.unit}` : 'N/A'}</span>
+            )}
           </Card.Text>
           <div className="mt-auto">
             <div className="d-flex justify-content-between align-items-center">

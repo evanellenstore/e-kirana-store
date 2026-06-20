@@ -14,6 +14,10 @@ export interface Product {
   status: "ACTIVE" | "INACTIVE";
   externalBarcode?: string;
   barcode?: string;
+  loose?: boolean; // true = sold loose/bulk
+  packetSize?: number;
+  packetUnit?: string;
+  
 }
 
 export interface Category {
