@@ -307,10 +307,6 @@ const Billing = () => {
         setNotificationType,
         setShowNotification,
         t,
-        fetchBatches: async (productId: string, requiredQty: number) => {
-          const r = await (getBatchesDebounced ? getBatchesDebounced(productId, requiredQty) : getBatches(productId, requiredQty));
-          return r?.data || [];
-        },
         addCartItems: (items: any[]) => {
           setCart(prev => {
             const copy = [...prev];

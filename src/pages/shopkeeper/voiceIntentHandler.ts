@@ -7,6 +7,9 @@ export type IntentPayload = {
   text?: any;
   message?: any;
   command?: any;
+  productName?: string;
+  qty?: number;
+  unit?: string;
   [k: string]: any;
 };
 
@@ -19,11 +22,10 @@ export type VoiceDeps = {
   setNotificationType: (t: 'success' | 'danger' | 'warning' | 'info') => void;
   setShowNotification: (b: boolean) => void;
   t?: (k: string, opts?: any) => string;
-  fetchBatches?: (productId: string, requiredQty: number ) => Promise<any[]>;
   addCartItems?: (items: any[]) => void;
   playBeep?: () => Promise<void>;
   speak?: (text: string) => void;
-  appendAssistantMessage?: (text: string) => void; // Essential Left-Log connector
+  appendAssistantMessage?: (text: string) => void;
 };
 
 function buildCandidateString(payload: IntentPayload) {
@@ -59,22 +61,16 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     const txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
     const candStr = buildCandidateString(payload);
 
-    // ==================================================
-    // ADD ITEM INTENT MATCHING ENGINE
-    // ==================================================
     if (act === 'add_item' || candStr.includes('add')) {
       console.log('ADD_ITEM intent matched');
       try {
         let productName = String(payload?.productName || '').trim();
         
-        // Conversational phrase structure mapping fallback
         if (!productName && candStr.includes('atta')) {
           productName = 'Atta';
         } else if (!productName) {
           productName = String(payload?.text || payload?.message || '').replace(/add/i, '').trim();
         }
-
-        const qty = Number(payload?.qty ?? 5) || 5;
 
         if (!productName) {
           const warnMsg = "No product specified. Please try again.";
@@ -83,41 +79,52 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           return;
         }
 
-        console.debug('voiceIntent: searching inventory for', productName);
-
         const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
         const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || '').trim();
         
         const resp = await api.post('/inventory/search', { ...payload, productName, language: lang });
         const json = resp.data;
 
-        let items: any[] = [];
-        if (Array.isArray(json)) items = json;
-        else if (json?.results && Array.isArray(json.results)) items = json.results;
-        else if (json?.candidates && Array.isArray(json.candidates)) {
-          items = json.candidates;
-          payload.candidates = json.candidates;
-          payload.options = payload.options || json.options;
-          payload.prompt = payload.prompt || json.prompt;
-        } else if (json?.candidate && typeof json.candidate === 'object') {
-          items = [json.candidate];
-          payload.candidate = json.candidate;
-        }
-
-        if (payload?.candidates && Array.isArray(payload.candidates) && payload.candidates.length > 1) {
-          const opts = payload.options && Array.isArray(payload.options) ? payload.options : payload.candidates.map((c: any) => c.brand || c.productName || c.name || String(c));
-          const prompt = payload.prompt || `Multiple brands found: ${opts.map((o: any, i: number) => `${i + 1}. ${o}`).join(', ')}. Which brand do you want?`;
+        // 1. Intercept Multi-Brand Prompt
+        if (json?.multiBrand === true || (json?.options && Array.isArray(json.options) && json.options.length > 1)) {
+          const opts = json.options;
+          const prompt = json.prompt || `Multiple brands found. Which brand do you want?`;
           deps.speak?.(prompt);
           deps.appendAssistantMessage?.(prompt);
           return;
         }
 
-        if (payload?.candidate && typeof payload.candidate === 'object') {
-          items.splice(0, items.length, payload.candidate);
+        // 2. Intercept Conversational Clarification Prompt
+        if (json?.needsPackagingClarification === true) {
+          const packagingPrompt = json.prompt || "Do you want loose or packet?";
+          deps.speak?.(packagingPrompt);
+          deps.appendAssistantMessage?.(packagingPrompt);
+          return;
         }
 
-        if (!items || items.length === 0) {
-          const notFoundMsg = `No product with name ${productName} found. Please try again.`;
+        let items: any[] = [];
+        let finalCheckoutQty: number | null = null;
+
+        if (json && typeof json === 'object' && !Array.isArray(json)) {
+          if (json.multiBrand === false && json.candidate) {
+            items = [json.candidate];
+            finalCheckoutQty = Number(json.checkoutQty ?? json.candidate.targetCartQty) || null;
+          } else if (json.candidates && Array.isArray(json.candidates)) {
+            items = json.candidates;
+          }
+        } else if (Array.isArray(json)) {
+          items = json;
+        }
+
+        if (items.length > 1) {
+          const prompt = "Multiple options found. Please choose an exact packaging layout.";
+          deps.speak?.(prompt);
+          deps.appendAssistantMessage?.(prompt);
+          return;
+        }
+
+        if (items.length === 0) {
+          const notFoundMsg = `No items found matching ${productName} with the requested measurements.`;
           deps.speak?.(notFoundMsg);
           deps.appendAssistantMessage?.(notFoundMsg);
           return;
@@ -125,21 +132,21 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
         const product = items[0];
         const pid = String(product.productId ?? product.id ?? '');
-        let batches: any[] = [];
         
-        if (deps.fetchBatches) {
-          try { batches = await deps.fetchBatches(pid, qty); } catch (e) {}
+        if (finalCheckoutQty === null || finalCheckoutQty <= 0) {
+          finalCheckoutQty = Number(product.targetCartQty ?? payload?.qty) || 1;
         }
 
-        if (!batches || batches.length === 0) {
-          try {
-            const br = await api.get('/inventory/batches', { params: { productId: pid } });
-            batches = br.data || [];
-          } catch (e) {}
+        let batches: any[] = [];
+        try {
+          const br = await api.get('/inventory/batches', { params: { productId: pid } });
+          batches = br.data || [];
+        } catch (e) {
+          console.error("Failed fetching batches:", e);
         }
 
         if (!Array.isArray(batches) || batches.length === 0) {
-          const noBatchMsg = 'No batch data available for this product item.';
+          const noBatchMsg = 'No batch inventory available for this item.';
           deps.speak?.(noBatchMsg);
           deps.appendAssistantMessage?.(noBatchMsg);
           return;
@@ -154,7 +161,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           return da - db;
         });
 
-        let remaining = Math.max(0, Math.floor(qty));
+        let remaining = Math.max(0, Math.floor(finalCheckoutQty));
         const allocations: any[] = [];
         for (const b of sorted) {
           if (remaining <= 0) break;
@@ -168,8 +175,8 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const cartItems = allocations.map(a => ({
           productId: pid,
           batchNo: a.batchNo,
-          name: product.name ?? product.title ?? product.productName ?? '',
-          sku: product.productSku ?? product.skuCode ?? '',
+          name: product.productName ?? product.name ?? '',
+          sku: product.productSku ?? product.sku ?? '',
           price: product.price ?? 0,
           discountAmount: product.discountAmount ?? 0,
           qty: a.qty,
@@ -187,23 +194,17 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
           const productLabel = product.productName || product.name || productName;
+          const packagingSuffix = product.isLoose ? `${json.requestedUnit || 'units'}` : 'packet(s)';
+          const confirmationText = `Added ${finalCheckoutQty} ${packagingSuffix} of ${productLabel} to your cart.`;
           
-          // CRITICAL OUTPUT: Formats execution log and renders on the Assistant layout console's LEFT side
-          const confirmationText = `Added ${qty} kg ${productLabel} to your cart.`;
           deps.speak?.(confirmationText);
           deps.appendAssistantMessage?.(confirmationText);
         }
 
         if (deps.playBeep) { try { await deps.playBeep(); } catch {} }
-
-        if (remaining > 0) {
-          const partialMsg = `Only ${qty - remaining} of ${qty} allocated due to shortages.`;
-          deps.speak?.(partialMsg);
-          deps.appendAssistantMessage?.(partialMsg);
-        }
         return;
       } catch (e) {
-        const failMsg = "Failed to append item selection through vocal parsing.";
+        const failMsg = "Failed to add item via voice control context.";
         deps.speak?.(failMsg);
         deps.appendAssistantMessage?.(failMsg);
         return;
@@ -211,7 +212,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // ==================================================
-    // START BILL CONTROLS
+    // BILL ACTIONS
     // ==================================================
     if (act === 'start_bill' || act === 'startbilling' || /start\s*(a\s*)?bill/i.test(txt) || /naya bill/i.test(txt)) {
       if (!deps.billId) {
@@ -227,32 +228,18 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       return;
     }
 
-    // ==================================================
-    // MODAL WINDOW INTERFACE WRAPPERS
-    // ==================================================
     if (act === 'close_billing_control' || act === 'close_billing_controls') {
       deps.setShowUnifiedControlsModal(false);
-      const closeMsg = "Unified terminal dashboard panel closed.";
-      deps.speak?.(closeMsg);
-      deps.appendAssistantMessage?.(closeMsg);
       return;
     }
 
     if (act === 'open_billing_control' || act === 'open_billing_controls') {
       const tab = String(payload?.tab || '').toLowerCase();
-      if (tab === 'payment' || tab === 'refund' || tab === 'inventory' || tab === 'rewards') {
-        deps.setUnifiedModalTab(tab as any);
-      } else {
-        deps.setUnifiedModalTab('inventory');
-      }
+      deps.setUnifiedModalTab((tab === 'payment' || tab === 'refund' || tab === 'inventory' || tab === 'rewards') ? tab : 'inventory');
       deps.setShowUnifiedControlsModal(true);
-      const openMsg = `Dashboard panel updated to displaying ${tab || 'inventory'} views.`;
-      deps.speak?.(openMsg);
-      deps.appendAssistantMessage?.(openMsg);
       return;
     }
 
-    // Default general fallback parsing execution
     if (txt || candStr) {
       const message = txt || candStr;
       deps.speak?.(message);
