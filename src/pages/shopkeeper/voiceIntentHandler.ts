@@ -102,6 +102,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           return;
         }
 
+        // 3. handle error or no results
+        if (json?.error) {
+          const errMsg = `Error: ${json.error}`;
+          deps.speak?.(errMsg);
+          deps.appendAssistantMessage?.(errMsg);
+          return;
+        }
+
         let items: any[] = [];
         let finalCheckoutQty: number | null = null;
 
