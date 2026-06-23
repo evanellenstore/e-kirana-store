@@ -105,7 +105,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       }
 
       if (selectedCandidate) {
-        // 🔥 FIX: Reconstruct the payload while safely carrying forward original preferences (like isLoose)
         payload = {
           ...pendingBrandState.originalRequest,
           intent: 'ADD_ITEM',
@@ -147,6 +146,24 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     // =========================================================================
     if (act === 'ADD_ITEM' || candStr.includes('add')) {
       try {
+        // 🔥 FIX: Block-wait until bill generation completes, then execute search API cleanly
+        if (!deps.billId) {
+          const autoBillMsg = "Starting a new bill first. Please wait.";
+          deps.speak?.(autoBillMsg);
+          deps.appendAssistantMessage?.(autoBillMsg);
+          
+          await deps.handleStartBilling();
+          
+          let attempts = 0;
+          while (!deps.billId && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            attempts++;
+          }
+          
+          // Let the 'starting bill' message conclude speaking
+          await new Promise(resolve => setTimeout(resolve, 400));
+        }
+
         let productName = String(payload?.productName || '').trim();
         if (!productName && candStr.includes('atta')) productName = 'Atta';
 
@@ -178,7 +195,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         if ((json?.multipleBrands === true || json?.multiBrand === true )) {
           const candidatesList: BrandCandidate[] = json.candidates || [];
           
-          // 🔥 FIX: Spread ...payload to preserve incoming fields (brand, isLoose) inside originalRequest
           pendingBrandState = {
             originalRequest: { 
               ...payload,
@@ -205,7 +221,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         }
 
         if (json?.needsPackagingClarification === true) {
-          // 🔥 FIX: Ensure existing brand attributes are preserved here as well if packaging needs clarification first
           pendingRequestState = { 
             ...payload,
             intent: 'ADD_ITEM', 
