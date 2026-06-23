@@ -271,26 +271,67 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         }
 
         // 🔥 DEEP SCHEMA TRACKING LOGGER WITH DYNAMIC FALLBACK MATCHING
-        console.log("Voice Assistant matching product object schema details:", product);
+console.log("Voice Assistant matching product object schema details:", product);
 
-        const rootStock = product.avlQty ?? product.availableQty ?? product.stock ?? product.quantity;
-        const innerStock = product.product?.avlQty ?? product.product?.availableQty ?? product.product?.stock ?? product.product?.quantity;
-        
-        // Use matching values, otherwise default to a high safe value to bypass standard stock error hooks
-        let availableStock = rootStock ?? innerStock ?? (finalCartQty + 10);
+// 1. EXTRACT DATA DIRECTLY MATCHING YOUR API JSON RESPONSE STRUCTURE
+const targetProductSource = product.product || product;
 
-        const cartItems = [{
-          productId: String(pid ?? product.product?.id ?? product.product?.productId ?? ''),
-          batchNo: selectedBatchNo,
-          name: product.productName ?? product.product?.productName ?? productName,
-          sku: product.productSku ?? product.product?.productSku ?? '',
-          price: product.price ?? product.product?.price ?? 0,
-          qty: finalCartQty,
-          // Sync keys to completely resolve UI components reading "Avl: 0"
-          avlQty: availableStock,
-          availableQty: availableStock,
-          stock: availableStock
-        }];
+// Map 'totalQty' from your API to your stock keys
+const availableStock = Number(targetProductSource.totalQty ?? targetProductSource.avlQty ?? targetProductSource.availableQty ?? 0);
+
+// Map price and discount rules explicitly matching your payload
+const price = Number(targetProductSource.price);
+const discount = Number(targetProductSource.discountAmount);
+
+// Use price directly as fallback if MRP is missing from candidate block
+const mrp = Number(targetProductSource.mrp ?? price); 
+
+
+// 2. CONSTRUCT THE STRICT TOTALS (Keep base metrics unmultiplied for the row fields)
+const baseDiscountPerItem = discount; // 2.0 (Do NOT multiply by finalCartQty here)
+const grossAmount = price * finalCartQty;
+const totalDiscount = baseDiscountPerItem * finalCartQty; 
+const netAmount = grossAmount - totalDiscount;
+
+// 3. COMPLETE INTEGRATED CART SCHEMA
+const cartItems = [{
+  productId: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
+  batchNo: selectedBatchNo,
+  name: product.productName ?? targetProductSource.productName ?? productName,
+  sku: product.productSku ?? targetProductSource.productSku ?? '',
+  qty: finalCartQty,
+  
+  avlQty: availableStock,
+  availableQty: availableStock,
+  stock: availableStock,
+  totalQty: availableStock,
+  quantity: finalCartQty,
+  
+  // Financial Structure Fields
+  price: price,
+  mrp: mrp,
+  
+  // Pass the single-item discount value so your cart context can safely multiply it
+  discount: baseDiscountPerItem, 
+  discountAmount: baseDiscountPerItem, // Changed from totalDiscount to fix the double multiplication!
+  
+  total: netAmount,
+  amount: netAmount,
+  grossAmount: grossAmount,
+  
+  product: {
+    ...targetProductSource,
+    id: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
+    avlQty: availableStock,
+    availableQty: availableStock,
+    stock: availableStock,
+    totalQty: availableStock,
+    price: price,
+    mrp: mrp,
+    discount: baseDiscountPerItem,
+    discountAmount: baseDiscountPerItem
+  }
+}];     
 
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
