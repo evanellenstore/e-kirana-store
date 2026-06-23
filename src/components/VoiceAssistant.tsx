@@ -133,21 +133,42 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent }) => {
     setMessages((s) => [...s, { from: 'user', text: userText }]);
     
     try {
-      const data = await sendMessage(userText);
-      const txt = data?.text || data?.message || data?.response || JSON.stringify(data);
-      
-      const payload: IntentPayload = {
-        intent: data?.intent,
-        action: data?.action,
-        text: txt,
-        ...data,
-      };
+      // Dynamic evaluation using the globally tracked window context state flag
+      const isWaiting = (window as any).isWaitingForPackaging || false;
 
-      if (onIntent) {
-        onIntent(payload, { speak, appendAssistantMessage });
+      if (isWaiting) {
+        console.log("Turnaround confirmation state active. Bypassing first API call.");
+        
+        const directPayload: IntentPayload = {
+          intent: 'CONFIRM_PACKAGING',
+          text: userText,
+          command: userText
+        };
+
+        if (onIntent) {
+          onIntent(directPayload, { speak, appendAssistantMessage });
+        } else {
+          setMessages((s) => [...s, { from: 'assistant', text: userText }]);
+          speak(userText);
+        }
       } else {
-        setMessages((s) => [...s, { from: 'assistant', text: String(txt) }]);
-        speak(String(txt));
+        // Standard Execution Track (Turn 1)
+        const data = await sendMessage(userText);
+        const txt = data?.text || data?.message || data?.response || JSON.stringify(data);
+        
+        const payload: IntentPayload = {
+          intent: data?.intent,
+          action: data?.action,
+          text: txt,
+          ...data,
+        };
+
+        if (onIntent) {
+          onIntent(payload, { speak, appendAssistantMessage });
+        } else {
+          setMessages((s) => [...s, { from: 'assistant', text: String(txt) }]);
+          speak(String(txt));
+        }
       }
     } catch (err: any) {
       setError(err?.message || String(err));

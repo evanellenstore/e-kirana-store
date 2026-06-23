@@ -10,6 +10,7 @@ export type IntentPayload = {
   productName?: string;
   qty?: number;
   unit?: string;
+  isLoose?: boolean | null;
   [k: string]: any;
 };
 
@@ -28,6 +29,14 @@ export type VoiceDeps = {
   appendAssistantMessage?: (text: string) => void;
 };
 
+// Persistent context memory slice for managing conversation turn-arounds
+let pendingRequestState: IntentPayload | null = null;
+
+// Initialize global window state flag cleanly
+if (typeof window !== 'undefined') {
+  (window as any).isWaitingForPackaging = false;
+}
+
 function buildCandidateString(payload: IntentPayload) {
   const parts: string[] = [];
   try {
@@ -45,24 +54,77 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
   try {
     console.log('voiceIntentHandler received payload:', payload);
 
+    // ==================================================
+    // FIX: UNPACK NESTED / DOUBLE STRINGIFIED PAYLOAD JSON 
+    // ==================================================
     try {
       if (typeof payload?.text === 'string') {
         const t = payload.text.trim();
+        // Check if the text field contains a stringified JSON object
         if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
           const parsed = JSON.parse(t);
           if (parsed && typeof parsed === 'object') {
-            payload = { ...(payload as any), ...parsed };
+            console.log('Flattening stringified payload text field values:', parsed);
+            // Spread inner fields into the root payload object so fields like productName are accessible
+            payload = { ...payload, ...parsed };
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Payload normalizer failed parsing inner text string:", e);
+    }
 
-    const act = String(payload?.intent || payload?.action || '').trim().toLowerCase();
-    const txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
+    let act = String(payload?.intent || payload?.action || '').trim().toLowerCase();
+    let txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
     const candStr = buildCandidateString(payload);
 
+    // ==================================================
+    // 1. UNIFIED CONVERSATION PIPELINE ROUTER (SECOND CALL / TURN-TWO CLARIFICATION)
+    // ==================================================
+    if (pendingRequestState) {
+      console.log('Resolving confirmation turn via unified backend parameter state routing...');
+      try {
+        // Fix: Send ONLY the clean string command the intent endpoint demands
+        const response = await api.post('/ai/intent', { command: txt }, {
+          params: { sessionMode: 'CONFIRM_PACKAGING' }
+        });
+
+        let data = response.data;
+        if (typeof data === 'string') {
+          try { data = JSON.parse(data); } catch (e) {}
+        }
+
+        if (data && (data.isLoose === true || data.isLoose === false)) {
+          // Re-combine saved first turn details with the new choice
+          payload = {
+            ...pendingRequestState,
+            isLoose: data.isLoose
+          };
+          
+          act = 'add_item';
+          pendingRequestState = null; 
+          (window as any).isWaitingForPackaging = false; // Reset block gate
+
+          // Notice: No early return! Execution rolls over seamlessly to block 2 below.
+        } else {
+          const retryMsg = "I couldn't catch that preference. Please state loose or packet.";
+          deps.speak?.(retryMsg);
+          deps.appendAssistantMessage?.(retryMsg);
+          return;
+        }
+      } catch (err) {
+        console.error("Single endpoint clarification request failed:", err);
+        pendingRequestState = null;
+        (window as any).isWaitingForPackaging = false;
+        return;
+      }
+    }
+
+    // ==================================================
+    // 2. ADD ITEM INVENTORY PIPELINE (FIRST CALL OR FALL-THROUGH RESOLUTION)
+    // ==================================================
     if (act === 'add_item' || candStr.includes('add')) {
-      console.log('ADD_ITEM intent matched');
+      console.log('Processing ADD_ITEM context workflow...');
       try {
         let productName = String(payload?.productName || '').trim();
         
@@ -82,27 +144,43 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
         const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || '').trim();
         
-        const resp = await api.post('/inventory/search', { ...payload, productName, language: lang });
+        // Fix: Explicitly map a clean, sanitized payload to prevent nested formatting errors
+        const inventorySearchPayload = {
+          productName: productName,
+          qty: Number(payload?.qty) || 5,
+          unit: String(payload?.unit || 'kg'),
+          language: lang,
+          isLoose: payload.isLoose !== undefined ? payload.isLoose : null
+        };
+
+        const resp = await api.post('/inventory/search', inventorySearchPayload);
         const json = resp.data;
 
-        // 1. Intercept Multi-Brand Prompt
         if (json?.multiBrand === true || (json?.options && Array.isArray(json.options) && json.options.length > 1)) {
-          const opts = json.options;
           const prompt = json.prompt || `Multiple brands found. Which brand do you want?`;
           deps.speak?.(prompt);
           deps.appendAssistantMessage?.(prompt);
           return;
         }
 
-        // 2. Intercept Conversational Clarification Prompt
+        // Conversational Branching (Turn on Confirmation Flag if required)
         if (json?.needsPackagingClarification === true) {
+          pendingRequestState = {
+            intent: 'ADD_ITEM',
+            productName,
+            qty: Number(payload?.qty) || 5,
+            unit: String(payload?.unit || 'kg'),
+            language: lang
+          };
+
+          (window as any).isWaitingForPackaging = true; // Turn ON verification block flag
+
           const packagingPrompt = json.prompt || "Do you want loose or packet?";
           deps.speak?.(packagingPrompt);
           deps.appendAssistantMessage?.(packagingPrompt);
           return;
         }
 
-        // 3. handle error or no results
         if (json?.error) {
           const errMsg = `Error: ${json.error}`;
           deps.speak?.(errMsg);
@@ -220,7 +298,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // ==================================================
-    // BILL ACTIONS
+    // 3. ALTERNATIVE ACTIONS
     // ==================================================
     if (act === 'start_bill' || act === 'startbilling' || /start\s*(a\s*)?bill/i.test(txt) || /naya bill/i.test(txt)) {
       if (!deps.billId) {
