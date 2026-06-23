@@ -1,4 +1,4 @@
-import api from '../../services/api';
+import api from '../../services/api'; 
 import i18n from '../../i18n/config';
 
 export type IntentPayload = {
@@ -11,6 +11,8 @@ export type IntentPayload = {
   qty?: number;
   unit?: string;
   isLoose?: boolean | null;
+  productSku?: string | null;
+  brand?: string;
   [k: string]: any;
 };
 
@@ -29,12 +31,22 @@ export type VoiceDeps = {
   appendAssistantMessage?: (text: string) => void;
 };
 
-// Persistent context memory slice for managing conversation turn-arounds
-let pendingRequestState: IntentPayload | null = null;
+export type BrandCandidate = {
+  brand: string;
+  productSku: string;
+  productName: string;
+};
 
-// Initialize global window state flag cleanly
+export type PendingBrandState = {
+  originalRequest: IntentPayload;
+  candidates: BrandCandidate[];
+};
+
+let pendingRequestState: IntentPayload | null = null;
+let pendingBrandState: PendingBrandState | null = null;
+
 if (typeof window !== 'undefined') {
-  (window as any).isWaitingForPackaging = false;
+  (window as any).conversationState = 'IDLE'; 
 }
 
 function buildCandidateString(payload: IntentPayload) {
@@ -54,282 +66,216 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
   try {
     console.log('voiceIntentHandler received payload:', payload);
 
-    // ==================================================
-    // FIX: UNPACK NESTED / DOUBLE STRINGIFIED PAYLOAD JSON 
-    // ==================================================
     try {
       if (typeof payload?.text === 'string') {
         const t = payload.text.trim();
-        // Check if the text field contains a stringified JSON object
         if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
           const parsed = JSON.parse(t);
           if (parsed && typeof parsed === 'object') {
-            console.log('Flattening stringified payload text field values:', parsed);
-            // Spread inner fields into the root payload object so fields like productName are accessible
             payload = { ...payload, ...parsed };
           }
         }
       }
-    } catch (e) {
-      console.warn("Payload normalizer failed parsing inner text string:", e);
-    }
+    } catch (e) {}
 
-    let act = String(payload?.intent || payload?.action || '').trim().toLowerCase();
-    let txt = String(payload?.text || payload?.message || payload?.command || '').trim().toLowerCase();
+    let act = String(payload?.intent || payload?.action || '').trim().toUpperCase();
+    let txt = String(payload?.command || payload?.text || payload?.message || '').trim();
     const candStr = buildCandidateString(payload);
 
-    // ==================================================
-    // 1. UNIFIED CONVERSATION PIPELINE ROUTER (SECOND CALL / TURN-TWO CLARIFICATION)
-    // ==================================================
-    if (pendingRequestState) {
-      console.log('Resolving confirmation turn via unified backend parameter state routing...');
-      try {
-        // Fix: Send ONLY the clean string command the intent endpoint demands
-        const response = await api.post('/ai/intent', { command: txt }, {
-          params: { sessionMode: 'CONFIRM_PACKAGING' }
-        });
+    const currentContextState = (window as any).conversationState || 'IDLE';
 
-        let data = response.data;
-        if (typeof data === 'string') {
-          try { data = JSON.parse(data); } catch (e) {}
-        }
+    // =========================================================================
+    // 1. CONTEXT RESOLUTION: BRAND_SELECTION (Processing Response From Turn 2)
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_BRAND_SELECTION' && pendingBrandState) {
+      const selectedBrandValue = (payload.brand || txt || '').trim();
+      const candidates = pendingBrandState.candidates;
+      let selectedCandidate: BrandCandidate | null = null;
 
-        if (data && (data.isLoose === true || data.isLoose === false)) {
-          // Re-combine saved first turn details with the new choice
-          payload = {
-            ...pendingRequestState,
-            isLoose: data.isLoose
-          };
-          
-          act = 'add_item';
-          pendingRequestState = null; 
-          (window as any).isWaitingForPackaging = false; // Reset block gate
+      const parsedIndex = parseInt(selectedBrandValue, 10);
+      if (!isNaN(parsedIndex) && parsedIndex > 0 && parsedIndex <= candidates.length) {
+        selectedCandidate = candidates[parsedIndex - 1];
+      }
 
-          // Notice: No early return! Execution rolls over seamlessly to block 2 below.
-        } else {
-          const retryMsg = "I couldn't catch that preference. Please state loose or packet.";
-          deps.speak?.(retryMsg);
-          deps.appendAssistantMessage?.(retryMsg);
-          return;
-        }
-      } catch (err) {
-        console.error("Single endpoint clarification request failed:", err);
-        pendingRequestState = null;
-        (window as any).isWaitingForPackaging = false;
+      if (!selectedCandidate) {
+        selectedCandidate = candidates.find(c => {
+          const splitTokens = c.brand.toLowerCase().split('-');
+          return splitTokens.some(token => selectedBrandValue.toLowerCase().includes(token) || token.includes(selectedBrandValue.toLowerCase()));
+        }) || null;
+      }
+
+      if (selectedCandidate) {
+        // 🔥 FIX: Reconstruct the payload while safely carrying forward original preferences (like isLoose)
+        payload = {
+          ...pendingBrandState.originalRequest,
+          intent: 'ADD_ITEM',
+          productSku: selectedCandidate.productSku,
+          brand: selectedCandidate.brand.split('-')[0].trim(),
+          isLoose: payload.isLoose !== undefined ? payload.isLoose : pendingBrandState.originalRequest.isLoose
+        };
+        
+        act = 'ADD_ITEM'; 
+        pendingBrandState = null;
+        (window as any).conversationState = 'IDLE';
+      } else {
+        const retryMsg = "Invalid brand selection. Please specify one of the available options.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
         return;
       }
     }
 
-    // ==================================================
-    // 2. ADD ITEM INVENTORY PIPELINE (FIRST CALL OR FALL-THROUGH RESOLUTION)
-    // ==================================================
-    if (act === 'add_item' || candStr.includes('add')) {
-      console.log('Processing ADD_ITEM context workflow...');
+    // =========================================================================
+    // 2. CONTEXT RESOLUTION: CONFIRM_PACKAGING
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_PACKAGING' && pendingRequestState) {
+      if (payload.isLoose === true || payload.isLoose === false) {
+        payload = { ...pendingRequestState, isLoose: payload.isLoose };
+        act = 'ADD_ITEM';
+        pendingRequestState = null;
+        (window as any).conversationState = 'IDLE';
+      } else {
+        const retryMsg = "Please clearly state loose or packet.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 3. MAIN SERVICE ROUTING PIPELINE TRACK
+    // =========================================================================
+    if (act === 'ADD_ITEM' || candStr.includes('add')) {
       try {
         let productName = String(payload?.productName || '').trim();
-        
-        if (!productName && candStr.includes('atta')) {
-          productName = 'Atta';
-        } else if (!productName) {
-          productName = String(payload?.text || payload?.message || '').replace(/add/i, '').trim();
-        }
+        if (!productName && candStr.includes('atta')) productName = 'Atta';
 
-        if (!productName) {
-          const warnMsg = "No product specified. Please try again.";
+        if (!productName && !payload.productSku) {
+          const warnMsg = "No product target specified.";
           deps.speak?.(warnMsg);
           deps.appendAssistantMessage?.(warnMsg);
           return;
         }
 
         const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
-        const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || '').trim();
+        const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || 'en').trim();
         
-        // Fix: Explicitly map a clean, sanitized payload to prevent nested formatting errors
         const inventorySearchPayload = {
+          intent: "ADD_ITEM",
           productName: productName,
-          qty: Number(payload?.qty) || 5,
+          qty: Number(payload?.qty) || 1,
           unit: String(payload?.unit || 'kg'),
+          brand: payload?.brand || null,
           language: lang,
-          isLoose: payload.isLoose !== undefined ? payload.isLoose : null
+          isLoose: payload.isLoose !== undefined ? payload.isLoose : null,
+          productSku: payload.productSku || null
         };
 
+        console.log("Calling inventory search API with payload:", inventorySearchPayload);
         const resp = await api.post('/inventory/search', inventorySearchPayload);
         const json = resp.data;
 
-        if (json?.multiBrand === true || (json?.options && Array.isArray(json.options) && json.options.length > 1)) {
-          const prompt = json.prompt || `Multiple brands found. Which brand do you want?`;
+        if ((json?.multipleBrands === true || json?.multiBrand === true )) {
+          const candidatesList: BrandCandidate[] = json.candidates || [];
+          
+          // 🔥 FIX: Spread ...payload to preserve incoming fields (brand, isLoose) inside originalRequest
+          pendingBrandState = {
+            originalRequest: { 
+              ...payload,
+              intent: 'ADD_ITEM', 
+              productName, 
+              qty: Number(payload?.qty) || 5, 
+              unit: String(payload?.unit || 'kg') 
+            },
+            candidates: candidatesList
+          };
+
+          (window as any).conversationState = 'WAITING_FOR_BRAND_SELECTION';
+
+          const uniqueBrandsArray = Array.from(
+            new Set(candidatesList.map(c => c.brand.split('-')[0].trim()))
+          );
+          
+          const humanBrands = uniqueBrandsArray.map((brand, index) => `${index + 1}. ${brand}`).join(', ');
+          const prompt = `Multiple brands found. ${humanBrands}. Which brand do you want?`;
+          
           deps.speak?.(prompt);
           deps.appendAssistantMessage?.(prompt);
           return;
         }
 
-        // Conversational Branching (Turn on Confirmation Flag if required)
         if (json?.needsPackagingClarification === true) {
-          pendingRequestState = {
-            intent: 'ADD_ITEM',
-            productName,
-            qty: Number(payload?.qty) || 5,
-            unit: String(payload?.unit || 'kg'),
-            language: lang
+          // 🔥 FIX: Ensure existing brand attributes are preserved here as well if packaging needs clarification first
+          pendingRequestState = { 
+            ...payload,
+            intent: 'ADD_ITEM', 
+            productName, 
+            qty: Number(payload?.qty) || 5, 
+            unit: String(payload?.unit || 'kg'), 
+            language: lang 
           };
-
-          (window as any).isWaitingForPackaging = true; // Turn ON verification block flag
-
+          (window as any).conversationState = 'WAITING_FOR_PACKAGING';
           const packagingPrompt = json.prompt || "Do you want loose or packet?";
           deps.speak?.(packagingPrompt);
           deps.appendAssistantMessage?.(packagingPrompt);
           return;
         }
 
-        if (json?.error) {
-          const errMsg = `Error: ${json.error}`;
-          deps.speak?.(errMsg);
-          deps.appendAssistantMessage?.(errMsg);
-          return;
-        }
-
-        let items: any[] = [];
-        let finalCheckoutQty: number | null = null;
-
-        if (json && typeof json === 'object' && !Array.isArray(json)) {
-          if (json.multiBrand === false && json.candidate) {
-            items = [json.candidate];
-            finalCheckoutQty = Number(json.checkoutQty ?? json.candidate.targetCartQty) || null;
-          } else if (json.candidates && Array.isArray(json.candidates)) {
-            items = json.candidates;
-          }
-        } else if (Array.isArray(json)) {
-          items = json;
-        }
-
-        if (items.length > 1) {
-          const prompt = "Multiple options found. Please choose an exact packaging layout.";
-          deps.speak?.(prompt);
-          deps.appendAssistantMessage?.(prompt);
-          return;
-        }
-
+        let items: any[] = json.candidates || (json.candidate ? [json.candidate] : []);
         if (items.length === 0) {
-          const notFoundMsg = `No items found matching ${productName} with the requested measurements.`;
-          deps.speak?.(notFoundMsg);
-          deps.appendAssistantMessage?.(notFoundMsg);
+          deps.speak?.(`No items found matching ${productName}.`);
           return;
         }
 
         const product = items[0];
-        const pid = String(product.productId ?? product.id ?? '');
-        
-        if (finalCheckoutQty === null || finalCheckoutQty <= 0) {
-          finalCheckoutQty = Number(product.targetCartQty ?? payload?.qty) || 1;
+        const finalCartQty = Number(json?.checkoutQty) || Number(payload?.qty) || 5;
+
+        // --- FIXED BATCH ENDPOINT TO USE ORIGINAL MAPPING ---
+        let selectedBatchNo = "BATCH-DEFAULT-01";
+        const pid = product.productId ?? product.id;
+
+        if (pid) {
+          try {
+            console.log(`Calling original batches API via query string parameter for productId: ${pid}`);
+            const batchResp = await api.get('/inventory/batches', { params: { productId: pid } });
+            
+            if (Array.isArray(batchResp.data) && batchResp.data.length > 0) {
+              selectedBatchNo = batchResp.data[0].batchNo || batchResp.data[0].id || selectedBatchNo;
+            } else if (batchResp.data && batchResp.data.batchNo) {
+              selectedBatchNo = batchResp.data.batchNo;
+            }
+          } catch (batchErr) {
+            console.warn("Batch API mapping fallback resolution tracking used:", batchErr);
+          }
         }
 
-        let batches: any[] = [];
-        try {
-          const br = await api.get('/inventory/batches', { params: { productId: pid } });
-          batches = br.data || [];
-        } catch (e) {
-          console.error("Failed fetching batches:", e);
-        }
-
-        if (!Array.isArray(batches) || batches.length === 0) {
-          const noBatchMsg = 'No batch inventory available for this item.';
-          deps.speak?.(noBatchMsg);
-          deps.appendAssistantMessage?.(noBatchMsg);
-          return;
-        }
-
-        const sorted = batches.slice().sort((a: any, b: any) => {
-          const availA = a.availableQty ?? 0;
-          const availB = b.availableQty ?? 0;
-          if ((availA > 0) !== (availB > 0)) return availB - availA;
-          const da = new Date(a.expiryDate ?? a.expiry ?? 0).getTime() || 0;
-          const db = new Date(b.expiryDate ?? b.expiry ?? 0).getTime() || 0;
-          return da - db;
-        });
-
-        let remaining = Math.max(0, Math.floor(finalCheckoutQty));
-        const allocations: any[] = [];
-        for (const b of sorted) {
-          if (remaining <= 0) break;
-          const avail = b.availableQty ?? 0;
-          const take = Math.min(avail > 0 ? avail : remaining, remaining);
-          if (take <= 0) continue;
-          allocations.push({ batchNo: b.batchNo ?? String(b.id ?? ''), qty: take, availableQty: avail, expiryDate: b.expiryDate ?? b.expiry });
-          remaining -= take;
-        }
-
-        const cartItems = allocations.map(a => ({
-          productId: pid,
-          batchNo: a.batchNo,
-          name: product.productName ?? product.name ?? '',
-          sku: product.productSku ?? product.sku ?? '',
+        const cartItems = [{
+          productId: String(pid ?? ''),
+          batchNo: selectedBatchNo,
+          name: product.productName ?? productName,
+          sku: product.productSku ?? '',
           price: product.price ?? 0,
-          discountAmount: product.discountAmount ?? 0,
-          qty: a.qty,
-          availableQty: a.availableQty,
-          expiryDate: (typeof a.expiryDate === 'string') ? a.expiryDate : (a.expiryDate ? new Date(a.expiryDate).toISOString() : '')
-        }));
-
-        if (cartItems.length === 0) {
-          const errAlloc = "Could not allocate stock inventory quantity.";
-          deps.speak?.(errAlloc);
-          deps.appendAssistantMessage?.(errAlloc);
-          return;
-        }
+          qty: finalCartQty
+        }];
 
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
-          const productLabel = product.productName || product.name || productName;
-          const packagingSuffix = product.isLoose ? `${json.requestedUnit || 'units'}` : 'packet(s)';
-          const confirmationText = `Added ${finalCheckoutQty} ${packagingSuffix} of ${productLabel} to your cart.`;
-          
+          const localizedBrandText = payload.brand ? `${payload.brand} ` : '';
+          const confirmationText = `Added ${finalCartQty} ${payload.unit || 'kg'} ${localizedBrandText}${productName || product.productName}.`;
           deps.speak?.(confirmationText);
           deps.appendAssistantMessage?.(confirmationText);
         }
 
-        if (deps.playBeep) { try { await deps.playBeep(); } catch {} }
+        if (deps.playBeep) void deps.playBeep();
         return;
       } catch (e) {
-        const failMsg = "Failed to add item via voice control context.";
-        deps.speak?.(failMsg);
-        deps.appendAssistantMessage?.(failMsg);
-        return;
+        console.error(e);
       }
     }
 
-    // ==================================================
-    // 3. ALTERNATIVE ACTIONS
-    // ==================================================
-    if (act === 'start_bill' || act === 'startbilling' || /start\s*(a\s*)?bill/i.test(txt) || /naya bill/i.test(txt)) {
-      if (!deps.billId) {
-        void deps.handleStartBilling();
-        const startMsg = "New billing transaction document established.";
-        deps.speak?.(startMsg);
-        deps.appendAssistantMessage?.(startMsg);
-      } else {
-        const msg = deps.t ? deps.t('billing.alreadyStarted') : 'Bill has already been initialized.';
-        deps.speak?.(msg);
-        deps.appendAssistantMessage?.(msg);
-      }
+    if (act === 'START_BILL' || /start\s*(a\s*)?bill/i.test(txt) || /naya bill/i.test(txt)) {
+      if (!deps.billId) void deps.handleStartBilling();
       return;
-    }
-
-    if (act === 'close_billing_control' || act === 'close_billing_controls') {
-      deps.setShowUnifiedControlsModal(false);
-      return;
-    }
-
-    if (act === 'open_billing_control' || act === 'open_billing_controls') {
-      const tab = String(payload?.tab || '').toLowerCase();
-      deps.setUnifiedModalTab((tab === 'payment' || tab === 'refund' || tab === 'inventory' || tab === 'rewards') ? tab : 'inventory');
-      deps.setShowUnifiedControlsModal(true);
-      return;
-    }
-
-    if (txt || candStr) {
-      const message = txt || candStr;
-      deps.speak?.(message);
-      deps.appendAssistantMessage?.(message);
     }
   } catch (e) {
     console.error('voiceIntentHandler internal exception:', e);

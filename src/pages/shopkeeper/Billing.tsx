@@ -230,59 +230,7 @@ const Billing = () => {
   };
 
 
-//======================================================
 
-/*
-  // Delegate to central handler
-  const handleVoiceIntent = (payload: any, helpers?: any) => {
-    try {
-      const speak = helpers?.speak;
-      importedHandleVoiceIntent(payload, {
-        billId,
-        handleStartBilling,
-        setShowUnifiedControlsModal,
-        setUnifiedModalTab,
-        setNotificationMessage,
-        setNotificationType,
-        setShowNotification,
-        t,
-        // voice deps for add-item flow
-        fetchBatches: async (productId: string, requiredQty: number) => {
-          const r = await (getBatchesDebounced ? getBatchesDebounced(productId, requiredQty) : getBatches(productId, requiredQty));
-          return r?.data || [];
-        },
-        addCartItems: (items: any[]) => {
-          setCart(prev => {
-            const copy = [...prev];
-            for (const it of items) {
-              const pid = String(it.productId);
-              const bNo = it.batchNo;
-              const idx = copy.findIndex(c => c.productId === pid && c.batchNo === bNo);
-              if (idx !== -1) copy[idx].qty += (it.qty || 0);
-              else copy.push({
-                productId: pid,
-                batchNo: bNo,
-                name: it.name ?? '',
-                sku: it.sku ?? '',
-                price: it.price ?? 0,
-                discountAmount: it.discountAmount ?? 0,
-                qty: it.qty || 0,
-                availableQty: it.availableQty ?? 0,
-                expiryDate: it.expiryDate ?? ''
-              });
-            }
-            return copy;
-          });
-        },
-        playBeep: async () => { try { await playBeep(); } catch {} },
-        speak: typeof speak === 'function' ? speak : undefined
-      });
-    } catch (e) {
-      console.warn('delegate handleVoiceIntent failed', e);
-    }
-  };
-
-*/
 /* ======================================================
      Voice Assistant Delegate Intent Core Handler
   ====================================================== */
