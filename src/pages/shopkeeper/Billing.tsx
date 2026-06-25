@@ -59,9 +59,11 @@ const Billing = () => {
   const [billId, setBillId] = useState<string>();
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const getLocalized = (en?: string, hi?: string) => {
-    if (!en && !hi) return '';
-    return i18n.language?.startsWith('hi') ? (hi || en) : (en || hi || '');
+  const getLocalized = (en?: string, hi?: string): string => {
+    const enText = en || '';
+    const hiText = hi || '';
+    const language = i18n.language || 'en';
+    return language.startsWith('hi') ? (hiText || enText) : (enText || hiText);
   };
   const [total, setTotal] = useState(0);
   const [subtotalBeforeDiscount, setSubtotalBeforeDiscount] = useState(0);

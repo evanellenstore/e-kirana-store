@@ -17,11 +17,18 @@ interface BrandFormData {
 }
 
 const AdminBrand: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const getLocalized = (en?: string, hi?: string): string => {
+    const enText = en || '';
+    const hiText = hi || '';
+    const language = i18n.language || 'en';
+    return language.startsWith('hi') ? (hiText || enText) : (enText || hiText);
+  };
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -161,7 +168,7 @@ const AdminBrand: React.FC = () => {
 
   // Pagination with search filter
   const filteredBrands = brands.filter(brand =>
-    brand.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getLocalized(brand.brand, brand.nameHi).toLowerCase().includes(searchTerm.toLowerCase()) ||
     brand.id.toString().includes(searchTerm)
   );
 
@@ -254,7 +261,7 @@ const AdminBrand: React.FC = () => {
                 {currentBrands.map((brand) => (
                   <div key={brand.id} className="brand-card">
                     <div className="card-header">
-                      <h3 className="brand-name">{brand.brand}</h3>
+                      <h3 className="brand-name">{getLocalized(brand.brand, brand.nameHi)}</h3>
                       <span className={`status-badge ${brand.isActive ? 'active' : 'inactive'}`}>
                         {brand.isActive ? t('brands.active') : t('brands.inactive')}
                       </span>

@@ -41,9 +41,11 @@ const UNIT_OPTIONS = [
 const AdminProducts: React.FC = () => {
   const { t, i18n } = useTranslation();
 
-  const getLocalized = (en?: string, hi?: string) => {
-    if (!en && !hi) return '';
-    return i18n.language?.startsWith('hi') ? (hi || en) : (en || hi || '');
+  const getLocalized = (en?: string, hi?: string): string => {
+    const enText = en || '';
+    const hiText = hi || '';
+    const language = i18n.language || 'en';
+    return language.startsWith('hi') ? (hiText || enText) : (enText || hiText);
   };
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -406,7 +408,7 @@ const AdminProducts: React.FC = () => {
                       .filter(cat => cat.isActive)
                       .map(cat => (
                         <option key={cat.id} value={cat.category}>
-                          {cat.category}
+                          {getLocalized(cat.category, cat.categoryHi)}
                         </option>
                       ))}
                   </Form.Select>

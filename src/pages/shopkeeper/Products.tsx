@@ -74,9 +74,11 @@ const Products: React.FC = () => {
       .finally(() => setLoading(false));
   };
 
-  const getLocalized = (en?: string, hi?: string) => {
-    if (!en && !hi) return '';
-    return i18n.language?.startsWith('hi') ? (hi || en) : (en || hi || '');
+  const getLocalized = (en?: string, hi?: string): string => {
+    const enText = en || '';
+    const hiText = hi || '';
+    const language = i18n.language || 'en';
+    return language.startsWith('hi') ? (hiText || enText) : (enText || hiText);
   };
 
   const loadCategories = async () => {

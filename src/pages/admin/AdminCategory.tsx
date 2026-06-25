@@ -15,11 +15,18 @@ interface CategoryFormData {
 }
 
 const AdminCategory: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const getLocalized = (en?: string, hi?: string): string => {
+    const enText = en || '';
+    const hiText = hi || '';
+    const language = i18n.language || 'en';
+    return language.startsWith('hi') ? (hiText || enText) : (enText || hiText);
+  };
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -160,7 +167,7 @@ const AdminCategory: React.FC = () => {
 
   const handleToggleStatus = async (id: number, currentStatus: boolean) => {
     const categoryToUpdate = categories.find(cat => cat.id === id);
-    const categoryName = categoryToUpdate?.category || 'Unknown';
+    const categoryName = getLocalized(categoryToUpdate?.category, categoryToUpdate?.categoryHi) || 'Unknown';
     const newStatus = currentStatus ? 'deactivated' : 'activated';
     
     try {
@@ -187,7 +194,7 @@ const AdminCategory: React.FC = () => {
   const handleDelete = async (id: number) => {
     // Find the category name for confirmation
     const categoryToDelete = categories.find(cat => cat.id === id);
-    const categoryName = categoryToDelete?.category || 'Unknown';
+    const categoryName = getLocalized(categoryToDelete?.category, categoryToDelete?.categoryHi) || 'Unknown';
     
     if (!window.confirm(
       t('categories.confirmDelete', { name: categoryName })
@@ -217,7 +224,7 @@ const AdminCategory: React.FC = () => {
 
   // Pagination with search filter (client-side filtering on server-side paginated data)
   const filteredCategories = categories.filter(cat =>
-    cat.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getLocalized(cat.category, cat.categoryHi).toLowerCase().includes(searchTerm.toLowerCase()) ||
     cat.id.toString().includes(searchTerm)
   );
 
@@ -460,7 +467,7 @@ const AdminCategory: React.FC = () => {
                     {currentCategories.map((category) => (
                       <div key={category.id} className="category-card">
                         <div className="card-header">
-                          <h3 className="category-name">{category.category}</h3>
+                          <h3 className="category-name">{getLocalized(category.category, category.categoryHi)}</h3>
                           <span className={`status-badge ${category.isActive ? 'active' : 'inactive'}`}>
                             {category.isActive ? t('categories.active') : t('categories.inactive')}
                           </span>
