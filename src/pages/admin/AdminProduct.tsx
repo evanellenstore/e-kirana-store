@@ -23,6 +23,7 @@ import "./AdminProduct.css";
 interface Category {
   id: number;
   category: string;
+  categoryHi?: string;
   isActive: boolean;
 }
 
@@ -37,14 +38,13 @@ const UNIT_OPTIONS = [
   { value: 'Dozen', label: 'Dozen' }
 ];
 
-const getUnitLabel = (u?: string | null) => {
-  if (!u) return 'None';
-  const found = UNIT_OPTIONS.find(opt => opt.value === u);
-  return found ? found.label : u;
-}
-
 const AdminProducts: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+
+  const getLocalized = (en?: string, hi?: string) => {
+    if (!en && !hi) return '';
+    return i18n.language?.startsWith('hi') ? (hi || en) : (en || hi || '');
+  };
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -66,9 +66,13 @@ const AdminProducts: React.FC = () => {
   const emptyProduct: Product = {
     sku: "",
     name: "",
+    nameHi: "",
     description: "",
     category: "",
+    categoryHi: "",
     brandId: undefined,
+    brandName: "",
+    brandNameHi: "",
     unit: "",
     price: 0,
     discountAmount: 0,
@@ -83,6 +87,10 @@ const AdminProducts: React.FC = () => {
 
   const [formData, setFormData] = useState<Product>(emptyProduct);
   const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
+
+  const getProductName = (product: Product) => getLocalized(product.name, product.nameHi);
+  const getProductCategory = (product: Product) => getLocalized(product.category, product.categoryHi);
+  const getProductBrand = (product: Product) => getLocalized(product.brandName, product.brandNameHi);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
   // Barcode scanner state
@@ -163,7 +171,10 @@ const AdminProducts: React.FC = () => {
       loose: (productToEdit as any).loose ?? false,
       productSize: (productToEdit as any).productSize ?? undefined,
       packetSize: (productToEdit as any).packetSize ?? undefined,
-      packetUnit: (productToEdit as any).packetUnit ?? undefined
+      packetUnit: (productToEdit as any).packetUnit ?? undefined,
+      nameHi: productToEdit.nameHi || "",
+      categoryHi: (productToEdit as any).categoryHi || "",
+      brandNameHi: (productToEdit as any).brandNameHi || ""
     } as Product);
     setInputMode("manual"); // Reset to manual when opening modal
     setBarcodeInput("");
@@ -208,10 +219,13 @@ const AdminProducts: React.FC = () => {
         ...product,
         sku: product.sku || "",
         name: product.name || "",
+        nameHi: product.nameHi || "",
         description: product.description || "",
         category: product.category || "",
+        categoryHi: product.categoryHi || "",
         brandId: product.brandId || undefined,
         brandName: product.brandName || "",
+        brandNameHi: product.brandNameHi || "",
         unit: product.unit || "",
         price: product.price || 0,
         discountAmount: product.discountAmount || 0,
@@ -260,8 +274,12 @@ const AdminProducts: React.FC = () => {
       : createProduct(dataToSave);
 
     apiCall.then(() => {
-      setCurrentPage(1); // Reset to page 1 after adding/editing
-      loadProducts(1, itemsPerPage);
+      if (editing) {
+        loadProducts(currentPage, itemsPerPage);
+      } else {
+        setCurrentPage(1); // Reset to page 1 after creating a new product
+        loadProducts(1, itemsPerPage);
+      }
       setShow(false);
     });
   };
@@ -281,9 +299,15 @@ const AdminProducts: React.FC = () => {
   /* 🔎 Filter logic */
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      const term = search.toLowerCase();
       const matchSearch =
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.sku.toLowerCase().includes(search.toLowerCase());
+        p.name.toLowerCase().includes(term) ||
+        p.nameHi?.toLowerCase().includes(term) ||
+        p.category.toLowerCase().includes(term) ||
+        p.categoryHi?.toLowerCase().includes(term) ||
+        p.brandName?.toLowerCase().includes(term) ||
+        p.brandNameHi?.toLowerCase().includes(term) ||
+        p.sku.toLowerCase().includes(term);
 
       const matchCategory = !filterCategory || p.category === filterCategory;
       const matchBrand = !filterBrand || p.brandId?.toString() === filterBrand;
@@ -403,7 +427,7 @@ const AdminProducts: React.FC = () => {
                     {brands
                       .map(brand => (
                         <option key={brand.id} value={brand.id}>
-                          {brand.brand}
+                          {getLocalized(brand.brand, brand.nameHi)}
                         </option>
                       ))}
                   </Form.Select>
@@ -446,7 +470,7 @@ const AdminProducts: React.FC = () => {
                       fontSize: "12px",
                       color: "#0050b3"
                     }}>
-                      📁 {filterCategory}
+                      📁 {categories.find(cat => cat.category === filterCategory)?.categoryHi ? getLocalized(filterCategory, categories.find(cat => cat.category === filterCategory)?.categoryHi) : filterCategory}
                       <span 
                         onClick={() => setFilterCategory("")}
                         style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
@@ -464,7 +488,7 @@ const AdminProducts: React.FC = () => {
                       fontSize: "12px",
                       color: "#531dab"
                     }}>
-                      🏷️ {brands.find(b => b.id.toString() === filterBrand)?.brand || ""}
+                      🏷️ {getLocalized(brands.find(b => b.id.toString() === filterBrand)?.brand || "", brands.find(b => b.id.toString() === filterBrand)?.nameHi || "")}
                       <span 
                         onClick={() => setFilterBrand("")}
                         style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
@@ -546,7 +570,7 @@ const AdminProducts: React.FC = () => {
             <div key={p.id} className="admin-product-card">
               <div className="admin-product-card-header">
                 <div className="admin-product-card-title-section">
-                  <h4 className="admin-product-name">{p.name}</h4>
+                  <h4 className="admin-product-name">{getProductName(p)}</h4>
                   <div className="admin-product-sku">{t('products.sku')}: {p.sku}</div>
                 </div>
                 <Badge 
@@ -564,11 +588,11 @@ const AdminProducts: React.FC = () => {
                   </div>
                   <div className="admin-product-info-item">
                     <span className="info-label">{t('products.category')}</span>
-                    <span className="info-value">{p.category || "N/A"}</span>
+                    <span className="info-value">{getProductCategory(p) || "N/A"}</span>
                   </div>
                   <div className="admin-product-info-item">
                     <span className="info-label">{t('products.brand')}</span>
-                    <span className="info-value">{p.brandName || "N/A"}</span>
+                    <span className="info-value">{getProductBrand(p) || "N/A"}</span>
                   </div>
 
 {/*
@@ -1039,7 +1063,15 @@ const AdminProducts: React.FC = () => {
               value={formData.category}
               onChange={e => {
                 const selectedCategory = e.target.value;
-                setFormData(prev => ({ ...prev, category: selectedCategory, brandId: undefined, brandName: undefined }));
+                const selectedCategoryObj = categories.find(cat => cat.category === selectedCategory);
+                setFormData(prev => ({
+                  ...prev,
+                  category: selectedCategory,
+                  categoryHi: selectedCategoryObj?.categoryHi || "",
+                  brandId: undefined,
+                  brandName: undefined,
+                  brandNameHi: ""
+                }));
               }}
               className="admin-product-form-select"
             >
@@ -1048,7 +1080,7 @@ const AdminProducts: React.FC = () => {
                 .filter(cat => cat.isActive)
                 .map(cat => (
                   <option key={cat.id} value={cat.category}>
-                    {cat.category}
+                    {getLocalized(cat.category, cat.categoryHi)}
                   </option>
                 ))}
             </Form.Select>
@@ -1075,7 +1107,8 @@ const AdminProducts: React.FC = () => {
                   setFormData({ 
                     ...formData, 
                     brandId: selectedId,
-                    brandName: selectedBrand?.brand
+                    brandName: selectedBrand?.brand || "",
+                    brandNameHi: selectedBrand?.nameHi || ""
                   })
                 }}
                 className="admin-product-form-select"
@@ -1083,7 +1116,7 @@ const AdminProducts: React.FC = () => {
                 <option value="">{t('products.selectBrand')}</option>
                 {brands.map((brand) => (
                   <option key={brand.id} value={brand.id}>
-                    {brand.brand}
+                    {getLocalized(brand.brand, brand.nameHi)}
                   </option>
                 ))}
               </Form.Select>
@@ -1101,6 +1134,16 @@ const AdminProducts: React.FC = () => {
               placeholder={t('products.name')}
               value={formData.name}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="admin-product-form-input"
+            />
+          </Form.Group>
+
+          <Form.Group className="mb-3">
+            <Form.Label className="admin-product-form-label">{t('products.nameHindi')}</Form.Label>
+            <Form.Control
+              placeholder={t('products.nameHindi')}
+              value={formData.nameHi || ""}
+              onChange={e => setFormData({ ...formData, nameHi: e.target.value })}
               className="admin-product-form-input"
             />
           </Form.Group>

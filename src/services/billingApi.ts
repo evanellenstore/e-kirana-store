@@ -4,6 +4,7 @@ export type CartItem = {
   productId: string;
   batchNo: string;
   name: string;
+  nameHi?: string;
   sku: string;
   price: number;
   discountAmount?: number;

@@ -7,11 +7,13 @@ import './AdminBrand.css';
 interface Brand {
   id: number;
   brand: string;
+  nameHi?: string;
   isActive: boolean;
 }
 
 interface BrandFormData {
   brand: string;
+  nameHi?: string;
 }
 
 const AdminBrand: React.FC = () => {
@@ -28,7 +30,8 @@ const AdminBrand: React.FC = () => {
 
   // Form state
   const [formData, setFormData] = useState<BrandFormData>({
-    brand: ''
+    brand: '',
+    nameHi: ''
   });
 
   // Pagination
@@ -60,20 +63,20 @@ const AdminBrand: React.FC = () => {
   const openCreateModal = () => {
     setIsEditing(false);
     setEditingId(null);
-    setFormData({ brand: '' });
+    setFormData({ brand: '', nameHi: '' });
     setShowModal(true);
   };
 
   const openEditModal = (brand: Brand) => {
     setIsEditing(true);
     setEditingId(brand.id);
-    setFormData({ brand: brand.brand });
+    setFormData({ brand: brand.brand, nameHi: (brand as any).nameHi || '' });
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
-    setFormData({ brand: '' });
+    setFormData({ brand: '', nameHi: '' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,13 +94,15 @@ const AdminBrand: React.FC = () => {
       if (isEditing && editingId) {
         // Update brand
         await api.put(`/products/brand/${editingId}`, {
-          brand: formData.brand
+          brand: formData.brand,
+          nameHi: formData.nameHi
         });
         setSuccess(`✅ ${t('brands.updatedSuccessfully')}`);
       } else {
         // Create new brand
         await api.post('/products/brand', {
-          brand: formData.brand
+          brand: formData.brand,
+          nameHi: formData.nameHi
         });
         setSuccess(`✅ ${t('brands.createdSuccessfully')}`);
       }
@@ -337,7 +342,7 @@ const AdminBrand: React.FC = () => {
                   type="text"
                   placeholder={t('brands.enterBrandName')}
                   value={formData.brand}
-                  onChange={(e) => setFormData({ brand: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                   className="form-input"
                   required
                   autoFocus
@@ -345,6 +350,15 @@ const AdminBrand: React.FC = () => {
                 {formData.brand === '' && (
                   <span className="form-error">{t('brands.nameRequired')}</span>
                 )}
+                <label htmlFor="brand-name-hi" className="form-label mt-2">{t('brands.brandHindiLabel')}</label>
+                <input
+                  id="brand-name-hi"
+                  type="text"
+                  placeholder={t('brands.enterBrandNameHindi')}
+                  value={formData.nameHi || ''}
+                  onChange={(e) => setFormData({ ...formData, nameHi: e.target.value })}
+                  className="form-input"
+                />
               </div>
               <div className="modal-footer">
                 <button

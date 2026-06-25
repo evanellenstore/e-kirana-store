@@ -5,11 +5,13 @@ import './AdminCategory.css';
 interface Category {
   id: number;
   category: string;
+  categoryHi?: string;
   isActive: boolean;
 }
 
 interface CategoryFormData {
   category: string;
+  categoryHi?: string;
 }
 
 const AdminCategory: React.FC = () => {
@@ -26,7 +28,8 @@ const AdminCategory: React.FC = () => {
 
   // Form state
   const [formData, setFormData] = useState<CategoryFormData>({
-    category: ''
+    category: '',
+    categoryHi: ''
   });
 
   // Pagination
@@ -96,20 +99,20 @@ const AdminCategory: React.FC = () => {
   const openCreateModal = () => {
     setIsEditing(false);
     setEditingId(null);
-    setFormData({ category: '' });
+    setFormData({ category: '', categoryHi: '' });
     setShowModal(true);
   };
 
   const openEditModal = (category: Category) => {
     setIsEditing(true);
     setEditingId(category.id);
-    setFormData({ category: category.category });
+    setFormData({ category: category.category, categoryHi: (category as any).categoryHi || '' });
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
-    setFormData({ category: '' });
+    setFormData({ category: '', categoryHi: '' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -128,14 +131,16 @@ const AdminCategory: React.FC = () => {
         // Update category
         console.log(`✏️ Updating category: ${formData.category} (ID: ${editingId})`);
         await api.put(`/products/categories/${editingId}`, {
-          category: formData.category
+          category: formData.category,
+          categoryHi: formData.categoryHi
         });
         setSuccess(`✅ ${t('categories.updatedSuccessfully', { name: formData.category })}`);
       } else {
         // Create new category
         console.log(`➕ Creating new category: ${formData.category}`);
         await api.post('/products/category', {
-          category: formData.category
+          category: formData.category,
+          categoryHi: formData.categoryHi
         });
         setSuccess(`✅ ${t('categories.createdSuccessfully', { name: formData.category })}`);
       }
@@ -539,6 +544,15 @@ const AdminCategory: React.FC = () => {
                 {formData.category === '' && (
                   <span className="form-error">{t('categories.nameRequired')}</span>
                 )}
+                <label htmlFor="category-name-hi" className="form-label mt-2">{t('categories.categoryHindiLabel')}</label>
+                <input
+                  id="category-name-hi"
+                  type="text"
+                  placeholder={t('categories.enterCategoryNameHindi')}
+                  value={formData.categoryHi || ''}
+                  onChange={(e) => setFormData({ ...formData, categoryHi: e.target.value })}
+                  className="form-input"
+                />
               </div>
               <div className="modal-footer">
                 <button

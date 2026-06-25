@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Badge,
   Form,
@@ -22,6 +23,7 @@ interface Category {
 }
 
 const Products: React.FC = () => {
+  const { i18n } = useTranslation();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingBrands, setLoadingBrands] = useState(false);
@@ -41,9 +43,12 @@ const Products: React.FC = () => {
   const emptyProduct: Product = {
     sku: "",
     name: "",
+    nameHi: "",
     description: "",
     category: "",
+    categoryHi: "",
     brandName: "",
+    brandNameHi: "",
     unit: "",
     price: 0,
     status: "ACTIVE",
@@ -67,6 +72,11 @@ const Products: React.FC = () => {
     getAllProducts()
       .then(res => setProducts(res.data))
       .finally(() => setLoading(false));
+  };
+
+  const getLocalized = (en?: string, hi?: string) => {
+    if (!en && !hi) return '';
+    return i18n.language?.startsWith('hi') ? (hi || en) : (en || hi || '');
   };
 
   const loadCategories = async () => {
@@ -170,6 +180,11 @@ const Products: React.FC = () => {
     return products.filter(p => {
       const matchSearch =
         p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.nameHi?.toLowerCase().includes(search.toLowerCase()) ||
+        p.category.toLowerCase().includes(search.toLowerCase()) ||
+        p.categoryHi?.toLowerCase().includes(search.toLowerCase()) ||
+        p.brandName.toLowerCase().includes(search.toLowerCase()) ||
+        p.brandNameHi?.toLowerCase().includes(search.toLowerCase()) ||
         p.sku.toLowerCase().includes(search.toLowerCase());
 
       const matchCategory = !filterCategory || p.category === filterCategory;
@@ -258,7 +273,7 @@ const Products: React.FC = () => {
                     .filter(cat => cat.isActive)
                     .map(cat => (
                       <option key={cat.id} value={cat.category}>
-                        {cat.category}
+                        {getLocalized(cat.category, cat.categoryHi)}
                       </option>
                     ))}
                 </Form.Select>
@@ -283,7 +298,7 @@ const Products: React.FC = () => {
                   </option>
                   {brands.map(brand => (
                       <option key={brand.id} value={brand.id}>
-                        {brand.brand}
+                        {getLocalized(brand.brand, brand.nameHi)}
                       </option>
                     ))}
                 </Form.Select>
@@ -307,7 +322,7 @@ const Products: React.FC = () => {
                     fontSize: "12px",
                     color: "#0050b3"
                   }}>
-                    📁 {filterCategory}
+                    📁 {getLocalized(categories.find(cat => cat.category === filterCategory)?.category, categories.find(cat => cat.category === filterCategory)?.categoryHi) || filterCategory}
                     <span 
                       onClick={() => setFilterCategory("")}
                       style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
@@ -325,7 +340,7 @@ const Products: React.FC = () => {
                     fontSize: "12px",
                     color: "#531dab"
                   }}>
-                    🏷️ {brands.find(b => b.id.toString() === filterBrand)?.brand || ""}
+                    🏷️ {getLocalized(brands.find(b => b.id.toString() === filterBrand)?.brand, brands.find(b => b.id.toString() === filterBrand)?.nameHi) || ""}
                     <span 
                       onClick={() => setFilterBrand("")}
                       style={{ marginLeft: "6px", cursor: "pointer", fontWeight: "bold" }}
@@ -345,7 +360,7 @@ const Products: React.FC = () => {
             <div key={p.id} className="product-card">
               <div className="product-card-header">
                 <div className="product-card-title-section">
-                  <h4 className="product-name">{p.name}</h4>
+                  <h4 className="product-name">{getLocalized(p.name, p.nameHi)}</h4>
                   <div className="product-sku">SKU: {p.sku}</div>
                 </div>
                 <Badge 
@@ -359,11 +374,11 @@ const Products: React.FC = () => {
                 <div className="product-info-grid">
                   <div className="product-info-item">
                     <span className="info-label">Category</span>
-                    <span className="info-value">{p.category || "N/A"}</span>
+                    <span className="info-value">{getLocalized(p.category, p.categoryHi) || "N/A"}</span>
                   </div>
                   <div className="product-info-item">
                     <span className="info-label">Brand</span>
-                    <span className="info-value">{p.brandName || "N/A"}</span>
+                    <span className="info-value">{getLocalized(p.brandName, p.brandNameHi) || "N/A"}</span>
                   </div>
                   <div className="product-info-item">
                     <span className="info-label">Unit</span>

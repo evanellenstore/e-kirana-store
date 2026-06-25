@@ -4,10 +4,13 @@ export interface Product {
   id?: number;
   sku: string;
   name: string;
+  nameHi?: string;
   description: string;
   category: string;
+  categoryHi?: string;
   brandId?: number;
   brandName?: string;
+  brandNameHi?: string;
   unit: string;
   price: number;
   discountAmount?: number;
@@ -18,18 +21,19 @@ export interface Product {
   packetSize?: number;
   packetUnit?: string;
   productSize?: number;
-  
 }
 
 export interface Category {
   id: number;
   category: string;
+  categoryHi?: string;
   isActive: boolean;
 }
 
 export interface Brand {
   id: number;
   brand: string;
+  nameHi?: string;
   isActive: boolean;
 }
 

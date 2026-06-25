@@ -54,10 +54,15 @@ import { useTranslation } from "react-i18next";
 import "../../styles/Billing.css";
 
 const Billing = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   console.log("Billing component mounted");
   const [billId, setBillId] = useState<string>();
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  const getLocalized = (en?: string, hi?: string) => {
+    if (!en && !hi) return '';
+    return i18n.language?.startsWith('hi') ? (hi || en) : (en || hi || '');
+  };
   const [total, setTotal] = useState(0);
   const [subtotalBeforeDiscount, setSubtotalBeforeDiscount] = useState(0);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -267,6 +272,7 @@ const Billing = () => {
                 productId: pid,
                 batchNo: bNo,
                 name: it.name ?? '',
+                nameHi: it.nameHi ?? '',
                 sku: it.sku ?? '',
                 price: it.price ?? 0,
                 discountAmount: it.discountAmount ?? 0,
@@ -447,6 +453,7 @@ const Billing = () => {
               productId: pidStr,
               batchNo: batchNo,
               name: product.name ?? product.title ?? "",
+              nameHi: product.nameHi ?? "",
               sku: product.sku ?? product.skuCode ?? "",
               price: product.price ?? 0,
               discountAmount: product.discountAmount ?? 0,
@@ -502,6 +509,7 @@ const Billing = () => {
             productId: pidStr,
             batchNo: batchNo,
             name: product.name ?? product.title ?? "",
+            nameHi: product.nameHi ?? "",
             sku: product.sku ?? product.skuCode ?? "",
             price: product.price ?? 0,
             discountAmount: product.discountAmount ?? 0,
@@ -718,12 +726,8 @@ const Billing = () => {
           quantity: item.qty,
           price: item.price,
           name: item.name,
-          sku: item.sku,
-          expiryDate: item.expiryDate
+          nameHi: item.nameHi
         }));
-
-        const res = await addItemsBatch(billId, payload);
-        console.log('addItemsBatch response', res?.data || res);
         setReservedForBill(true);
       }
 
@@ -1970,6 +1974,7 @@ const Billing = () => {
               productId: String(batchModalProduct.pid),
               batchNo: bNo,
               name: prod.name ?? prod.title ?? batchModalProduct.productName ?? '',
+              nameHi: prod.nameHi ?? batchModalProduct.nameHi ?? '',
               sku: prod.sku ?? prod.skuCode ?? batchModalProduct.sku ?? '',
               price: prod.price ?? batchModalProduct.price ?? 0,
               discountAmount: prod.discountAmount ?? batchModalProduct.discountAmount ?? 0,
@@ -2003,6 +2008,7 @@ const Billing = () => {
               productId: pidStr,
               batchNo: bNo,
               name: prod.name ?? prod.title ?? batchModalProduct.productName ?? '',
+              nameHi: prod.nameHi ?? batchModalProduct.nameHi ?? '',
               sku: prod.sku ?? prod.skuCode ?? batchModalProduct.sku ?? '',
               price: prod.price ?? batchModalProduct.price ?? 0,
               discountAmount: prod.discountAmount ?? batchModalProduct.discountAmount ?? 0,
@@ -2149,7 +2155,7 @@ const Billing = () => {
                 const cartItemTotal = priceAfterDiscount * i.qty;
                 return (
                   <tr key={`${i.productId}-${i.batchNo}`}>
-                    <td style={{ maxWidth: 300 }}>{i.sku || i.name}</td>
+                    <td style={{ maxWidth: 300 }}>{getLocalized(i.name, i.nameHi) || i.sku}</td>
                     <td>
                       <div className="d-flex align-items-center">
                         <Button size="sm" variant="outline-secondary" onClick={() => decreaseQty(i.productId, i.batchNo)}>-</Button>
@@ -2964,7 +2970,7 @@ const Billing = () => {
                           }}
                         >
                           <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#333', marginBottom: '0.5rem' }}>
-                            {item.sku || item.productName}
+                            {getLocalized(item.name, item.nameHi) || item.productName || item.sku}
                           </div>
                           <Badge bg={selectedReservedItem === item ? 'warning' : 'secondary'}>
                             {item.quantity} units
@@ -2983,7 +2989,7 @@ const Billing = () => {
                     {selectedReservedItem ? (
                       <>
                         <div className="alert alert-light border border-warning mb-3" style={{ backgroundColor: '#fff8e1' }}>
-                          <h6 className="fw-bold mb-2">📦 {selectedReservedItem.productName || selectedReservedItem.sku}</h6>
+                          <h6 className="fw-bold mb-2">📦 {getLocalized(selectedReservedItem.name, selectedReservedItem.nameHi) || selectedReservedItem.productName || selectedReservedItem.sku}</h6>
                           <small className="d-block mb-2">Total Reserved: {selectedReservedItem.quantity} units</small>
                           <Form.Group>
                             <Form.Label className="fw-bold">{t('billing.quantityToRelease')}</Form.Label>
@@ -3312,7 +3318,7 @@ const Billing = () => {
                 </thead>
                 <tbody>
                   {refundSlipData.items.map((it: any, i: number) => (
-                    <tr key={i}><td>{it.sku}</td><td>{it.qty}</td><td>₹{it.unitPrice.toFixed(2)}</td><td>₹{it.gross.toFixed(2)}</td></tr>
+                    <tr key={i}><td>{getLocalized(it.name, it.nameHi) || it.sku}</td><td>{it.qty}</td><td>₹{it.unitPrice.toFixed(2)}</td><td>₹{it.gross.toFixed(2)}</td></tr>
                   ))}
                 </tbody>
               </Table>
@@ -3369,7 +3375,7 @@ const Billing = () => {
                     const receiptItemTotal = priceAfterDiscount * it.qty;
                     return (
                       <tr key={`${it.productId}-${it.batchNo}`}>
-                        <td>{it.sku || it.name}</td>
+                        <td>{getLocalized(it.name, it.nameHi) || it.sku}</td>
                         <td>{it.qty}</td>
                         <td>₹{it.price.toFixed(2)}</td>
                         <td>₹{totalDiscount.toFixed(2)}</td>
@@ -3770,7 +3776,7 @@ const Billing = () => {
                               <small className="fw-bold">{item.sku || 'N/A'}</small>
                             </td>
                             <td>
-                              <small>{item.name || item.productName || 'N/A'}</small>
+                              <small>{getLocalized(item.name, item.nameHi) || item.productName || 'N/A'}</small>
                             </td>
                             <td className="text-center">
                               <small className="fw-bold">{item.qty || item.quantity || 0}</small>
