@@ -248,7 +248,7 @@ const Billing = () => {
 
       let structuralPayload = { ...payload };
       const spokenText = String(payload?.text || payload?.message || '').toLowerCase();
-      if (!structuralPayload.intent && !structuralPayload.action && (spokenText.includes('add') || spokenText.includes('atta'))) {
+      if (!structuralPayload.intent && !structuralPayload.action && (spokenText.includes('add'))) {
         console.log("⚠️ Structural Fallback Match: Forcing add_item routing rule.");
         structuralPayload.intent = 'add_item';
       }
@@ -2141,7 +2141,8 @@ const Billing = () => {
           <Table striped bordered hover size="sm" className="mt-3">
             <thead>
               <tr>
-                <th>{t('billing.table.item')}</th>
+                <th>SKU</th>
+                <th style={{ width: 180 }}>{t('billing.table.item')}</th>
                 <th style={{ width: 180 }}>{t('billing.table.qty')}</th>
                 <th style={{ width: 120 }}>{t('billing.table.price')}</th>
                 <th style={{ width: 100 }}>{t('billing.table.discount')}</th>
@@ -2157,6 +2158,7 @@ const Billing = () => {
                 const cartItemTotal = priceAfterDiscount * i.qty;
                 return (
                   <tr key={`${i.productId}-${i.batchNo}`}>
+                    <td style={{ width: 180 }}>{i.sku}</td>
                     <td style={{ maxWidth: 300 }}>{getLocalized(i.name, i.nameHi) || i.sku}</td>
                     <td>
                       <div className="d-flex align-items-center">
