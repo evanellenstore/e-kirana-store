@@ -89,6 +89,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_BRAND_SELECTION' && pendingBrandState) {
       const selectedBrandValue = (payload.brand || txt || '').trim();
+      const lowerBrandValue = selectedBrandValue.toLowerCase();
       const candidates = pendingBrandState.candidates;
       let selectedCandidate: BrandCandidate | null = null;
 
@@ -99,29 +100,33 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
       if (!selectedCandidate) {
         selectedCandidate = candidates.find(c => {
-          const splitTokens = c.brand.toLowerCase().split('-');
-          return splitTokens.some(token => selectedBrandValue.toLowerCase().includes(token) || token.includes(selectedBrandValue.toLowerCase()));
+          const candidateBrand = c.brand.toLowerCase();
+          return candidateBrand.includes(lowerBrandValue) || lowerBrandValue.includes(candidateBrand);
         }) || null;
       }
 
       if (selectedCandidate) {
+        // Matched a candidate option explicitly
         payload = {
           ...pendingBrandState.originalRequest,
           intent: 'ADD_ITEM',
           productSku: selectedCandidate.productSku,
-          brand: selectedCandidate.brand.split('-')[0].trim(),
+          brand: selectedCandidate.brand.trim(), 
           isLoose: payload.isLoose !== undefined ? payload.isLoose : pendingBrandState.originalRequest.isLoose
         };
-        
-        act = 'ADD_ITEM'; 
-        pendingBrandState = null;
-        (window as any).conversationState = 'IDLE';
       } else {
-        const retryMsg = "Invalid brand selection. Please specify one of the available options.";
-        deps.speak?.(retryMsg);
-        deps.appendAssistantMessage?.(retryMsg);
-        return;
+        // No restriction: dynamic fallback directly to the raw user response text
+        payload = {
+          ...pendingBrandState.originalRequest,
+          intent: 'ADD_ITEM',
+          brand: selectedBrandValue || undefined,
+          isLoose: payload.isLoose !== undefined ? payload.isLoose : pendingBrandState.originalRequest.isLoose
+        };
       }
+      
+      act = 'ADD_ITEM'; 
+      pendingBrandState = null;
+      (window as any).conversationState = 'IDLE';
     }
 
     // =========================================================================
@@ -178,7 +183,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const inventorySearchPayload = {
           intent: "ADD_ITEM",
           productName: productName,
-          qty: Number(payload?.qty) || 1,
+          qty: payload?.qty !== undefined ? Number(payload.qty) : undefined,
           unit: String(payload?.unit || 'kg'),
           brand: payload?.brand || null,
           language: lang,
@@ -189,8 +194,9 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         console.log("Calling inventory search API with payload:", inventorySearchPayload);
         const resp = await api.post('/inventory/search', inventorySearchPayload);
         const json = resp.data;
-//===================================================================================
-        if ((json?.multipleBrands === true || json?.multiBrand === true )) {
+
+        //===================================================================================
+        if ((json?.multipleBrands === true || json?.multiBrand === true ) && currentContextState !== 'WAITING_FOR_BRAND_SELECTION') {
           const candidatesList: BrandCandidate[] = json.candidates || [];
           
           pendingBrandState = {
@@ -198,7 +204,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
               ...payload,
               intent: 'ADD_ITEM', 
               productName, 
-              qty: Number(payload?.qty) || 5, 
+              qty: payload?.qty !== undefined ? Number(payload.qty) : undefined, 
               unit: String(payload?.unit || 'kg') 
             },
             candidates: candidatesList
@@ -207,7 +213,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           (window as any).conversationState = 'WAITING_FOR_BRAND_SELECTION';
 
           const uniqueBrandsArray = Array.from(
-            new Set(candidatesList.map(c => c.brand.split('-')[0].trim()))
+            new Set(candidatesList.map(c => c.brand.trim()))
           );
           
           const humanBrands = uniqueBrandsArray.map((brand, index) => `${index + 1}. ${brand}`).join(', ');
@@ -217,13 +223,13 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           deps.appendAssistantMessage?.(prompt);
           return;
         }
-//===================================================================================
+        //===================================================================================
         if (json?.needsPackagingClarification === true) {
           pendingRequestState = { 
             ...payload,
             intent: 'ADD_ITEM', 
             productName, 
-            qty: Number(payload?.qty) || 5, 
+            qty: payload?.qty !== undefined ? Number(payload.qty) : undefined, 
             unit: String(payload?.unit || 'kg'), 
             language: lang 
           };
@@ -234,7 +240,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           return;
         }
 
-        //=====================================================================
         if(json?.error) {
           const errorMsg = json.error || "An error occurred while searching for the product.";
           deps.speak?.(errorMsg);
@@ -251,7 +256,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const product = items[0];
         const finalCartQty = Number(json?.checkoutQty) || Number(payload?.qty) || 5;
 
-        // --- FIXED BATCH ENDPOINT TO USE ORIGINAL MAPPING ---
         let selectedBatchNo = "BATCH-DEFAULT-01";
         const pid = product.productId ?? product.id;
 
@@ -270,68 +274,55 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           }
         }
 
-        // 🔥 DEEP SCHEMA TRACKING LOGGER WITH DYNAMIC FALLBACK MATCHING
-console.log("Voice Assistant matching product object schema details:", product);
+        console.log("Voice Assistant matching product object schema details:", product);
 
-// 1. EXTRACT DATA DIRECTLY MATCHING YOUR API JSON RESPONSE STRUCTURE
-const targetProductSource = product.product || product;
+        const targetProductSource = product.product || product;
+        const availableStock = Number(targetProductSource.totalQty ?? targetProductSource.avlQty ?? targetProductSource.availableQty ?? 0);
+        const price = Number(targetProductSource.price);
+        const discount = Number(targetProductSource.discountAmount);
+        const mrp = Number(targetProductSource.mrp ?? price); 
 
-// Map 'totalQty' from your API to your stock keys
-const availableStock = Number(targetProductSource.totalQty ?? targetProductSource.avlQty ?? targetProductSource.availableQty ?? 0);
+        const baseDiscountPerItem = discount; 
+        const grossAmount = price * finalCartQty;
+        const totalDiscount = baseDiscountPerItem * finalCartQty; 
+        const netAmount = grossAmount - totalDiscount;
 
-// Map price and discount rules explicitly matching your payload
-const price = Number(targetProductSource.price);
-const discount = Number(targetProductSource.discountAmount);
-
-// Use price directly as fallback if MRP is missing from candidate block
-const mrp = Number(targetProductSource.mrp ?? price); 
-
-
-// 2. CONSTRUCT THE STRICT TOTALS (Keep base metrics unmultiplied for the row fields)
-const baseDiscountPerItem = discount; // 2.0 (Do NOT multiply by finalCartQty here)
-const grossAmount = price * finalCartQty;
-const totalDiscount = baseDiscountPerItem * finalCartQty; 
-const netAmount = grossAmount - totalDiscount;
-
-// 3. COMPLETE INTEGRATED CART SCHEMA
-const cartItems = [{
-  productId: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
-  batchNo: selectedBatchNo,
-  name: product.productName ?? targetProductSource.productName ?? productName,
-  sku: product.productSku ?? targetProductSource.productSku ?? '',
-  qty: finalCartQty,
-  
-  avlQty: availableStock,
-  availableQty: availableStock,
-  stock: availableStock,
-  totalQty: availableStock,
-  quantity: finalCartQty,
-  
-  // Financial Structure Fields
-  price: price,
-  mrp: mrp,
-  
-  // Pass the single-item discount value so your cart context can safely multiply it
-  discount: baseDiscountPerItem, 
-  discountAmount: baseDiscountPerItem, // Changed from totalDiscount to fix the double multiplication!
-  
-  total: netAmount,
-  amount: netAmount,
-  grossAmount: grossAmount,
-  
-  product: {
-    ...targetProductSource,
-    id: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
-    avlQty: availableStock,
-    availableQty: availableStock,
-    stock: availableStock,
-    totalQty: availableStock,
-    price: price,
-    mrp: mrp,
-    discount: baseDiscountPerItem,
-    discountAmount: baseDiscountPerItem
-  }
-}];     
+        const cartItems = [{
+          productId: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
+          batchNo: selectedBatchNo,
+          name: product.productName ?? targetProductSource.productName ?? productName,
+          sku: product.productSku ?? targetProductSource.productSku ?? '',
+          qty: finalCartQty,
+          
+          avlQty: availableStock,
+          availableQty: availableStock,
+          stock: availableStock,
+          totalQty: availableStock,
+          quantity: finalCartQty,
+          
+          price: price,
+          mrp: mrp,
+          
+          discount: baseDiscountPerItem, 
+          discountAmount: baseDiscountPerItem, 
+          
+          total: netAmount,
+          amount: netAmount,
+          grossAmount: grossAmount,
+          
+          product: {
+            ...targetProductSource,
+            id: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
+            avlQty: availableStock,
+            availableQty: availableStock,
+            stock: availableStock,
+            totalQty: availableStock,
+            price: price,
+            mrp: mrp,
+            discount: baseDiscountPerItem,
+            discountAmount: baseDiscountPerItem
+          }
+        }];     
 
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
