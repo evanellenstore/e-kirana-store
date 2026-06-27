@@ -91,7 +91,9 @@ const Billing = () => {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [showRefundSlip, setShowRefundSlip] = useState(false);
   const [refundSlipData, setRefundSlipData] = useState<any>(null);
+
   const [useWallet, setUseWallet] = useState<boolean>(false);
+  
 
   // Unified Controls Modal state
   const [showUnifiedControlsModal, setShowUnifiedControlsModal] = useState(false);
