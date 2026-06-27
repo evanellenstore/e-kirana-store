@@ -60,8 +60,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   onConfirmPayment,
 }) => {
+
   const [mobile, setMobile] = useState(mobileNumber || '');
-  const [mobileError, setMobileError] = useState('');
+ const [mobileError, setMobileError] = useState('');
+
+  
+
+
   // Pre-tick the checkbox if voice already confirmed wallet use
   const [useWallet, setUseWallet] = useState<boolean>(applyWallet ?? false);
 
@@ -352,7 +357,9 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     <>
       {/* ── Internal Payment Modal (used when no onOpenPayment prop) ── */}
       {!onOpenPayment && (
+
         <PaymentModal
+          key={paymentMobile || 'no-mobile'}
           show={showPaymentModal}
           mobileNumber={paymentMobile}
           walletBalance={paymentOptions.walletBalance}

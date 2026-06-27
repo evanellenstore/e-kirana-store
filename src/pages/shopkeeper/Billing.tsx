@@ -296,7 +296,13 @@ const Billing = () => {
         },
         playBeep: async () => { try { await playBeep(); } catch {} },
         speak: typeof speak === 'function' ? speak : undefined,
-        appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined
+        appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined,
+        // ← ADD THIS
+  openPaymentModal: (mobileNumber?: string) => {
+    setCustomerMobile(mobileNumber || '');
+    setUnifiedModalTab('payment');
+    setShowUnifiedControlsModal(true);
+  }
       });
     } catch (e) {
       console.warn('delegate handleVoiceIntent failed', e);
