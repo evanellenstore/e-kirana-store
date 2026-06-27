@@ -14,6 +14,10 @@ export interface ReservedItem {
   productName?: string;
   productId?: number;
   batchNo?: string;
+
+    // Add these two missing fields:
+  name?: string;
+  nameHi?: string;
 }
 
 export interface BatchInfo {
