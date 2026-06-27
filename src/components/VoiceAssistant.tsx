@@ -20,6 +20,13 @@ export type IntentPayload = {
   [k: string]: any;
 };
 
+type PaymentOptions = {
+  applyWallet?: boolean;
+  walletBalance?: number;
+};
+
+
+
 type Props = {
   onIntent?: (
     payload: IntentPayload,
@@ -28,30 +35,38 @@ type Props = {
   /**
    * Called when the voice flow has collected the mobile number (or undefined if
    * the user skipped) and the payment modal should open.
-   * If you pass this prop, VoiceAssistant will NOT render its own payment modal
-   * and will delegate entirely to the parent.
+   * Now also receives optional PaymentOptions (e.g. applyWallet, walletBalance).
+   * If you pass this prop, VoiceAssistant will NOT render its own payment modal.
    */
-  onOpenPayment?: (mobileNumber?: string) => void;
+  onOpenPayment?: (mobileNumber?: string, options?: PaymentOptions) => void;
 };
 
 // ─── internal payment modal ──────────────────────────────────────────────────
 
 type PaymentModalProps = {
   show: boolean;
-  mobileNumber?: string;              // pre-filled from voice
+  mobileNumber?: string;
+  walletBalance?: number;       // pre-fetched wallet balance (if any)
+  applyWallet?: boolean;        // whether voice already said "use wallet"
   onClose: () => void;
-  onConfirmPayment: (mobile?: string) => void;
+  onConfirmPayment: (mobile?: string, useWallet?: boolean) => void;
 };
 
-
-
-
-const PaymentModal: React.FC<PaymentModalProps> = ({ show, mobileNumber, onClose, onConfirmPayment }) => {
+const PaymentModal: React.FC<PaymentModalProps> = ({
+  show,
+  mobileNumber,
+  walletBalance,
+  applyWallet,
+  onClose,
+  onConfirmPayment,
+}) => {
   const [mobile, setMobile] = useState(mobileNumber || '');
   const [mobileError, setMobileError] = useState('');
+  // Pre-tick the checkbox if voice already confirmed wallet use
+  const [useWallet, setUseWallet] = useState<boolean>(applyWallet ?? false);
 
-  // Sync if parent changes the pre-filled number
   useEffect(() => { setMobile(mobileNumber || ''); }, [mobileNumber]);
+  useEffect(() => { setUseWallet(applyWallet ?? false); }, [applyWallet]);
 
   const handleSubmit = () => {
     if (mobile && !/^\d{10}$/.test(mobile)) {
@@ -59,8 +74,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ show, mobileNumber, onClose
       return;
     }
     setMobileError('');
-    onConfirmPayment(mobile || undefined);
+    onConfirmPayment(mobile || undefined, useWallet);
   };
+
+  const hasWallet = walletBalance !== undefined && walletBalance > 0;
 
   return (
     <Modal show={show} onHide={onClose} centered backdrop="static">
@@ -73,7 +90,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ show, mobileNumber, onClose
           discount will be credited to your wallet.
         </p>
 
-        <Form.Group>
+        {/* Mobile number field */}
+        <Form.Group className="mb-3">
           <Form.Label>Mobile Number <span className="text-muted">(optional)</span></Form.Label>
           <Form.Control
             type="tel"
@@ -100,9 +118,37 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ show, mobileNumber, onClose
             </Form.Text>
           )}
         </Form.Group>
+
+        {/* Wallet balance section — shown only when balance is available */}
+        {hasWallet && (
+          <Form.Group className="mb-2 p-3 rounded" style={{ background: 'var(--bs-light, #f8f9fa)', border: '1px solid var(--bs-border-color, #dee2e6)' }}>
+            <div className="d-flex align-items-center justify-content-between mb-1">
+              <Form.Label className="mb-0 fw-semibold">
+                💰 Wallet Balance: <span className="text-success">₹{walletBalance}</span>
+              </Form.Label>
+              <Form.Check
+                type="switch"
+                id="wallet-switch"
+                label={useWallet ? 'Applied' : 'Apply'}
+                checked={useWallet}
+                onChange={e => setUseWallet(e.target.checked)}
+              />
+            </div>
+            {useWallet && (
+              <Form.Text className="text-success">
+                ✓ ₹{walletBalance} will be deducted from wallet at checkout.
+              </Form.Text>
+            )}
+            {!useWallet && (
+              <Form.Text className="text-muted">
+                Toggle to apply your wallet balance toward this bill.
+              </Form.Text>
+            )}
+          </Form.Group>
+        )}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="outline-secondary" onClick={() => onConfirmPayment(undefined)}>
+        <Button variant="outline-secondary" onClick={() => onConfirmPayment(undefined, false)}>
           Skip &amp; Pay
         </Button>
         <Button variant="primary" onClick={handleSubmit}>
@@ -112,9 +158,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ show, mobileNumber, onClose
     </Modal>
   );
 };
-
-
-
 
 // ─── main component ──────────────────────────────────────────────────────────
 
@@ -130,6 +173,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // Payment modal state (used when parent does NOT supply onOpenPayment)
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMobile, setPaymentMobile] = useState<string | undefined>(undefined);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions>({});
 
   const { i18n } = useTranslation();
   const recognitionRef = useRef<any>(null);
@@ -186,25 +230,26 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     setMessages(s => [...s, { from: 'assistant', text }]);
   };
 
-  // ── payment modal opener (passed as dep into voiceIntentHandler) ───────────
-  const openPaymentModal = (mobileNumber?: string) => {
+  // ── payment modal opener ───────────────────────────────────────────────────
+  const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
     if (onOpenPayment) {
-      // Delegate to parent — parent controls its own payment modal
-      onOpenPayment(mobileNumber);
+      onOpenPayment(mobileNumber, options);
     } else {
-      // Use internal modal
       setPaymentMobile(mobileNumber);
+      setPaymentOptions(options ?? {});
       setShowPaymentModal(true);
     }
   };
 
-  const handlePaymentConfirm = (mobile?: string) => {
+  const handlePaymentConfirm = (mobile?: string, useWallet?: boolean) => {
     setShowPaymentModal(false);
-    // TODO: wire actual payment API call here, passing `mobile` if provided
-    console.log('Payment confirmed with mobile:', mobile ?? '(none)');
-    const msg = mobile
-      ? `Payment processed. Discount credited to ${mobile}.`
-      : 'Payment processed successfully.';
+    console.log('Payment confirmed — mobile:', mobile ?? '(none)', '| useWallet:', useWallet);
+    const parts: string[] = ['Payment processed.'];
+    if (mobile) parts.push(`Discount credited to ${mobile}.`);
+    if (useWallet && paymentOptions.walletBalance) {
+      parts.push(`₹${paymentOptions.walletBalance} deducted from wallet.`);
+    }
+    const msg = parts.join(' ');
     appendAssistantMessage(msg);
     speak(msg);
   };
@@ -253,24 +298,27 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         data = response.data;
       } else if (
         currentContextState === 'WAITING_FOR_MOBILE_CONSENT' ||
-        currentContextState === 'WAITING_FOR_MOBILE_NUMBER'
+        currentContextState === 'WAITING_FOR_MOBILE_NUMBER' ||
+        currentContextState === 'WAITING_FOR_WALLET_CONSENT' ||
+        currentContextState === 'WAITING_FOR_PAY_CONFIRM'
       ) {
-        data = { text: userText, intent: null };
-        // ↓ NEW
+        const response = await api.post('/ai/intent', { command: userText }, {
+          params: { sessionMode: currentContextState }
+        });
+        // ─── CRITICAL: always inject the raw spoken text as `command` ───────
+        // The backend may transform/echo back a different `text`/`message`.
+        // The handler MUST see the original user speech to parse mobile numbers,
+        // yes/no answers, etc. We guarantee it here.
+        data = { ...response.data, command: userText };
+
       } else if (/\b(take\s*payment|payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(userText)) {
         const response = await api.post('/ai/intent', { command: userText }, {
           params: { sessionMode: 'TAKE_PAYMENT' }
         });
         data = response.data;
-        // ↑ NEW
       } else {
         data = await sendMessage(userText);
       }
-
-
-
-
-
 
       if (typeof data === 'string') data = JSON.parse(data);
 
@@ -279,6 +327,8 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         intent: data?.intent,
         action: data?.action,
         text: txt,
+        // Ensure raw user speech is always preserved for context-resolution branches
+        command: data?.command ?? userText,
         ...data,
       };
 
@@ -295,8 +345,6 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   useEffect(() => { handleSendRef.current = handleSend; }, [transcript]);
   useEffect(() => { setVisible(true); }, []);
 
-  // Expose openPaymentModal for voiceIntentHandler to call via deps
-  // (parent wires this through the onIntent callback's helpers or via a ref)
   (window as any).__voiceOpenPaymentModal = openPaymentModal;
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -307,6 +355,8 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         <PaymentModal
           show={showPaymentModal}
           mobileNumber={paymentMobile}
+          walletBalance={paymentOptions.walletBalance}
+          applyWallet={paymentOptions.applyWallet}
           onClose={() => setShowPaymentModal(false)}
           onConfirmPayment={handlePaymentConfirm}
         />

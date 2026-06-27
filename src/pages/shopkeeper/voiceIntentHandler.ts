@@ -29,8 +29,12 @@ export type VoiceDeps = {
   playBeep?: () => Promise<void>;
   speak?: (text: string) => void;
   appendAssistantMessage?: (text: string) => void;
-  // Payment popup opener — receives optional mobile number
-  openPaymentModal?: (mobileNumber?: string) => void;
+  openPaymentModal?: (mobileNumber?: string, options?: PaymentOptions) => void;
+  /**
+   * Fetch wallet balance for a given mobile number.
+   * Should resolve to a number (the balance), or null/undefined if not found.
+   */
+  fetchWalletBalance?: (mobile: string) => Promise<number | null>;
 };
 
 export type BrandCandidate = {
@@ -46,6 +50,11 @@ export type PendingBrandState = {
 
 let pendingRequestState: IntentPayload | null = null;
 let pendingBrandState: PendingBrandState | null = null;
+
+// Stores the mobile number collected during the payment flow
+let pendingPaymentMobile: string | null = null;
+// Stores the wallet balance fetched for the mobile
+let pendingWalletBalance: number | null = null;
 
 if (typeof window !== 'undefined') {
   (window as any).conversationState = 'IDLE';
@@ -66,17 +75,18 @@ function buildCandidateString(payload: IntentPayload) {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-/** Returns true when a raw transcript looks like a 10-digit mobile number */
+/**
+ * Extracts a 10-digit mobile number from any text.
+ * Strips all non-digit characters first, so "81306 77433" → "8130677433" (10 digits ✓).
+ */
 function extractMobileNumber(text: string): string | null {
   const digits = text.replace(/\D/g, '');
   if (digits.length === 10) return digits;
-  // handle "nine eight..." spoken-digit strings fallback — skip for now
   return null;
 }
 
-/** Detect affirmative / negative from user speech */
 function isAffirmative(text: string): boolean {
-  return /\b(yes|yeah|yep|haan|ha|sure|ok|okay|provide|give)\b/i.test(text);
+  return /\b(yes|yeah|yep|haan|ha|sure|ok|okay|provide|give|use|apply)\b/i.test(text);
 }
 
 function isNegative(text: string): boolean {
@@ -103,15 +113,24 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
     let act = String(payload?.intent || payload?.action || '').trim().toUpperCase();
     let txt = String(payload?.command || payload?.text || payload?.message || '').trim();
-    const candStr = buildCandidateString(payload);
 
+    // ─── CRITICAL FIX ────────────────────────────────────────────────────────
+    // When the backend processes a session-mode request (e.g. WAITING_FOR_MOBILE_NUMBER),
+    // it echoes back an AI reply in `text`/`message`, NOT the raw user speech.
+    // The raw user speech is always preserved in `payload.command` (set by VoiceAssistant
+    // before the API call). We must use `command` as the source of truth for parsing
+    // user input in context-resolution branches.
+    const rawUserSpeech = String(payload?.command || '').trim();
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const candStr = buildCandidateString(payload);
     const currentContextState = (window as any).conversationState || 'IDLE';
 
     // =========================================================================
-    // 1. CONTEXT RESOLUTION: BRAND_SELECTION (Processing Response From Turn 2)
+    // 1. BRAND_SELECTION
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_BRAND_SELECTION' && pendingBrandState) {
-      const selectedBrandValue = (payload.brand || txt || '').trim();
+      const selectedBrandValue = (payload.brand || rawUserSpeech || txt || '').trim();
       const lowerBrandValue = selectedBrandValue.toLowerCase();
       const candidates = pendingBrandState.candidates;
       let selectedCandidate: BrandCandidate | null = null;
@@ -151,7 +170,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 2. CONTEXT RESOLUTION: CONFIRM_PACKAGING
+    // 2. CONFIRM_PACKAGING
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_PACKAGING' && pendingRequestState) {
       if (payload.isLoose === true || payload.isLoose === false) {
@@ -168,26 +187,25 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 3. CONTEXT RESOLUTION: PAYMENT — WAITING FOR MOBILE NUMBER CONSENT
+    // 3. PAYMENT — WAITING FOR MOBILE CONSENT
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_MOBILE_CONSENT') {
-      if (isAffirmative(txt)) {
-        // User wants to provide mobile — ask for it
+      if (isAffirmative(rawUserSpeech || txt)) {
         (window as any).conversationState = 'WAITING_FOR_MOBILE_NUMBER';
         const askMsg = "Please tell me your 10-digit mobile number.";
         deps.speak?.(askMsg);
         deps.appendAssistantMessage?.(askMsg);
         return;
-      } else if (isNegative(txt)) {
-        // Skip mobile — open payment modal without number
+      } else if (isNegative(rawUserSpeech || txt)) {
         (window as any).conversationState = 'IDLE';
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
         const proceedMsg = "Proceeding to payment without a mobile number.";
         deps.speak?.(proceedMsg);
         deps.appendAssistantMessage?.(proceedMsg);
         _openPayment(deps, undefined);
         return;
       } else {
-        // Unclear — re-prompt
         const retryMsg = "Please say yes to provide your mobile number, or no to skip.";
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
@@ -196,20 +214,43 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 4. CONTEXT RESOLUTION: PAYMENT — WAITING FOR MOBILE NUMBER DIGITS
+    // 4. PAYMENT — WAITING FOR MOBILE NUMBER DIGITS
+    //    FIX: parse from rawUserSpeech (the actual spoken digits), not txt
+    //    (which is the AI's echoed reply from the backend).
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_MOBILE_NUMBER') {
-      const mobile = extractMobileNumber(txt);
+      // Try raw user speech first, then fall back to txt
+      const mobile = extractMobileNumber(rawUserSpeech) || extractMobileNumber(txt);
       if (mobile) {
-        (window as any).conversationState = 'IDLE';
-        const confirmMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Opening payment now.`;
-        deps.speak?.(confirmMsg);
-        deps.appendAssistantMessage?.(confirmMsg);
-        _openPayment(deps, mobile);
+        pendingPaymentMobile = mobile;
+
+        // Try to fetch wallet balance if the dep is wired
+        if (deps.fetchWalletBalance) {
+          try {
+            const balance = await deps.fetchWalletBalance(mobile);
+            pendingWalletBalance = balance ?? null;
+          } catch {
+            pendingWalletBalance = null;
+          }
+        }
+
+        if (pendingWalletBalance !== null && pendingWalletBalance > 0) {
+          // Wallet has balance — ask if customer wants to use it
+          (window as any).conversationState = 'WAITING_FOR_WALLET_CONSENT';
+          const walletMsg = `Mobile number ${mobile} registered. You have ₹${pendingWalletBalance} in your wallet. Would you like to use your wallet balance for payment? Say yes or no.`;
+          deps.speak?.(walletMsg);
+          deps.appendAssistantMessage?.(walletMsg);
+        } else {
+          // No wallet balance — proceed straight to payment
+          (window as any).conversationState = 'IDLE';
+          const confirmMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Opening payment now.`;
+          deps.speak?.(confirmMsg);
+          deps.appendAssistantMessage?.(confirmMsg);
+          _openPayment(deps, mobile);
+        }
         return;
       } else {
-        // Could not parse a 10-digit number
-        const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly.";
+        const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
         return;
@@ -217,7 +258,46 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 5. MAIN SERVICE ROUTING PIPELINE TRACK
+    // 5. PAYMENT — WAITING FOR WALLET CONSENT
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_WALLET_CONSENT') {
+      const useWallet = isAffirmative(rawUserSpeech || txt);
+      const skipWallet = isNegative(rawUserSpeech || txt);
+
+      if (useWallet) {
+        (window as any).conversationState = 'IDLE';
+        const mobile = pendingPaymentMobile ?? undefined;
+        const balance = pendingWalletBalance ?? 0;
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+
+        const confirmMsg = `Great! ₹${balance} wallet balance will be applied. Opening payment now.`;
+        deps.speak?.(confirmMsg);
+        deps.appendAssistantMessage?.(confirmMsg);
+        // Pass mobile + a flag so the payment modal can pre-apply wallet
+        _openPayment(deps, mobile, { applyWallet: true, walletBalance: balance });
+        return;
+      } else if (skipWallet) {
+        (window as any).conversationState = 'IDLE';
+        const mobile = pendingPaymentMobile ?? undefined;
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+
+        const confirmMsg = "Okay, wallet not applied. Opening payment now.";
+        deps.speak?.(confirmMsg);
+        deps.appendAssistantMessage?.(confirmMsg);
+        _openPayment(deps, mobile, { applyWallet: false });
+        return;
+      } else {
+        const retryMsg = `You have ₹${pendingWalletBalance} in your wallet. Say yes to use it, or no to skip.`;
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 6. MAIN SERVICE ROUTING PIPELINE TRACK
     // =========================================================================
 
     // ── PAYMENT intent ───────────────────────────────────────────────────────
@@ -235,7 +315,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         return;
       }
 
-      // Enter multi-turn: ask for mobile consent
       (window as any).conversationState = 'WAITING_FOR_MOBILE_CONSENT';
       const consentMsg =
         "Would you like to provide your mobile number? If you do, a discount will be credited to your wallet. Say yes or no.";
@@ -291,7 +370,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const resp = await api.post('/inventory/search', inventorySearchPayload);
         const json = resp.data;
 
-        //===================================================================================
         if ((json?.multipleBrands === true || json?.multiBrand === true) && currentContextState !== 'WAITING_FOR_BRAND_SELECTION') {
           const candidatesList: BrandCandidate[] = json.candidates || [];
 
@@ -316,7 +394,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           deps.appendAssistantMessage?.(prompt);
           return;
         }
-        //===================================================================================
+
         if (json?.needsPackagingClarification === true) {
           pendingRequestState = {
             ...payload,
@@ -354,9 +432,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
         if (pid) {
           try {
-            console.log(`Calling original batches API via query string parameter for productId: ${pid}`);
             const batchResp = await api.get('/inventory/batches', { params: { productId: pid } });
-
             if (Array.isArray(batchResp.data) && batchResp.data.length > 0) {
               selectedBatchNo = batchResp.data[0].batchNo || batchResp.data[0].id || selectedBatchNo;
             } else if (batchResp.data && batchResp.data.batchNo) {
@@ -366,8 +442,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
             console.warn("Batch API mapping fallback resolution tracking used:", batchErr);
           }
         }
-
-        console.log("Voice Assistant matching product object schema details:", product);
 
         const targetProductSource = product.product || product;
         const availableStock = Number(targetProductSource.totalQty ?? targetProductSource.avlQty ?? targetProductSource.availableQty ?? 0);
@@ -443,13 +517,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
 // ─── private helpers ─────────────────────────────────────────────────────────
 
-/**
- * Opens the payment modal. If `openPaymentModal` is provided on deps, calls it
- * (passes optional mobile number). Falls back to the unified controls modal.
- */
-function _openPayment(deps: VoiceDeps, mobileNumber?: string) {
+type PaymentOptions = {
+  applyWallet?: boolean;
+  walletBalance?: number;
+};
+
+function _openPayment(deps: VoiceDeps, mobileNumber?: string, options?: PaymentOptions) {
   if (deps.openPaymentModal) {
-    deps.openPaymentModal(mobileNumber);
+    deps.openPaymentModal(mobileNumber, options);
   } else {
     deps.setUnifiedModalTab('payment');
     deps.setShowUnifiedControlsModal(true);
