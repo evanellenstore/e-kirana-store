@@ -5,17 +5,31 @@ import RequireAuth from '../auth/RequireAuth';
 
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import Reports from '../pages/admin/Reports';
+import DetailedReportPage from '../pages/admin/DetailedReport';
+import SalesReportPage from '../pages/admin/SalesReport';
+import InventoryReportPage from '../pages/admin/InventoryReport';
+import ProductReportPage from '../pages/admin/ProductReport';
+import BillingReportPage from '../pages/admin/BillingReport';
 import Users from '../pages/admin/Users';
+import FromPurchase from '../pages/admin/FromPurchase';
+import AdminProduct from '../pages/admin/AdminProduct';
+import AdminInventory from '../pages/admin/AdminInventory';
+import AdminCategory from '../pages/admin/AdminCategory';
+import AdminBrand from '../pages/admin/AdminBrand';
+import AdminRewards from '../pages/admin/AdminRewards';
+import CategoryBrandMapping from '../pages/admin/CategoryBrandMapping';
 
 import ShopkeeperDashboard from '../pages/shopkeeper/ShopkeeperDashboard';
 import Products from '../pages/shopkeeper/Products';
 import Inventory from '../pages/shopkeeper/Inventory';
 import Billing from '../pages/shopkeeper/Billing';
+import ShopkeeperRewards from '../pages/shopkeeper/ShopkeeperRewards';
 
 import CustomerDashboard from '../pages/customer/CustomerDashboard';
 import ProductList from '../pages/customer/ProductList';
 import Cart from '../pages/customer/Cart';
 import Orders from '../pages/customer/Orders';
+import Rewards from '../pages/customer/Rewards';
 
 import LoginPage from '../pages/LoginPage';
 
@@ -45,10 +59,106 @@ const AppRoutes: React.FC = () => (
       }
     />
     <Route
+      path="/admin/detailed-reports"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <DetailedReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/sales-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <SalesReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/inventory-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <InventoryReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/product-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <ProductReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/billing-report"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <BillingReportPage />
+        </RequireAuth>
+      }
+    />
+    <Route
       path="/admin/users"
       element={
         <RequireAuth roles={['ADMIN']}>
           <Users />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/from-purchase"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <FromPurchase />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/admin-products"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminProduct />
+        </RequireAuth>
+      }
+    />
+      <Route
+      path="/admin/admin-inventory"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminInventory />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/categories"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminCategory />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/brands"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminBrand />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/category-brand-mapping"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <CategoryBrandMapping />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/admin/rewards"
+      element={
+        <RequireAuth roles={['ADMIN']}>
+          <AdminRewards />
         </RequireAuth>
       }
     />
@@ -86,6 +196,14 @@ const AppRoutes: React.FC = () => (
         </RequireAuth>
       }
     />
+    <Route
+      path="/shopkeeper/rewards"
+      element={
+        <RequireAuth roles={['SHOPKEEPER']}>
+          <ShopkeeperRewards />
+        </RequireAuth>
+      }
+    />
 
     {/* Customer */}
     <Route
@@ -117,6 +235,14 @@ const AppRoutes: React.FC = () => (
       element={
         <RequireAuth roles={['CUSTOMER']}>
           <Orders />
+        </RequireAuth>
+      }
+    />
+    <Route
+      path="/customer/rewards"
+      element={
+        <RequireAuth roles={['CUSTOMER']}>
+          <Rewards />
         </RequireAuth>
       }
     />

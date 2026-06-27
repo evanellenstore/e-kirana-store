@@ -1,11 +1,15 @@
 import React from "react";
-import { Navbar, Nav, Container, Button } from "react-bootstrap";
+import { Navbar, Container, Button } from "react-bootstrap";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import LanguageSwitcher from "../LanguageSwitcher";
 
 const AppNavbar: React.FC = () => {
   const { user, logout } = useAuth(); // get user and logout from context
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleLogout = () => {
     logout();           // clear user state and localStorage
@@ -13,32 +17,27 @@ const AppNavbar: React.FC = () => {
   };
 
   return (
-    <Navbar bg="dark" variant="dark" expand="lg">
-      <Container>
-        <Navbar.Brand href="/">E-Kirana</Navbar.Brand>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="me-auto">
-            {user?.role === "ADMIN" && <Nav.Link href="/admin">Admin</Nav.Link>}
-            {user?.role === "SHOPKEEPER" && <Nav.Link href="/shopkeeper">Shopkeeper</Nav.Link>}
-            {user?.role === "CUSTOMER" && <Nav.Link href="/customer">Customer</Nav.Link>}
-          </Nav>
+    <>
+      <Navbar bg="dark" variant="dark" expand={false} className="mb-3">
+        <Container className="d-flex justify-content-between align-items-center">
+          <div className="d-flex align-items-center">
+            <Navbar.Brand as={Link} to="/">E-Kirana</Navbar.Brand>
+          </div>
 
-          <Nav className="ms-auto">
+          <div className="d-flex align-items-center gap-2">
+            <LanguageSwitcher />
             {user ? (
-              <>
-                <Navbar.Text className="me-2">Welcome, {user.username}</Navbar.Text>
-                <Button variant="outline-light" size="sm" onClick={handleLogout}>
-                  Logout
-                </Button>
-              </>
+              <div className="d-flex align-items-center">
+                <span className="text-light me-3">Welcome, {user.username}</span>
+                <Button variant="outline-light" size="sm" onClick={handleLogout}>{t('common.logout')}</Button>
+              </div>
             ) : (
-              <Nav.Link href="/login">Login</Nav.Link>
+              <Link to="/login" className="btn btn-outline-light btn-sm">{t('login.loginButton')}</Link>
             )}
-          </Nav>
-        </Navbar.Collapse>
-      </Container>
-    </Navbar>
+          </div>
+        </Container>
+      </Navbar>
+    </>
   );
 };
 

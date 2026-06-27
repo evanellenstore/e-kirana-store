@@ -1,55 +1,158 @@
 import React, { useEffect, useState } from "react";
-import { Container, Table, Spinner, Card, Row, Col } from "react-bootstrap";
+import { Container, Table, Spinner, Card, Row, Col, Button } from "react-bootstrap";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import AdminHeader from "../../components/AdminHeader";
 import { getReport, type ReportResponse } from "../../services/reportingService";
 
 const ReportPage: React.FC = () => {
+  const { t } = useTranslation();
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getReport()
       .then((res) => setReport(res.data))
+      .catch((err) => {
+        console.error("Error fetching report:", err);
+        // Handle 401 (token expired) separately
+        if (err.response?.status === 401) {
+          setError(t('reports.sessionExpiredMessage'));
+          localStorage.removeItem("user");
+          setTimeout(() => {
+            window.location.href = "/login?expired=true";
+          }, 2000);
+        } else {
+          setError(err.message || t('reports.viewInventoryAndSales'));
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
   if (loading)
-    return <div className="text-center mt-5"><Spinner animation="border" /> Loading report...</div>;
+    return <div className="text-center mt-5"><Spinner animation="border" /> {t('reports.loadingReport')}</div>;
+
+  if (error)
+    return <div className="alert alert-danger mt-5 text-center"><h5>{t('reports.sessionExpired')}</h5><p>{error}</p></div>;
 
   if (!report)
-    return <div className="alert alert-danger mt-5 text-center">No report data available</div>;
+    return <div className="alert alert-danger mt-5 text-center">{t('reports.noReportData')}</div>;
 
   return (
     <Container className="mt-4">
-      <h2 className="mb-4 text-center">📊 Inventory & Sales Report</h2>
+      <AdminHeader 
+        title={t('reports.reportsAndAnalytics')} 
+        description={t('reports.viewInventoryAndSales')}
+      />
+
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="mb-0">📊 {t('reports.inventoryAndSalesReport')}</h2>
+        <Button 
+          variant="primary" 
+          onClick={() => navigate('/admin/detailed-reports')}
+        >
+          📈 {t('reports.viewDetailedReports')}
+        </Button>
+      </div>
+
+      {/* Report Navigation Cards */}
+      <Row className="mb-5">
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer" 
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/sales-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">📈</div>
+              <Card.Title>{t('reports.salesReport')}</Card.Title>
+              <Card.Text className="text-muted small">
+                {t('reports.trackSalesPerformance')}
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/inventory-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">📦</div>
+              <Card.Title>{t('reports.inventoryReport')}</Card.Title>
+              <Card.Text className="text-muted small">
+                {t('reports.monitorsStockLevels')}
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/product-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">🏷️</div>
+              <Card.Title>{t('reports.productReport')}</Card.Title>
+              <Card.Text className="text-muted small">
+                {t('reports.analyzeProductPerformance')}
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={6} lg={3} className="mb-3">
+          <Card 
+            className="h-100 cursor-pointer"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/admin/billing-report')}
+          >
+            <Card.Body className="text-center">
+              <div className="fs-1 mb-3">💳</div>
+              <Card.Title>{t('reports.billingReport')}</Card.Title>
+              <Card.Text className="text-muted small">
+                {t('reports.trackRevenueAndTax')}
+              </Card.Text>
+              <Button variant="outline-primary" size="sm">{t('reports.viewDetails')}</Button>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
 
       {/* Totals */}
       <Row className="mb-4">
         <Col md={6}>
           <Card className="text-white bg-primary mb-3">
             <Card.Body>
-              <Card.Title>Total Revenue</Card.Title>
-              <Card.Text>${report.totalRevenue.toFixed(2)}</Card.Text>
+              <Card.Title>{t('reports.totalRevenue')}</Card.Title>
+              <Card.Text>₹{report.totalRevenue.toFixed(2)}</Card.Text>
             </Card.Body>
           </Card>
         </Col>
         <Col md={6}>
           <Card className="text-white bg-success mb-3">
             <Card.Body>
-              <Card.Title>Total Tax</Card.Title>
-              <Card.Text>${report.totalTax.toFixed(2)}</Card.Text>
+              <Card.Title>{t('reports.totalTax')}</Card.Title>
+              <Card.Text>₹{report.totalTax.toFixed(2)}</Card.Text>
             </Card.Body>
           </Card>
         </Col>
       </Row>
 
       {/* Inventory Status Table */}
-      <h4 className="mb-3">Inventory Status</h4>
+      <h4 className="mb-3">{t('reports.inventoryStatus')}</h4>
       <Table striped bordered hover responsive>
         <thead>
           <tr>
-            <th>Product ID</th>
-            <th>Available Quantity</th>
-            <th>Reserved Quantity</th>
+            <th>{t('reports.productId')}</th>
+            <th>{t('reports.availableQuantity')}</th>
+            <th>{t('reports.reservedQuantity')}</th>
           </tr>
         </thead>
         <tbody>
@@ -64,13 +167,13 @@ const ReportPage: React.FC = () => {
       </Table>
 
       {/* Product Reports Table */}
-      <h4 className="mb-3 mt-4">Product Reports</h4>
+      <h4 className="mb-3 mt-4">{t('reports.productReports')}</h4>
       <Table striped bordered hover responsive>
         <thead>
           <tr>
-            <th>Product ID</th>
-            <th>Total Purchased</th>
-            <th>Total Revenue</th>
+            <th>{t('reports.productId')}</th>
+            <th>{t('reports.totalPurchased')}</th>
+            <th>{t('reports.totalRevenue')}</th>
           </tr>
         </thead>
         <tbody>

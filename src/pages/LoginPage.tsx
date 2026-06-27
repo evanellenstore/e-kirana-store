@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { ROLES } from "../utils/constants";
 import { Container, Row, Col, Form, Button, Card, Alert, Spinner } from "react-bootstrap";
+import { useTranslation } from "react-i18next";
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -26,7 +28,8 @@ const LoginPage: React.FC = () => {
           navigate("/admin");
           break;
         case ROLES.SHOPKEEPER:
-          navigate("/shopkeeper");
+          // Open billing page directly for shopkeepers
+          navigate("/shopkeeper/billing");
           break;
         case ROLES.CUSTOMER:
           navigate("/customer");
@@ -35,28 +38,28 @@ const LoginPage: React.FC = () => {
           navigate("/login");
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Invalid credentials");
+      setError(err?.response?.data?.message || t('login.invalidCredentials'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Container fluid className="vh-100 d-flex align-items-center justify-content-center bg-light">
-      <Row>
-        <Col>
-          <Card className="p-4 shadow" style={{ minWidth: "300px", maxWidth: "400px" }}>
+    <Container fluid className="vh-100 d-flex flex-column bg-light">
+      <Row className="flex-grow-1 d-flex align-items-center justify-content-center w-100">
+        <Col xs={12} sm={10} md={8} lg={5} xl={4} className="d-flex justify-content-center">
+          <Card className="p-4 shadow w-100" style={{ minWidth: "300px", maxWidth: "400px" }}>
             <Card.Body>
-              <h3 className="text-center mb-4">e-Kirana Store Login</h3>
+              <h3 className="text-center mb-4">{t('login.title')}</h3>
 
               {error && <Alert variant="danger">{error}</Alert>}
 
               <Form onSubmit={handleSubmit}>
                 <Form.Group className="mb-3" controlId="username">
-                  <Form.Label>Username</Form.Label>
+                  <Form.Label>{t('login.username')}</Form.Label>
                   <Form.Control
                     type="text"
-                    placeholder="Enter username"
+                    placeholder={t('login.enterUsername')}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -64,10 +67,10 @@ const LoginPage: React.FC = () => {
                 </Form.Group>
 
                 <Form.Group className="mb-3" controlId="password">
-                  <Form.Label>Password</Form.Label>
+                  <Form.Label>{t('login.password')}</Form.Label>
                   <Form.Control
                     type="password"
-                    placeholder="Enter password"
+                    placeholder={t('login.enterPassword')}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -78,10 +81,10 @@ const LoginPage: React.FC = () => {
                   {loading ? (
                     <>
                       <Spinner animation="border" size="sm" className="me-2" />
-                      Logging in...
+                      {t('login.loggingIn')}
                     </>
                   ) : (
-                    "Login"
+                    t('login.loginButton')
                   )}
                 </Button>
               </Form>

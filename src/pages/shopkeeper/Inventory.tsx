@@ -1,171 +1,262 @@
 import React, { useEffect, useState } from "react";
-import { Container, Card, Row, Col, Form, Button, Spinner } from "react-bootstrap";
 import {
-  getInventory,
-  adjustInventory,
-  reserveInventory,
-  releaseInventory,
-  type InventoryStatus
-} from "../../services/inventoryService";
+  Badge,
+  Form,
+  InputGroup,
+  Container,
+  Modal
+} from "react-bootstrap";
+import ShopkeeperHeader from "../../components/ShopkeeperHeader";
+import api from "../../services/api";
+import "./Inventory.css";
 
-const InventoryPage: React.FC = () => {
-  const PRODUCT_ID = 1; // later make dynamic
+/* =======================
+   Interfaces
+======================= */
 
-  const [inventory, setInventory] = useState<InventoryStatus | null>(null);
+interface Batch {
+  batchNo: string;
+  expiry: string;
+  qty: number;
+}
+
+interface InventoryProduct {
+  productId: string;
+  productSku: string;
+  productName: string;
+  totalQty: number;
+  batches: Batch[];
+  barcode?: string;
+}
+
+/* =======================
+   Constants
+======================= */
+
+const LOW_STOCK_LIMIT = 20;
+const EXPIRY_WARNING_DAYS = 30;
+
+/* =======================
+   Component
+======================= */
+
+const Inventory: React.FC = () => {
+  const [data, setData] = useState<InventoryProduct[]>([]);
+  const [filteredData, setFilteredData] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [barcodePreview, setBarcodePreview] = useState<string | null>(null);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
 
-  const [quantity, setQuantity] = useState(0);
-  const [remarks, setRemarks] = useState("");
-  const [referenceId, setReferenceId] = useState("");
-
-  const loadInventory = () => {
-    setLoading(true);
-    getInventory(PRODUCT_ID)
-      .then(res => setInventory(res.data))
-      .finally(() => setLoading(false));
-  };
+  /* =======================
+     Load Inventory
+  ======================= */
 
   useEffect(() => {
+    const loadInventory = async () => {
+      try {
+        const res = await api.get("/inventory");
+        const inventoryData = res.data as InventoryProduct[];
+        
+        // Fetch product details including barcode for each product
+        const enrichedData = await Promise.all(
+          inventoryData.map(async (product) => {
+            try {
+              const productRes = await api.get(`/products/${product.productId}`);
+              return {
+                ...product,
+                barcode: productRes.data?.barcode || undefined
+              };
+            } catch (error) {
+              console.error(`Failed to fetch product ${product.productId}`, error);
+              return product;
+            }
+          })
+        );
+        
+        setData(enrichedData);
+        setFilteredData(enrichedData);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadInventory();
   }, []);
 
+  /* =======================
+     Search Filter
+  ======================= */
+
+  useEffect(() => {
+    const q = search.toLowerCase();
+    setFilteredData(
+      data.filter(
+        p =>
+          p.productName.toLowerCase().includes(q) ||
+          p.productSku.toLowerCase().includes(q)
+      )
+    );
+  }, [search, data]);
+
+  /* =======================
+     Helpers
+  ======================= */
+
+  const getExpiryBadge = (expiry: string) => {
+    const today = new Date();
+    const exp = new Date(expiry);
+    const diffDays =
+      (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (diffDays < 0) return <Badge bg="danger">Expired</Badge>;
+    if (diffDays <= EXPIRY_WARNING_DAYS)
+      return <Badge bg="warning">Near Expiry</Badge>;
+    return <Badge bg="success">Valid</Badge>;
+  };
+
+  /* =======================
+     Loading UI
+  ======================= */
+
   if (loading) {
-    return <div className="text-center mt-5"><Spinner /></div>;
+    return (
+      <div className="inventory-loading-container">
+        <div className="inventory-spinner"></div>
+        <p>Loading inventory...</p>
+      </div>
+    );
   }
 
+  /* =======================
+     UI
+  ======================= */
+
   return (
-    <Container className="mt-4">
-      <h3 className="text-center mb-4">📦 Inventory Management</h3>
+    <div className="inventory-page-container">
+      <ShopkeeperHeader 
+        title="📦 Inventory Overview"
+        description="Check stock levels and batch information"
+      />
+      
+      <Container className="inventory-content">
+        {/* Search Header */}
+        <div className="inventory-search-card">
+          <div className="inventory-search-header">
+            <h3 className="inventory-search-title">Inventory Search</h3>
+          </div>
+          <div className="inventory-search-body">
+            <InputGroup className="inventory-search-input-group">
+              <Form.Control
+                placeholder="Search by SKU or Product Name"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="inventory-input"
+              />
+              <span className="inventory-search-icon">🔍</span>
+            </InputGroup>
+          </div>
+        </div>
 
-      {/* Inventory Status */}
-      {inventory && (
-        <Row className="mb-4">
-          <Col md={6}>
-            <Card bg="success" text="white">
-              <Card.Body>
-                <Card.Title>Available Quantity</Card.Title>
-                <h2>{inventory.availableQty}</h2>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={6}>
-            <Card bg="warning">
-              <Card.Body>
-                <Card.Title>Reserved Quantity</Card.Title>
-                <h2>{inventory.reservedQty}</h2>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      )}
+        {/* Products Grid */}
+        <div className="inventory-products">
+          {filteredData.map(product => (
+            <div key={product.productId} className="inventory-product-card">
+              <div className="inventory-product-header">
+                <div className="inventory-product-info">
+                  <h4 className="inventory-product-name">{product.productName}</h4>
+                  <div className="inventory-product-sku-section">
+                    <div className="inventory-product-sku">SKU: {product.productSku}</div>
+                    {product.barcode && (
+                      <div className="inventory-product-barcode">
+                        <img
+                          src={`data:image/png;base64,${product.barcode}`}
+                          alt="barcode"
+                          className="inventory-product-barcode-img"
+                          onClick={() => { setBarcodePreview(product.barcode || null); setShowBarcodeModal(true); }}
+                          title="Click to preview barcode"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Badge className="inventory-total-qty-badge">
+                  Total Qty: {product.totalQty}
+                </Badge>
+              </div>
 
-      {/* Adjust Inventory */}
-      <Card className="mb-3">
-        <Card.Header>Adjust Inventory (IN / OUT)</Card.Header>
-        <Card.Body>
-          <Form className="row g-2">
-            <Col md={3}>
-              <Form.Control
-                type="number"
-                placeholder="Quantity"
-                onChange={e => setQuantity(+e.target.value)}
-              />
-            </Col>
-            <Col md={5}>
-              <Form.Control
-                placeholder="Remarks"
-                onChange={e => setRemarks(e.target.value)}
-              />
-            </Col>
-            <Col md={2}>
-              <Button
-                variant="success"
-                onClick={() =>
-                  adjustInventory(PRODUCT_ID, quantity, "IN", remarks).then(loadInventory)
-                }
-              >
-                IN
-              </Button>
-            </Col>
-            <Col md={2}>
-              <Button
-                variant="danger"
-                onClick={() =>
-                  adjustInventory(PRODUCT_ID, quantity, "OUT", remarks).then(loadInventory)
-                }
-              >
-                OUT
-              </Button>
-            </Col>
-          </Form>
-        </Card.Body>
-      </Card>
+              {/* Batch Table */}
+              <div className="inventory-batches-wrapper">
+                <table className="inventory-batches-table">
+                  <thead>
+                    <tr>
+                      <th>Batch No</th>
+                      <th>Expiry Date</th>
+                      <th className="inventory-th-center">Quantity</th>
+                      <th className="inventory-th-center">Expiry Status</th>
+                      <th className="inventory-th-center">Stock Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {product.batches.map(batch => {
+                      const isLowStock = batch.qty <= LOW_STOCK_LIMIT;
 
-      {/* Reserve Inventory */}
-      <Card className="mb-3">
-        <Card.Header>Reserve Inventory</Card.Header>
-        <Card.Body>
-          <Form className="row g-2">
-            <Col md={3}>
-              <Form.Control
-                type="number"
-                placeholder="Quantity"
-                onChange={e => setQuantity(+e.target.value)}
-              />
-            </Col>
-            <Col md={5}>
-              <Form.Control
-                placeholder="Reference ID (ORDER-1001)"
-                onChange={e => setReferenceId(e.target.value)}
-              />
-            </Col>
-            <Col md={4}>
-              <Button
-                variant="primary"
-                onClick={() =>
-                  reserveInventory(PRODUCT_ID, quantity, referenceId).then(loadInventory)
-                }
-              >
-                Reserve
-              </Button>
-            </Col>
-          </Form>
-        </Card.Body>
-      </Card>
+                      return (
+                        <tr key={batch.batchNo} className={isLowStock ? "inventory-low-stock-row" : ""}>
+                          <td className="inventory-batch-no">{batch.batchNo}</td>
+                          <td className="inventory-expiry-date">
+                            {new Date(batch.expiry).toLocaleDateString()}
+                          </td>
+                          <td className="inventory-quantity">{batch.qty}</td>
+                          <td className="inventory-td-center">
+                            {getExpiryBadge(batch.expiry)}
+                          </td>
+                          <td className="inventory-td-center">
+                            {isLowStock ? (
+                              <Badge className="inventory-badge-danger">Low Stock</Badge>
+                            ) : (
+                              <Badge className="inventory-badge-success">In Stock</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
 
-      {/* Release Inventory */}
-      <Card>
-        <Card.Header>Release Inventory</Card.Header>
-        <Card.Body>
-          <Form className="row g-2">
-            <Col md={3}>
-              <Form.Control
-                type="number"
-                placeholder="Quantity"
-                onChange={e => setQuantity(+e.target.value)}
-              />
-            </Col>
-            <Col md={5}>
-              <Form.Control
-                placeholder="Reference ID (ORDER-1001)"
-                onChange={e => setReferenceId(e.target.value)}
-              />
-            </Col>
-            <Col md={4}>
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  releaseInventory(PRODUCT_ID, quantity, referenceId).then(loadInventory)
-                }
-              >
-                Release
-              </Button>
-            </Col>
-          </Form>
-        </Card.Body>
-      </Card>
-    </Container>
+        {/* Empty State */}
+        {filteredData.length === 0 && (
+          <div className="inventory-empty-state">
+            <div className="inventory-empty-icon">📭</div>
+            <p className="inventory-empty-text">No inventory items found</p>
+          </div>
+        )}
+
+        {/* Barcode Preview Modal */}
+        <Modal show={showBarcodeModal} onHide={() => setShowBarcodeModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Barcode Preview</Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="text-center">
+            {barcodePreview ? (
+              <>
+                <img src={`data:image/png;base64,${barcodePreview}`} alt="barcode" style={{maxWidth: '100%'}} />
+                <div className="mt-3">
+                  <a href={`data:image/png;base64,${barcodePreview}`} download="barcode.png" className="btn btn-outline-primary btn-sm">📥 Download</a>
+                </div>
+              </>
+            ) : (
+              <div className="text-muted">No preview available</div>
+            )}
+          </Modal.Body>
+        </Modal>
+      </Container>
+    </div>
   );
 };
 
-export default InventoryPage;
+export default Inventory;
