@@ -300,8 +300,32 @@ const Billing = () => {
           });
         },
         playBeep: async () => { try { await playBeep(); } catch {} },
+
         speak: typeof speak === 'function' ? speak : undefined,
         appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined,
+        onReceiptPrint: () => {
+          const printBtn = document.querySelector('.receipt-print-btn') as HTMLButtonElement;
+          if (printBtn) printBtn.click();
+        },
+        onReceiptClose: () => {
+          setShowReceiptModal(false);
+          setBillId(undefined);
+          setReceiptData(null);
+          setShowUnifiedControlsModal(false);
+        },
+        onReceiptDone: () => {
+          setShowReceiptModal(false);
+          setReceiptData(null);
+          setCart([]);
+          setDiscount(0);
+          setDiscountIsPercent(false);
+          setCashReceived(undefined);
+          setCustomerMobile('');
+          setReservedForBill(false);
+          setBillId(undefined);
+          setShowUnifiedControlsModal(false);
+        },    
+        
         // ← ADD THIS
         openPaymentModal: async (mobileNumber?: string, options?: any) => {
           (window as any).__voicePay = () => payRef.current();  

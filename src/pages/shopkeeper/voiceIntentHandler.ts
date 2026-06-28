@@ -35,6 +35,10 @@ export type VoiceDeps = {
    * Should resolve to a number (the balance), or null/undefined if not found.
    */
   fetchWalletBalance?: (mobile: string) => Promise<number | null>;
+  onReceiptPrint?: () => void;
+  onReceiptClose?: () => void;
+  onReceiptDone?: () => void;
+
 };
 
 export type BrandCandidate = {
@@ -302,7 +306,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 // =========================================================================
 // 6. PAYMENT — WAITING FOR FINAL PAY CONFIRMATION
 // =========================================================================
-  if (currentContextState === 'WAITING_FOR_PAY_CONFIRM') {
+    if (currentContextState === 'WAITING_FOR_PAY_CONFIRM') {
       if (isAffirmative(rawUserSpeech || txt)) {
         (window as any).conversationState = 'IDLE';
         pendingPaymentMobile = null;
@@ -310,6 +314,12 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         // Yes — click the Pay button exactly as user would manually
         const payBtn = document.querySelector('button.btn-success') as HTMLButtonElement;
         if (payBtn) payBtn.click();
+        setTimeout(() => {
+          (window as any).conversationState = 'WAITING_FOR_RECEIPT_ACTION';
+          const receiptMsg = "Payment done! Say print to print receipt, done to finish, or close to close.";
+          deps.speak?.(receiptMsg);
+          deps.appendAssistantMessage?.(receiptMsg);
+        }, 2000);
         const msg = "Processing payment now!";
         deps.speak?.(msg);
         deps.appendAssistantMessage?.(msg);
@@ -334,6 +344,48 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     // =========================================================================
     // 7. MAIN SERVICE ROUTING PIPELINE TRACK
     // =========================================================================
+    // =========================================================================
+    // 7. RECEIPT ACTION — PRINT / CLOSE / DONE
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_RECEIPT_ACTION') {
+      const input = (rawUserSpeech || txt).toLowerCase();
+      if (/\bprint\b/i.test(input)) {
+        (window as any).conversationState = 'IDLE';
+        deps.onReceiptPrint?.();
+        const msg = "Printing receipt now.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else if (/\bdone\b/i.test(input)) {
+        (window as any).conversationState = 'IDLE';
+        deps.onReceiptDone?.();
+        const msg = "Bill done. Ready for next customer.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else if (/\bclose\b/i.test(input)) {
+        (window as any).conversationState = 'IDLE';
+        deps.onReceiptClose?.();
+        const msg = "Receipt closed.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else {
+        const retryMsg = "Say print to print receipt, done to finish, or close to close.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 8. MAIN SERVICE ROUTING PIPELINE TRACK
+    // =========================================================================
+
+
+
+
+
 
     // ── PAYMENT intent ───────────────────────────────────────────────────────
     const isPaymentIntent =

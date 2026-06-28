@@ -159,13 +159,13 @@ const ReceiptModal = ({
       </Modal.Body>
 
       <Modal.Footer>
-        <Button variant="secondary" onClick={onClose}>
+        <Button variant="secondary" className="receipt-close-btn" onClick={onClose}>
           Close
         </Button>
-        <Button variant="primary" onClick={handlePrint}>
+        <Button variant="primary" className="receipt-print-btn" onClick={handlePrint}>
           Print
         </Button>
-        <Button variant="success" onClick={onDone}>
+        <Button variant="success" className="receipt-done-btn" onClick={onDone}>
           {t("billing.done")}
         </Button>
       </Modal.Footer>
