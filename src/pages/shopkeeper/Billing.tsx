@@ -195,6 +195,9 @@ const Billing = () => {
   const [brands, setBrands] = useState<string[]>([]);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const voiceWalletDecisionRef = useRef<boolean | null>(null);
+
+  
   const filterDebounceRef = useRef<number | null>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
   const scannerBufferRef = useRef<string>("");
@@ -250,6 +253,8 @@ const Billing = () => {
      Voice Assistant Delegate Intent Core Handler
   ====================================================== */
   const handleVoiceIntent = (payload: any, helpers?: any) => {
+     payRef.current = pay;  // ← ADD THIS LINE
+
     try {
       const speak = helpers?.speak;
       const appendAssistantMessage = helpers?.appendAssistantMessage;
@@ -298,11 +303,44 @@ const Billing = () => {
         speak: typeof speak === 'function' ? speak : undefined,
         appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined,
         // ← ADD THIS
-  openPaymentModal: (mobileNumber?: string) => {
-    setCustomerMobile(mobileNumber || '');
-    setUnifiedModalTab('payment');
-    setShowUnifiedControlsModal(true);
+        openPaymentModal: async (mobileNumber?: string, options?: any) => {
+          (window as any).__voicePay = () => payRef.current();  
+
+  //setCustomerMobile(mobileNumber || '');
+
+  const voiceWalletDecision = options?.applyWallet === true;
+  // Set ref BEFORE setCustomerMobile so the useEffect sees it
+  voiceWalletDecisionRef.current = voiceWalletDecision;
+  setCustomerMobile(mobileNumber || '');
+  
+  // Fetch customer first so wallet section renders, then set useWallet
+  if (mobileNumber) {
+    try {
+      const res = await getCustomerByMobile(mobileNumber);
+      const cust = res.data;
+      if (cust && cust.id) {
+        setCustomer(cust);
+        // Now set wallet based on voice decision AND balance availability
+        if (options?.applyWallet === true && (cust.walletBalance || 0) > 0) {
+          setUseWallet(true);
+        } else {
+          setUseWallet(false);
+        }
+      }
+    } catch {
+      setCustomer(null);
+      setUseWallet(false);
+    }
+  } else {
+    setUseWallet(false);
   }
+
+  setUnifiedModalTab('payment');
+  setShowUnifiedControlsModal(true);
+}
+
+
+
       });
     } catch (e) {
       console.warn('delegate handleVoiceIntent failed', e);
@@ -569,6 +607,7 @@ const Billing = () => {
   }, [cart]);
 
   // Auto-fetch customer when mobile number is entered (debounced)
+  /*
   useEffect(() => {
     if (!customerMobile || !customerMobile.trim()) {
       return;
@@ -608,6 +647,64 @@ const Billing = () => {
 
     return () => clearTimeout(timer);
   }, [customerMobile]);
+
+*/
+
+// Auto-fetch customer when mobile number is entered (debounced)
+  useEffect(() => {
+    if (!customerMobile || !customerMobile.trim()) {
+      return;
+    }
+
+    const mobile = customerMobile.trim();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getCustomerByMobile(mobile);
+        const cust = res.data;
+        if (cust && cust.id) {
+          setCustomer(cust);
+
+          // If voice already made a wallet decision, respect it — don't override
+          if (voiceWalletDecisionRef.current !== null) {
+            setUseWallet(voiceWalletDecisionRef.current && (cust.walletBalance || 0) > 0);
+            voiceWalletDecisionRef.current = null; // reset after applying
+          } else {
+            // Manual mobile entry — auto-check if balance exists
+            if ((cust.walletBalance || 0) > 0) {
+              setUseWallet(true);
+              if (paymentMode === 'CASH') {
+                const subtotalP = toPaise(subtotalBeforeDiscount);
+                const walletP = toPaise(cust.walletBalance || 0);
+                const walletIntP = Math.floor(walletP / 100) * 100;
+                const walletToUseP = Math.min(walletIntP, subtotalP);
+                const amountAfterWalletP = Math.max(0, subtotalP - walletToUseP);
+                setCashReceived(Number(fromPaise(amountAfterWalletP).toFixed(2)));
+              }
+            }
+          }
+        } else {
+          setCustomer(null);
+          setUseWallet(false);
+        }
+      } catch (err) {
+        setCustomer(null);
+        setUseWallet(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [customerMobile]);
+
+
+
+  // ← ADD HERE — Voice pay trigger
+  useEffect(() => {
+    const handleVoicePay = () => {
+      pay();
+    };
+    window.addEventListener('voice:triggerPay', handleVoicePay);
+    return () => window.removeEventListener('voice:triggerPay', handleVoicePay);
+  }, [billId, cart, customerMobile, useWallet, customer, paymentMode, cashReceived]);
 
   // Helper: compute discount, gst and grand total
   const computeTotals = () => {
@@ -841,6 +938,25 @@ const Billing = () => {
       setIsPaying(false);
     }
   };
+
+
+  // ← ADD HERE
+  const payRef = useRef<() => Promise<void>>(async () => { });
+
+  useEffect(() => {
+    payRef.current = pay;
+  }, [billId, cart, customerMobile, useWallet, customer, paymentMode, cashReceived, subtotalBeforeDiscount, reservedForBill, discount, discountIsPercent]);
+
+  useEffect(() => {
+    const handleVoicePay = () => {
+      payRef.current();
+    };
+    window.addEventListener('voice:triggerPay', handleVoicePay);
+    return () => window.removeEventListener('voice:triggerPay', handleVoicePay);
+  }, []);
+
+
+
 
   // Handle bill cancellation - release all reserved items
   const handleCancelBill = async () => {
@@ -2372,10 +2488,12 @@ const Billing = () => {
                     {customer && (
                       <div className="bg-success bg-opacity-10 p-3 rounded mb-3 border border-success">
                         <div className="small fw-bold text-success mb-2">{t('billing.walletAvailable', { amount: walletBalance.toFixed(2) })}</div>
+                        
                         <Form.Check 
                           type="checkbox"
                           id="useWalletUnified"
                           label={t('billing.useWalletLabel', { walletAmount: walletToUse.toFixed(2), payAmount: amountAfterWallet.toFixed(2) })}
+                           checked={useWallet}
                           onChange={(e) => {
                             const checked = e.target.checked;
                             setUseWallet(checked);
@@ -2393,6 +2511,8 @@ const Billing = () => {
                           className="fw-bold small"
                           disabled={walletBalance <= 0}
                         />
+
+
                         {walletBalance <= 0 && (
                           <div className="small text-muted mt-2">{t('billing.noWalletBalance')}</div>
                         )}

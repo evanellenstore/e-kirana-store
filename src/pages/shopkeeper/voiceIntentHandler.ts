@@ -234,22 +234,23 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           }
         }
 
+        // ALWAYS ask wallet consent question after mobile number is received
+        (window as any).conversationState = 'WAITING_FOR_WALLET_CONSENT';
+
         if (pendingWalletBalance !== null && pendingWalletBalance > 0) {
-          // Wallet has balance — ask if customer wants to use it
-          (window as any).conversationState = 'WAITING_FOR_WALLET_CONSENT';
+          // Wallet has balance — tell user and ask
           const walletMsg = `Mobile number ${mobile} registered. You have ₹${pendingWalletBalance} in your wallet. Would you like to use your wallet balance for payment? Say yes or no.`;
           deps.speak?.(walletMsg);
           deps.appendAssistantMessage?.(walletMsg);
         } else {
-          // No wallet balance — proceed straight to payment
-          (window as any).conversationState = 'IDLE';
-          const confirmMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Opening payment now.`;
-          deps.speak?.(confirmMsg);
-          deps.appendAssistantMessage?.(confirmMsg);
-          _openPayment(deps, mobile);
+          // No wallet balance — still ask, checkbox will be unchecked
+          const walletMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Would you like to use your wallet for payment? Say yes or no.`;
+          deps.speak?.(walletMsg);
+          deps.appendAssistantMessage?.(walletMsg);
         }
         return;
-      } else {
+      } 
+      else {
         const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
@@ -264,31 +265,32 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       const useWallet = isAffirmative(rawUserSpeech || txt);
       const skipWallet = isNegative(rawUserSpeech || txt);
 
+ 
       if (useWallet) {
-        (window as any).conversationState = 'IDLE';
+        (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
         const mobile = pendingPaymentMobile ?? undefined;
         const balance = pendingWalletBalance ?? 0;
-        pendingPaymentMobile = null;
-        pendingWalletBalance = null;
-
-        const confirmMsg = `Great! ₹${balance} wallet balance will be applied. Opening payment now.`;
-        deps.speak?.(confirmMsg);
-        deps.appendAssistantMessage?.(confirmMsg);
-        // Pass mobile + a flag so the payment modal can pre-apply wallet
+        // Open modal with wallet pre-checked
         _openPayment(deps, mobile, { applyWallet: true, walletBalance: balance });
+        const askMsg = `Wallet ₹${balance} will be applied. Shall I proceed with payment? Say yes or no.`;
+        deps.speak?.(askMsg);
+        deps.appendAssistantMessage?.(askMsg);
         return;
-      } else if (skipWallet) {
-        (window as any).conversationState = 'IDLE';
+      }
+
+      else if (skipWallet) {
+        (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
         const mobile = pendingPaymentMobile ?? undefined;
         pendingPaymentMobile = null;
         pendingWalletBalance = null;
-
-        const confirmMsg = "Okay, wallet not applied. Opening payment now.";
-        deps.speak?.(confirmMsg);
-        deps.appendAssistantMessage?.(confirmMsg);
         _openPayment(deps, mobile, { applyWallet: false });
+        const askMsg = "Okay, wallet not applied. Shall I proceed with payment? Say yes or no.";
+        deps.speak?.(askMsg);
+        deps.appendAssistantMessage?.(askMsg);
         return;
-      } else {
+      }
+
+      else {
         const retryMsg = `You have ₹${pendingWalletBalance} in your wallet. Say yes to use it, or no to skip.`;
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
@@ -296,8 +298,41 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       }
     }
 
+
+// =========================================================================
+// 6. PAYMENT — WAITING FOR FINAL PAY CONFIRMATION
+// =========================================================================
+  if (currentContextState === 'WAITING_FOR_PAY_CONFIRM') {
+      if (isAffirmative(rawUserSpeech || txt)) {
+        (window as any).conversationState = 'IDLE';
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+        // Yes — click the Pay button exactly as user would manually
+        const payBtn = document.querySelector('button.btn-success') as HTMLButtonElement;
+        if (payBtn) payBtn.click();
+        const msg = "Processing payment now!";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else if (isNegative(rawUserSpeech || txt)) {
+        // No — do nothing, just cancel
+        (window as any).conversationState = 'IDLE';
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+        const msg = "Payment cancelled. You can pay manually when ready.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else {
+        const retryMsg = "Say yes to confirm payment, or no to cancel.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
     // =========================================================================
-    // 6. MAIN SERVICE ROUTING PIPELINE TRACK
+    // 7. MAIN SERVICE ROUTING PIPELINE TRACK
     // =========================================================================
 
     // ── PAYMENT intent ───────────────────────────────────────────────────────
