@@ -165,10 +165,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-
-
-
-
 const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   // ── Config ref — change any value anytime, zero re-render ─────────────────
@@ -205,6 +201,15 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   const recognitionRef = useRef<any>(null);
   const autoSendRef = useRef(true);
   const handleSendRef = useRef<() => Promise<void> | null>(null);
+
+  const wakeRecognitionRef = useRef<any>(null);
+  const wakeEnabledRef = useRef(true);
+  const activeSessionRef = useRef(false);
+
+  const wakeStartedRef = useRef(false);
+
+  // NEW
+  const assistantSpeakingRef = useRef(false);
 
   // Timer refs
   const recognitionSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -264,10 +269,16 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
     r.onend = () => {
       clearSafetyTimer();
+
       setListening(false);
 
-      if (autoSendRef.current && handleSendRef.current) {
-        const delay = voiceConfigRef.current.autoSendDelayMs;
+      if (
+        autoSendRef.current &&
+        handleSendRef.current
+      ) {
+        const delay =
+          voiceConfigRef.current.autoSendDelayMs;
+
         if (delay > 0) {
           autoSendTimerRef.current = setTimeout(() => {
             void handleSendRef.current?.();
@@ -290,24 +301,192 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       clearSafetyTimer();
       clearAutoSendTimer();
       clearPaymentModalTimer();
-      try { r.stop(); } catch (_) {}
+      try { r.stop(); } catch (_) { }
     };
   }, [i18n?.language]);
 
   // ── Speech synthesis ───────────────────────────────────────────────────────
   const speak = (text: string) => {
     try {
-      if (!('speechSynthesis' in window)) return;
+      if (!("speechSynthesis" in window)) return;
+
+      assistantSpeakingRef.current = true;
+
+      // Stop wake listener while assistant talks
+      try {
+        wakeRecognitionRef.current?.stop();
+      } catch { }
+
       const ut = new SpeechSynthesisUtterance(text);
       ut.lang = getLang();
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(ut);
-    } catch {}
+
+      ut.onstart = () => {
+        console.log("ASSISTANT SPEAKING");
+      };
+
+      ut.onend = () => {
+        assistantSpeakingRef.current = false;
+
+        const state = (window as any).conversationState || "IDLE";
+        console.log("STATE AFTER SPEAK:", state);
+
+        const WAITING_STATES = [
+          "WAITING_FOR_BRAND_SELECTION",
+          "WAITING_FOR_PACKAGING",
+          "WAITING_FOR_MOBILE_CONSENT",
+          "WAITING_FOR_MOBILE_NUMBER",
+          "WAITING_FOR_WALLET_CONSENT",
+          "WAITING_FOR_PAY_CONFIRM",
+          "WAITING_FOR_RECEIPT_ACTION",
+        ];
+
+        if (WAITING_STATES.includes(state)) {
+          // Assistant just prompted the user — now listen for their reply
+          setTimeout(() => {
+            startListening();
+          }, 400); // small delay so speech synthesis fully ends
+        } else if (
+          state === "IDLE" &&
+          !activeSessionRef.current &&
+          !processing
+        ) {
+          startWakeWordListener();
+        }
+      };
+
+      ut.onerror = () => {
+        assistantSpeakingRef.current = false;
+      };
+
+      speechSynthesis.cancel();
+      speechSynthesis.speak(ut);
+
+    } catch {
+      assistantSpeakingRef.current = false;
+    }
   };
 
   const appendAssistantMessage = (text: string) => {
     setMessages(s => [...s, { from: 'assistant', text }]);
   };
+
+  const handleWakeDetected = () => {
+
+    console.log("WAKE DETECTED");
+
+    activeSessionRef.current = true;
+
+    try {
+      wakeRecognitionRef.current?.stop();
+    } catch { }
+
+    wakeRecognitionRef.current = null;
+
+    speak("Yes?");
+
+    setTimeout(() => {
+      startListening();
+    }, 1000);
+  };
+
+  const startWakeWordListener = () => {
+
+    if (assistantSpeakingRef.current) {
+      return;
+    }
+
+    if (wakeRecognitionRef.current) {
+      return;
+    }
+
+    const SpeechClass =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+
+    if (!SpeechClass) {
+      return;
+    }
+
+    console.log("STARTING WAKE LISTENER");
+
+    const wakeRec = new SpeechClass();
+
+    wakeRec.lang = getLang();
+    wakeRec.continuous = true;
+    wakeRec.interimResults = false;
+
+    wakeRec.onstart = () => {
+      console.log("WAKE STARTED");
+    };
+
+    wakeRec.onresult = (event: any) => {
+
+      const state =
+        (window as any).conversationState;
+
+      console.log("CURRENT STATE:", state);
+
+      const wakeAllowed =
+        !state ||
+        state === "IDLE" ||
+        state === "COMPLETE";
+
+      if (!wakeAllowed) {
+        return;
+      }
+
+      const text =
+        event.results[event.results.length - 1][0]
+          .transcript
+          .toLowerCase()
+          .trim();
+
+      console.log("WAKE:", text);
+
+      if (
+        text.includes("dukandar") ||
+        text.includes("dukanadar")
+      ) {
+        handleWakeDetected();
+      }
+    };
+
+    wakeRec.onerror = (e: any) => {
+      console.log("WAKE ERROR", e.error);
+    };
+
+    wakeRec.onend = () => {
+
+      console.log("WAKE ENDED");
+
+      wakeRecognitionRef.current = null;
+
+      const state =
+        (window as any).conversationState || "IDLE";
+
+      if (
+        wakeEnabledRef.current &&
+        !assistantSpeakingRef.current &&
+        !activeSessionRef.current &&
+        state === "IDLE"
+      ) {
+        setTimeout(() => {
+          startWakeWordListener();
+        }, 1000);
+      }
+    };
+
+    wakeRecognitionRef.current = wakeRec;
+
+    try {
+      wakeRec.start();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+
+
 
   // ── Payment modal opener ───────────────────────────────────────────────────
   const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
@@ -338,30 +517,43 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   // ── Listening controls ─────────────────────────────────────────────────────
   const startListening = () => {
+    activeSessionRef.current = true;
+
+    try {
+      wakeRecognitionRef.current?.stop();
+    } catch { }
+
+    wakeRecognitionRef.current = null;
+
     setError(null);
     setTranscript('');
+
     if (!recognitionRef.current) return;
+
     autoSendRef.current = true;
 
     try {
       recognitionRef.current.start();
       setListening(true);
 
-      // Safety-net: force-stop if onend never fires
       clearSafetyTimer();
+
       recognitionSafetyTimerRef.current = setTimeout(() => {
-        try { recognitionRef.current?.stop(); } catch (_) {}
+        try {
+          recognitionRef.current?.stop();
+        } catch { }
+
         setListening(false);
         setError('Recognition timed out. Please try again.');
       }, voiceConfigRef.current.recognitionSafetyTimeoutMs);
 
-    } catch {}
+    } catch { }
   };
 
   const stopListening = () => {
     clearSafetyTimer();
     clearAutoSendTimer();
-    try { recognitionRef.current?.stop(); } catch (_) {}
+    try { recognitionRef.current?.stop(); } catch (_) { }
     autoSendRef.current = false;
     setListening(false);
   };
@@ -445,11 +637,38 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       setError(err?.message || String(err));
     } finally {
       setProcessing(false);
+
+      activeSessionRef.current = false;
     }
   };
 
   useEffect(() => { handleSendRef.current = handleSend; }, [transcript]);
+
+
   useEffect(() => { setVisible(true); }, []);
+
+  useEffect(() => {
+
+    if (wakeStartedRef.current) {
+      return;
+    }
+
+    wakeStartedRef.current = true;
+
+    startWakeWordListener();
+
+    return () => {
+
+      wakeEnabledRef.current = false;
+
+      try {
+        wakeRecognitionRef.current?.stop();
+      } catch { }
+
+      wakeRecognitionRef.current = null;
+    };
+
+  }, []);
 
   (window as any).__voiceOpenPaymentModal = openPaymentModal;
 
