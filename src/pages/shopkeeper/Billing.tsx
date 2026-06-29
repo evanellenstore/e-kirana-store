@@ -47,11 +47,17 @@ import {
   adjustInventory,
   type ReservedItem
 } from "../../services/inventoryService";
-
 import { AuthContext } from "../../auth/AuthContext";
 import { useTranslation } from "react-i18next";
-
 import "../../styles/Billing.css";
+import CartTable from "./feature/cart/CartTable";
+import ReceiptModal from "./modals/ReceiptModal";
+import CancelConfirmModal from "./modals/CancelConfirmModal";
+import RefundSlipModal from "./modals/RefundSlipModal";
+import BillDetailsModal from "./modals/BillDetailsModal";
+import BatchAllocModal from "./modals/BatchAllocModal";
+import ReturnItemsModal from "./modals/ReturnItemsModal";
+import PaymentMethodModal from "./modals/PaymentMethodModal";
 
 const Billing = () => {
   const { t, i18n } = useTranslation();
@@ -85,6 +91,7 @@ const Billing = () => {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [showRefundSlip, setShowRefundSlip] = useState(false);
   const [refundSlipData, setRefundSlipData] = useState<any>(null);
+
   const [useWallet, setUseWallet] = useState<boolean>(false);
 
   // Unified Controls Modal state
@@ -187,6 +194,9 @@ const Billing = () => {
   const [brands, setBrands] = useState<string[]>([]);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const voiceWalletDecisionRef = useRef<boolean | null>(null);
+
+  
   const filterDebounceRef = useRef<number | null>(null);
   // scanner buffer refs (capture fast keyboard input from USB barcode scanners)
   const scannerBufferRef = useRef<string>("");
@@ -224,7 +234,7 @@ const Billing = () => {
       setNotificationMessage(t('billing.newBillStarted', { billId: res.data.billId }));
       setNotificationType("success");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 3000);
+      setTimeout(() => setShowNotification(false), 1000);
       barcodeRef.current?.focus();
     } catch (error: any) {
       console.error('Error starting bill:', error);
@@ -232,7 +242,7 @@ const Billing = () => {
       setNotificationMessage(t('billing.failedStartBilling', { message: error.response?.data?.message || error.message || t('billing.unknownError') }));
       setNotificationType("danger");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 5000);
+      setTimeout(() => setShowNotification(false), 1000);
     }
   };
 
@@ -242,6 +252,8 @@ const Billing = () => {
      Voice Assistant Delegate Intent Core Handler
   ====================================================== */
   const handleVoiceIntent = (payload: any, helpers?: any) => {
+     payRef.current = pay;  // ← ADD THIS LINE
+
     try {
       const speak = helpers?.speak;
       const appendAssistantMessage = helpers?.appendAssistantMessage;
@@ -262,6 +274,18 @@ const Billing = () => {
         setNotificationType,
         setShowNotification,
         t,
+
+        // ✅ ADD THIS BLOCK — fetches real wallet balance by mobile number
+        fetchWalletBalance: async (mobile: string) => {
+          try {
+            const res = await getCustomerByMobile(mobile);
+            const cust = res.data;
+            return (cust?.walletBalance ?? null);
+          } catch {
+            return null;
+          }
+        },
+
         addCartItems: (items: any[]) => {
           setCart(prev => {
             const copy = [...prev];
@@ -287,19 +311,78 @@ const Billing = () => {
           });
         },
         playBeep: async () => { try { await playBeep(); } catch {} },
+
         speak: typeof speak === 'function' ? speak : undefined,
-        appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined
+        appendAssistantMessage: typeof appendAssistantMessage === 'function' ? appendAssistantMessage : undefined,
+        onReceiptPrint: () => {
+          const printBtn = document.querySelector('.receipt-print-btn') as HTMLButtonElement;
+          if (printBtn) printBtn.click();
+        },
+        onReceiptClose: () => {
+          setShowReceiptModal(false);
+          setBillId(undefined);
+          setReceiptData(null);
+          setShowUnifiedControlsModal(false);
+        },
+        onReceiptDone: () => {
+          setShowReceiptModal(false);
+          setReceiptData(null);
+          setCart([]);
+          setDiscount(0);
+          setDiscountIsPercent(false);
+          setCashReceived(undefined);
+          setCustomerMobile('');
+          setReservedForBill(false);
+          setBillId(undefined);
+          setShowUnifiedControlsModal(false);
+        },    
+        
+        // ← ADD THIS
+        openPaymentModal: async (mobileNumber?: string, options?: any) => {
+          (window as any).__voicePay = () => payRef.current();  
+
+  //setCustomerMobile(mobileNumber || '');
+
+  const voiceWalletDecision = options?.applyWallet === true;
+  // Set ref BEFORE setCustomerMobile so the useEffect sees it
+  voiceWalletDecisionRef.current = voiceWalletDecision;
+  setCustomerMobile(mobileNumber || '');
+  
+  // Fetch customer first so wallet section renders, then set useWallet
+  if (mobileNumber) {
+    try {
+      const res = await getCustomerByMobile(mobileNumber);
+      const cust = res.data;
+      if (cust && cust.id) {
+        setCustomer(cust);
+        // Now set wallet based on voice decision AND balance availability
+        if (options?.applyWallet === true && (cust.walletBalance || 0) > 0) {
+          setUseWallet(true);
+        } else {
+          setUseWallet(false);
+        }
+      }
+    } catch {
+      setCustomer(null);
+      setUseWallet(false);
+    }
+  } else {
+    setUseWallet(false);
+  }
+
+  setUnifiedModalTab('payment');
+  setShowUnifiedControlsModal(true);
+}
+
+
+
       });
     } catch (e) {
       console.warn('delegate handleVoiceIntent failed', e);
     }
   };
 
-
 //=======================================================
-
-
-
   // Handle going back to start billing screen
   const handleGoBackToBilling = () => {
     setCart([]);
@@ -363,7 +446,7 @@ const Billing = () => {
           if (code) {
             handleBarcode(code);
           }
-        }, 2000);
+        }, 1000);
       }
     };
 
@@ -386,7 +469,7 @@ const Billing = () => {
       setNotificationMessage(t('billing.startBillPrompt'));
       setNotificationType("warning");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 4000);
+      setTimeout(() => setShowNotification(false), 1000);
       return;
     }
 
@@ -559,6 +642,7 @@ const Billing = () => {
   }, [cart]);
 
   // Auto-fetch customer when mobile number is entered (debounced)
+  /*
   useEffect(() => {
     if (!customerMobile || !customerMobile.trim()) {
       return;
@@ -598,6 +682,64 @@ const Billing = () => {
 
     return () => clearTimeout(timer);
   }, [customerMobile]);
+
+*/
+
+// Auto-fetch customer when mobile number is entered (debounced)
+  useEffect(() => {
+    if (!customerMobile || !customerMobile.trim()) {
+      return;
+    }
+
+    const mobile = customerMobile.trim();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getCustomerByMobile(mobile);
+        const cust = res.data;
+        if (cust && cust.id) {
+          setCustomer(cust);
+
+          // If voice already made a wallet decision, respect it — don't override
+          if (voiceWalletDecisionRef.current !== null) {
+            setUseWallet(voiceWalletDecisionRef.current && (cust.walletBalance || 0) > 0);
+            voiceWalletDecisionRef.current = null; // reset after applying
+          } else {
+            // Manual mobile entry — auto-check if balance exists
+            if ((cust.walletBalance || 0) > 0) {
+              setUseWallet(true);
+              if (paymentMode === 'CASH') {
+                const subtotalP = toPaise(subtotalBeforeDiscount);
+                const walletP = toPaise(cust.walletBalance || 0);
+                const walletIntP = Math.floor(walletP / 100) * 100;
+                const walletToUseP = Math.min(walletIntP, subtotalP);
+                const amountAfterWalletP = Math.max(0, subtotalP - walletToUseP);
+                setCashReceived(Number(fromPaise(amountAfterWalletP).toFixed(2)));
+              }
+            }
+          }
+        } else {
+          setCustomer(null);
+          setUseWallet(false);
+        }
+      } catch (err) {
+        setCustomer(null);
+        setUseWallet(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [customerMobile]);
+
+
+
+  // ← ADD HERE — Voice pay trigger
+  useEffect(() => {
+    const handleVoicePay = () => {
+      pay();
+    };
+    window.addEventListener('voice:triggerPay', handleVoicePay);
+    return () => window.removeEventListener('voice:triggerPay', handleVoicePay);
+  }, [billId, cart, customerMobile, useWallet, customer, paymentMode, cashReceived]);
 
   // Helper: compute discount, gst and grand total
   const computeTotals = () => {
@@ -730,6 +872,7 @@ const Billing = () => {
           name: item.name,
           nameHi: item.nameHi
         }));
+        await addItemsBatch(billId, payload);  // ✅ ADD THIS LINE
         setReservedForBill(true);
       }
 
@@ -831,6 +974,25 @@ const Billing = () => {
     }
   };
 
+
+  // ← ADD HERE
+  const payRef = useRef<() => Promise<void>>(async () => { });
+
+  useEffect(() => {
+    payRef.current = pay;
+  }, [billId, cart, customerMobile, useWallet, customer, paymentMode, cashReceived, subtotalBeforeDiscount, reservedForBill, discount, discountIsPercent]);
+
+  useEffect(() => {
+    const handleVoicePay = () => {
+      payRef.current();
+    };
+    window.addEventListener('voice:triggerPay', handleVoicePay);
+    return () => window.removeEventListener('voice:triggerPay', handleVoicePay);
+  }, []);
+
+
+
+
   // Handle bill cancellation - release all reserved items
   const handleCancelBill = async () => {
     if (!billId) return;
@@ -851,7 +1013,7 @@ const Billing = () => {
       setNotificationMessage('✅ Bill cancelled successfully! All reserved items have been released back to inventory.');
       setNotificationType("success");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 4000);
+      setTimeout(() => setShowNotification(false), 1000);
       
       // Reset UI
       setCart([]);
@@ -869,7 +1031,7 @@ const Billing = () => {
       setNotificationMessage(`❌ Failed to cancel bill: ${msg}`);
       setNotificationType("danger");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 4000);
+      setTimeout(() => setShowNotification(false), 1000);
       setShowCancelConfirmModal(false);
     } finally {
       setIsCancelling(false);
@@ -1232,7 +1394,8 @@ const Billing = () => {
   };
 
   // Fetch bill details and items
-  const handleViewBillDetails = async (billId: string, billDate: string, openReturnAfterLoad: boolean = false) => {
+  const handleViewBillDetails = async (billId: string, billDate: string, openReturnAfterLoad: boolean = false) => 
+    {
     setShowBillDetailsModal(true);
     setSelectedBillId(billId);
     setSelectedBillDate(billDate);
@@ -2059,167 +2222,159 @@ const Billing = () => {
     };
 
     return (
-    <div className="billing-page-container">
-      <ShopkeeperHeader 
-        title={t('billing.pageTitle')}
-        description={t('billing.pageDescription')}
-      />
+
+
       
-      <Container className="billing-content" style={{ maxWidth: 1100 }}>
-        {/* Notification Alert - Fixed position at top */}
-        {showNotification && (
-          <Alert 
-            variant={notificationType} 
-            onClose={() => setShowNotification(false)} 
-            dismissible
-            className="mb-3 position-fixed top-0 start-50 translate-middle-x"
-            style={{ zIndex: 9999, width: '90%', maxWidth: '500px', marginTop: '20px' }}
-          >
-            {notificationMessage}
-          </Alert>
-        )}
-        
-        {/* Main Billing Section */}
-        <div className="billing-main-card">
-          <div className="billing-header-section">
-            <div className="billing-title-area">
-              <div className="mb-2">
-                <div className="d-flex justify-content-start mb-2">
-                  <Button 
-                    variant="primary"
-                    onClick={async () => {
-                      await handleGoBackToBilling();
-                      setTimeout(() => handleStartBilling(), 300);
-                    }}
-                    className="fw-bold px-3"
-                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                  >
-                    {t('billing.startBill')}
-                  </Button>
+    <div className="billing-page-container">
+
+
+        {/* This div will automatically take 70% width */}
+        <div className="billing-left">
+
+          <ShopkeeperHeader
+            title={t('billing.pageTitle')}
+            description={t('billing.pageDescription')}
+          />
+
+          <Container className="billing-content" style={{ maxWidth: 1100 }}>
+            {/* Notification Alert - Fixed position at top */}
+            {showNotification && (
+              <Alert
+                variant={notificationType}
+                onClose={() => setShowNotification(false)}
+                dismissible
+                className="mb-3 position-fixed top-0 start-50 translate-middle-x"
+                style={{ zIndex: 9999, width: '90%', maxWidth: '500px', marginTop: '20px' }}
+              >
+                {notificationMessage}
+              </Alert>
+            )}
+
+            {/* Main Billing Section */}
+            <div className="billing-main-card">
+              <div className="billing-header-section">
+                <div className="billing-title-area">
+                  <div className="mb-2">
+                    <div className="d-flex justify-content-start mb-2">
+                      <Button
+                        variant="primary"
+                        onClick={async () => {
+                          await handleGoBackToBilling();
+                          setTimeout(() => handleStartBilling(), 300);
+                        }}
+                        className="fw-bold px-3"
+                        style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                      >
+                        {t('billing.startBill')}
+                      </Button>
+                    </div>
+                    <div className="d-flex align-items-center justify-content-between gap-2">
+                      <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>{t('billing.billDetails')}</h5>
+                      {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>{t('billing.billLabel', { billId })}</Badge>}
+                    </div>
+                  </div>
                 </div>
-                <div className="d-flex align-items-center justify-content-between gap-2">
-                  <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>{t('billing.billDetails')}</h5>
-                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>{t('billing.billLabel', { billId })}</Badge>}
+              </div>
+
+              <div className="billing-body">
+                <Row className="g-2">
+                  <Col xs={12} md={8}>
+                    <InputGroup>
+                      <Form.Control
+                        ref={barcodeRef}
+                        placeholder={t('billing.scanPlaceholder')}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") {
+                            console.log("manual Enter pressed, value:", e.currentTarget.value);
+                            handleBarcode(e.currentTarget.value);
+                          }
+                        }}
+                        style={{ fontSize: 18 }}
+                      />
+                      <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>{t('billing.focus')}</Button>
+                    </InputGroup>
+                  </Col>
+
+                  <Col xs={12} md={4} className="d-flex gap-2">
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setUnifiedModalTab("inventory");
+                        setShowUnifiedControlsModal(true);
+                      }}
+                      className="flex-grow-1"
+                    >
+                      {t('billing.billingControls')}
+                    </Button>
+                  </Col>
+                </Row>
+
+                {/*  Cart Table
+                  Cart items display correctly
+                  + / - buttons work
+                  Split button opens batch modal
+                   Discount and total columns calculate correctly */}
+
+                <CartTable
+                  cart={cart}
+                  getLocalized={getLocalized}
+                  increaseQty={increaseQty}
+                  decreaseQty={decreaseQty}
+                  openBatchAllocModal={openBatchAllocModal}
+                  t={t}
+                />
+
+
+
+                {/* Summary */}
+                <Row className="mt-2">
+                  <Col md={{ span: 4, offset: 8 }}>
+                    {(() => {
+                      const { discountAmt, gstAmt, grandTotal } = computeTotals();
+                      return (
+                        <>
+                          <div className="d-flex justify-content-between small">
+                            <div>{t('billing.subtotal')}</div>
+                            <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
+                          </div>
+                          <div className="d-flex justify-content-between small">
+                            <div>{t('billing.discountLabel')} {discountIsPercent ? `(${discount}%)` : ''}</div>
+                            <div>₹{discountAmt.toFixed(2)}</div>
+                          </div>
+                          <div className="d-flex justify-content-between small">
+                            <div>{t('billing.gst')}</div>
+                            <div>₹{gstAmt.toFixed(2)}</div>
+                          </div>
+                          <hr />
+                          <div className="d-flex justify-content-between fw-bold">
+                            <div>{t('billing.grandTotal')}</div>
+                            <div>₹{grandTotal.toFixed(2)}</div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </Col>
+                </Row>
+
+                <div className="billing-total-section">
+                  <h4 className="billing-total-label">
+                    {t('billing.totalLabel')}: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
+                  </h4>
                 </div>
               </div>
             </div>
+          </Container>
+
+        </div>
+
+
+  {/* This div will automatically take 30% width */}
+        <div className="billing-right">
+          
+          <div className="voice-assistant-fixed">
+            <VoiceAssistant onIntent={handleVoiceIntent} />
           </div>
-
-          <div className="billing-body">
-          <Row className="g-2">
-            <Col xs={12} md={8}>
-              <InputGroup>
-                <Form.Control
-                  ref={barcodeRef}
-                  placeholder={t('billing.scanPlaceholder')}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      console.log("manual Enter pressed, value:", e.currentTarget.value);
-                      handleBarcode(e.currentTarget.value);
-                    }
-                  }}
-                  style={{ fontSize: 18 }}
-                />
-                <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>{t('billing.focus')}</Button>
-              </InputGroup>
-            </Col>
-
-              <Col xs={12} md={4} className="d-flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setUnifiedModalTab("inventory");
-                    setShowUnifiedControlsModal(true);
-                  }}
-                  className="flex-grow-1"
-                >
-                  {t('billing.billingControls')}
-                </Button>
-              </Col>
-          </Row>
-
-          <Table striped bordered hover size="sm" className="mt-3">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th style={{ width: 180 }}>{t('billing.table.item')}</th>
-                <th style={{ width: 180 }}>{t('billing.table.qty')}</th>
-                <th style={{ width: 120 }}>{t('billing.table.price')}</th>
-                <th style={{ width: 100 }}>{t('billing.table.discount')}</th>
-                <th style={{ width: 140 }}>{t('billing.table.total')}</th>
-                <th style={{ width: 100 }}>{t('billing.table.action')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cart.map(i => {
-                const discountPerUnit = i.discountAmount ?? 0;
-                const totalDiscount = discountPerUnit * i.qty;
-                const priceAfterDiscount = Math.max(0, (i.price ?? 0) - discountPerUnit);
-                const cartItemTotal = priceAfterDiscount * i.qty;
-                return (
-                  <tr key={`${i.productId}-${i.batchNo}`}>
-                    <td style={{ width: 180 }}>{i.sku}</td>
-                    <td style={{ maxWidth: 300 }}>{getLocalized(i.name, i.nameHi) || i.sku}</td>
-                    <td>
-                      <div className="d-flex align-items-center">
-                        <Button size="sm" variant="outline-secondary" onClick={() => decreaseQty(i.productId, i.batchNo)}>-</Button>
-                        <div className="px-3">{i.qty}</div>
-                        <Button size="sm" variant="outline-secondary" onClick={() => increaseQty(i.productId, i.batchNo)}>+</Button>
-                        <div className="ms-auto small text-muted">{t('billing.available')}: {i.availableQty}</div>
-                      </div>
-                    </td>
-                    <td>₹{i.price.toFixed(2)}</td>
-                    <td>₹{totalDiscount.toFixed(2)}</td>
-                    <td>₹{cartItemTotal.toFixed(2)}</td>
-                    <td>
-                      <Button size="sm" variant="info" onClick={() => openBatchAllocModal(i)}>
-                        Split
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-
-          {/* Summary */}
-          <Row className="mt-2">
-            <Col md={{ span: 4, offset: 8 }}>
-              {(() => {
-                const { discountAmt, gstAmt, grandTotal } = computeTotals();
-                return (
-                  <>
-                    <div className="d-flex justify-content-between small">
-                      <div>{t('billing.subtotal')}</div>
-                      <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
-                    </div>
-                    <div className="d-flex justify-content-between small">
-                      <div>{t('billing.discountLabel')} {discountIsPercent ? `(${discount}%)` : ''}</div>
-                      <div>₹{discountAmt.toFixed(2)}</div>
-                    </div>
-                    <div className="d-flex justify-content-between small">
-                      <div>{t('billing.gst')}</div>
-                      <div>₹{gstAmt.toFixed(2)}</div>
-                    </div>
-                    <hr />
-                    <div className="d-flex justify-content-between fw-bold">
-                      <div>{t('billing.grandTotal')}</div>
-                      <div>₹{grandTotal.toFixed(2)}</div>
-                    </div>
-                  </>
-                );
-              })()}
-            </Col>
-          </Row>
-
-          <div className="billing-total-section">
-            <h4 className="billing-total-label">
-              {t('billing.totalLabel')}: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
-            </h4>
-          </div>
-            </div>
-          </div>
-      </Container>
+        </div>
 
       {/* Unified Controls Modal - All controls in one place */}
       <Modal 
@@ -2377,10 +2532,12 @@ const Billing = () => {
                     {customer && (
                       <div className="bg-success bg-opacity-10 p-3 rounded mb-3 border border-success">
                         <div className="small fw-bold text-success mb-2">{t('billing.walletAvailable', { amount: walletBalance.toFixed(2) })}</div>
+                        
                         <Form.Check 
                           type="checkbox"
                           id="useWalletUnified"
                           label={t('billing.useWalletLabel', { walletAmount: walletToUse.toFixed(2), payAmount: amountAfterWallet.toFixed(2) })}
+                           checked={useWallet}
                           onChange={(e) => {
                             const checked = e.target.checked;
                             setUseWallet(checked);
@@ -2398,6 +2555,8 @@ const Billing = () => {
                           className="fw-bold small"
                           disabled={walletBalance <= 0}
                         />
+
+
                         {walletBalance <= 0 && (
                           <div className="small text-muted mt-2">{t('billing.noWalletBalance')}</div>
                         )}
@@ -3305,200 +3464,82 @@ const Billing = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* Refund Slip Modal */}
-      <Modal show={showRefundSlip} onHide={() => { setShowRefundSlip(false); setRefundSlipData(null); }} size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>Refund Slip - {refundSlipData?.billId || ''}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {refundSlipData ? (
-            <div id="refund-slip-content">
-              <h5>Refund Slip</h5>
-              <div className="small text-muted">Bill: {refundSlipData.billId}</div>
-              <div className="small text-muted">Date: {refundSlipData.date}</div>
-              <Table size="sm" className="mt-2">
-                <thead>
-                  <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Gross</th></tr>
-                </thead>
-                <tbody>
-                  {refundSlipData.items.map((it: any, i: number) => (
-                    <tr key={i}><td>{getLocalized(it.name, it.nameHi) || it.sku}</td><td>{it.qty}</td><td>₹{it.unitPrice.toFixed(2)}</td><td>₹{it.gross.toFixed(2)}</td></tr>
-                  ))}
-                </tbody>
-              </Table>
+      {/* Refund Slip Modal 
+      
+        Process a return — refund slip modal opens
+        All items, quantities, prices show correctly
+        Totals section (wallet credit, cash refund, net change) correct
+        Print button opens print window
+        Close button closes modal and clears data
+      */}
 
-              <div className="mt-3">
-                <div className="d-flex justify-content-between"><div>Total Gross</div><div>₹{refundSlipData.totals.totalGross.toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>Wallet Credit</div><div>₹{(refundSlipData.totals.walletCredit || 0).toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>Discount Reversed (wallet)</div><div>₹{(refundSlipData.totals.discountReversed || 0).toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>Cash/Card Refund</div><div>₹{(refundSlipData.totals.cashRefund || 0).toFixed(2)}</div></div>
-                <hr />
-                <div className="d-flex justify-content-between fw-bold"><div>Net Wallet Change</div><div>₹{(refundSlipData.totals.netWalletChange || 0).toFixed(2)}</div></div>
-              </div>
-            </div>
-          ) : (
-            <div>No refund data available</div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => { setShowRefundSlip(false); setRefundSlipData(null); }}>Close</Button>
-          <Button variant="primary" onClick={() => {
-            const content = document.getElementById('refund-slip-content');
-            if (!content) return;
-            const w = window.open('', '_blank', 'width=600,height=800');
-            if (!w) { alert('Unable to open print window'); return; }
-            w.document.write('<html><head><title>Refund Slip</title><style>body{font-family:sans-serif;padding:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}</style></head><body>');
-            w.document.write(content.innerHTML);
-            w.document.write('</body></html>');
-            w.document.close();
-            w.focus();
-            setTimeout(() => { w.print(); }, 300);
-          }}>Print</Button>
-        </Modal.Footer>
-      </Modal>
 
-      {/* Receipt Modal */}
-      <Modal show={showReceiptModal} onHide={() => { setShowReceiptModal(false); setBillId(undefined); setReceiptData(null); setShowUnifiedControlsModal(false); if (barcodeRef.current) barcodeRef.current.value = ""; scannerBufferRef.current = ""; scannerLastTimeRef.current = null; }} size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>{t('billing.receiptTitle', { billId: receiptData?.billId || '' })}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {receiptData ? (
-            <div id="receipt-content">
-              <h5>{t('billing.storeReceipt')}</h5>
-              <div className="small text-muted">{t('billing.billLabel', { billId: receiptData.billId })}</div>
-              <Table size="sm" className="mt-2">
-                <thead>
-                  <tr><th>{t('billing.table.item')}</th><th>{t('billing.table.qty')}</th><th>{t('billing.table.price')}</th><th>{t('billing.table.discount')}</th><th>{t('billing.table.total')}</th></tr>
-                </thead>
-                <tbody>
-                  {receiptData.items.map((it: any) => {
-                    const discountPerUnit = it.discountAmount ?? 0;
-                    const totalDiscount = discountPerUnit * it.qty;
-                    const priceAfterDiscount = Math.max(0, (it.price ?? 0) - discountPerUnit);
-                    const receiptItemTotal = priceAfterDiscount * it.qty;
-                    return (
-                      <tr key={`${it.productId}-${it.batchNo}`}>
-                        <td>{getLocalized(it.name, it.nameHi) || it.sku}</td>
-                        <td>{it.qty}</td>
-                        <td>₹{it.price.toFixed(2)}</td>
-                        <td>₹{totalDiscount.toFixed(2)}</td>
-                        <td>₹{receiptItemTotal.toFixed(2)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
+        <RefundSlipModal
+          show={showRefundSlip}
+          refundSlipData={refundSlipData}
+          getLocalized={getLocalized}
+          onClose={() => {
+            setShowRefundSlip(false);
+            setRefundSlipData(null);
+          }}
+        />
 
-              <div className="mt-3">
-                <div className="d-flex justify-content-between"><div>{t('billing.subtotal')}</div><div>₹{(receiptData.totals.discountAmt + receiptData.totals.taxable).toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>{t('billing.discountLabel')}</div><div>₹{receiptData.totals.discountAmt.toFixed(2)}</div></div>
-                <div className="d-flex justify-content-between"><div>{t('billing.gst')}</div><div>₹{receiptData.totals.gstAmt.toFixed(2)}</div></div>
-                <hr />
-                <div className="d-flex justify-content-between fw-bold"><div>{t('billing.grandTotal')}</div><div>₹{receiptData.totals.grandTotal.toFixed(2)}</div></div>
-                
-                {/* Show wallet usage if applicable */}
-                {receiptData.walletUsed && receiptData.walletUsed > 0 && (
-                  <>
-                    <hr className="my-2" />
-                    <div className="d-flex justify-content-between p-2 text-success fw-bold">
-                      <div className="small">💳 Wallet Used</div>
-                      <div className="small">-₹{receiptData.walletUsed.toFixed(2)}</div>
-                    </div>
-                  </>
-                )}
-                
-                {/* Show final amount due */}
-                {receiptData.amountToCharge !== undefined && (
-                  <div className="d-flex justify-content-between bg-warning bg-opacity-10 p-2 rounded mt-2">
-                    <div className="fw-bold">Amount Due</div>
-                    <div className="fw-bold">₹{receiptData.amountToCharge.toFixed(2)}</div>
-                  </div>
-                )}
-              </div>
+      {/* Receipt Modal 
+      
+        App compiles with no errors
+        Complete a bill — receipt modal opens correctly
+        All items, discounts, totals display correctly
+        Wallet used row shows when wallet was used
+        Print button opens print window
+        Close button closes modal
+         Done button resets billing UI
+      
+      */}
 
-              {receiptData.payment?.customerMobile && (
-                <div className="mt-3 p-2 bg-light rounded">
-                  <div className="small text-success fw-bold">{t('billing.walletCreated')}</div>
-                  <div className="small">{t('billing.walletMobile')}: {receiptData.payment.customerMobile}</div>
-                  <div className="small">{t('billing.discountCredited', { amount: receiptData.payment.discount?.toFixed(2) || '0.00' })}</div>
-                  <div className="small text-muted">{t('billing.useWalletFuture')}</div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div>{t('billing.noReceiptData')}</div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => { setShowReceiptModal(false); setBillId(undefined); setReceiptData(null); setShowUnifiedControlsModal(false); if (barcodeRef.current) barcodeRef.current.value = ""; scannerBufferRef.current = ""; scannerLastTimeRef.current = null; }}>Close</Button>
-          <Button variant="primary" onClick={() => {
-            // print receipt
-            const content = document.getElementById('receipt-content');
-            if (!content) return;
-            const w = window.open('', '_blank', 'width=600,height=800');
-            if (!w) { alert(t('billing.unableToOpenPrintWindow')); return; }
-            w.document.write('<html><head><title>Receipt</title><style>body{font-family:sans-serif;padding:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}</style></head><body>');
-            w.document.write(content.innerHTML);
-            w.document.write('</body></html>');
-            w.document.close();
-            w.focus();
-            setTimeout(() => { w.print(); }, 300);
-          }}>Print</Button>
-          <Button variant="success" onClick={async () => {
-            // done: close receipt and reset UI. Do NOT auto-create a new bill — user must click Start Billing.
+        <ReceiptModal show={showReceiptModal} receiptData={receiptData}  getLocalized={getLocalized}
+          t={t}
+          onClose={() => {
+            setShowReceiptModal(false);
+            setBillId(undefined);
+            setReceiptData(null);
+            setShowUnifiedControlsModal(false);
+            if (barcodeRef.current) barcodeRef.current.value = "";
+            scannerBufferRef.current = "";
+            scannerLastTimeRef.current = null;
+          }}
+          onDone={async () => {
             setShowReceiptModal(false);
             setReceiptData(null);
             setCart([]);
             setDiscount(0);
             setDiscountIsPercent(false);
             setCashReceived(undefined);
-            setCustomerMobile('');
+            setCustomerMobile("");
             setReservedForBill(false);
             setBillId(undefined);
-            // ensure billing controls are closed and scanner state reset
             setShowUnifiedControlsModal(false);
             if (barcodeRef.current) barcodeRef.current.value = "";
             scannerBufferRef.current = "";
             scannerLastTimeRef.current = null;
-          }}>{t('billing.done')}</Button>
-        </Modal.Footer>
-      </Modal>
+          }}
+        />
 
-      {/* Cancel Bill Confirmation Modal */}
-      <Modal show={showCancelConfirmModal} onHide={() => setShowCancelConfirmModal(false)} centered backdrop="static">
-        <Modal.Header closeButton>
-          <Modal.Title>⚠️ Cancel Bill</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="alert alert-warning mb-3">
-            <strong>{t('billing.cancelBillConfirm')}</strong>
-          </div>
-          <p>{t('billing.cancelBillWill')}</p>
-          <ul>
-            <li>{t('billing.cancelBillList.release')}</li>
-            <li>{t('billing.cancelBillList.cancelSession')}</li>
-            <li>{t('billing.cancelBillList.allowRestart')}</li>
-          </ul>
-          <p className="text-muted mb-0">{t('billing.cannotUndo')}</p>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button 
-            variant="secondary" 
-            onClick={() => setShowCancelConfirmModal(false)}
-            disabled={isCancelling}
-          >
-            {t('billing.keepBill')}
-          </Button>
-          <Button 
-            variant="danger" 
-            onClick={confirmCancelBill}
-            disabled={isCancelling}
-          >
-            {isCancelling ? t('billing.cancelling') : t('billing.cancelBill')}
-          </Button>
-        </Modal.Footer>
-      </Modal>
+        {/* Cancel Bill Confirmation Modal
+      
+          Click Cancel Bill button — modal appears
+
+          Keep Bill button closes modal without cancelling
+
+          Cancel Bill button calls confirmCancelBill and resets UI
+
+          Spinner/disabled state shows while cancelling
+      */}
+
+        <CancelConfirmModal show={showCancelConfirmModal} isCancelling={isCancelling}
+          t={t} onClose={() => setShowCancelConfirmModal(false)} onConfirm={confirmCancelBill} />
+
+
+
 
       {/* OLD Release/Refund Modal - DEPRECATED (consolidated into Unified Controls Modal) */}
       {false && <Modal show={showReleaseModal} onHide={() => setShowReleaseModal(false)} size="lg" scrollable>
@@ -3696,465 +3737,115 @@ const Billing = () => {
       </Modal>
       }
 
-      {/* Bill Details Modal */}
-      <Modal show={showBillDetailsModal} onHide={() => setShowBillDetailsModal(false)} size="lg" scrollable>
-        <Modal.Header closeButton>
-          <Modal.Title>📋 Bill Details</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {loadingBillDetails ? (
-            <div className="text-center py-5">
-              <div className="spinner-border text-primary mb-3" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-              <p className="text-muted">Loading bill details...</p>
-            </div>
-          ) : (
-            <div>
-              {/* Bill Header Info */}
-              <div className="card mb-4" style={{ backgroundColor: '#f0f7ff', border: '1px solid #0d6efd' }}>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-md-6">
-                      <small className="text-muted d-block">Bill ID</small>
-                      <h6 className="fw-bold" style={{ wordBreak: 'break-all' }}>{selectedBillId}</h6>
-                    </div>
-                    <div className="col-md-6">
-                      <small className="text-muted d-block">Date</small>
-                      <h6 className="fw-bold">{selectedBillDate}</h6>
-                    </div>
-                  </div>
-                </div>
-              </div>
+      {/* Bill Details Modal 
+        Click a bill in rewards/refund tab — details modal opens
+        Bill ID, date, subtotal, tax, discount, total all show correctly
+        Items table shows with correct qty, price, discount, total per row
+        Already refunded bill shows warning and disables Process Return button
+        Process Return button opens return items modal
+        Close button works     
+      */}
 
-              {/* Bill Summary / Totals */}
-              <div className="card mb-4" style={{ backgroundColor: '#f9f9f9', border: '1px solid #ddd' }}>
-                <div className="card-body">
-                  <h6 className="fw-bold mb-3">💰 Bill Summary</h6>
-                  <div className="row">
-                    <div className="col-md-6">
-                      <small className="text-muted d-block">Subtotal</small>
-                      <h6 className="fw-bold">₹{billSubTotal.toFixed(2)}</h6>
-                    </div>
-                    <div className="col-md-6">
-                      <small className="text-muted d-block">Tax</small>
-                      <h6 className="fw-bold">₹{billTaxAmount.toFixed(2)}</h6>
-                    </div>
-                    <div className="col-md-6">
-                      <small className="text-muted d-block">Discount</small>
-                      <h6 className="fw-bold text-success" style={{ color: '#28a745' }}>-₹{billDiscount.toFixed(2)}</h6>
-                    </div>
-                    <div className="col-md-6">
-                      <small className="text-muted d-block">Total Amount</small>
-                      <h6 className="fw-bold" style={{ color: '#0d6efd', fontSize: '1.1rem' }}>₹{billTotalAmount.toFixed(2)}</h6>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <BillDetailsModal
+          show={showBillDetailsModal}
+          loadingBillDetails={loadingBillDetails}
+          selectedBillId={selectedBillId}
+          selectedBillDate={selectedBillDate}
+          billItems={billItems}
+          billDiscount={billDiscount}
+          billSubTotal={billSubTotal}
+          billTaxAmount={billTaxAmount}
+          billTotalAmount={billTotalAmount}
+          billRefunded={billRefunded}
+          getLocalized={getLocalized}
+          t={t}
+          onClose={() => setShowBillDetailsModal(false)}
+          onProcessReturn={() => {
+            setReturnItemSelection({});
+            setReturnError(null);
+            setShowReturnItemModal(true);
+          }}
+        />
 
-              {/* Bill Items Table */}
-              <h6 className="fw-bold mb-3">📦 Items in Bill</h6>
-              {billItems && billItems.length > 0 ? (
-                <div style={{ border: '1px solid #ddd', borderRadius: '4px', overflowX: 'auto' }}>
-                  <Table striped bordered hover className="mb-0">
-                    <thead className="table-light">
-                      <tr>
-                        <th>SKU</th>
-                        <th>Product Name</th>
-                        <th>Qty</th>
-                        <th>Price</th>
-                        <th>Discount</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {billItems.map((item: any, idx: number) => {
-                        const itemSubtotal = (item.price || 0) * (item.qty || item.quantity || 0);
-                        // Calculate proportional discount for this item
-                        const itemDiscount = billSubTotal > 0 ? (billDiscount * itemSubtotal) / billSubTotal : 0;
-                        const itemTotal = itemSubtotal - itemDiscount;
-                        
-                        return (
-                          <tr key={idx}>
-                            <td>
-                              <small className="fw-bold">{item.sku || 'N/A'}</small>
-                            </td>
-                            <td>
-                              <small>{getLocalized(item.name, item.nameHi) || item.productName || 'N/A'}</small>
-                            </td>
-                            <td className="text-center">
-                              <small className="fw-bold">{item.qty || item.quantity || 0}</small>
-                            </td>
-                            <td className="text-end">
-                              <small>₹{(item.price || 0).toFixed(2)}</small>
-                            </td>
-                            <td className="text-end">
-                              <small className="text-danger">
-                                {itemDiscount > 0 ? '-₹' + (itemDiscount).toFixed(2) : '-'}
-                              </small>
-                            </td>
-                            <td className="text-end">
-                              <small className="fw-bold">
-                                    ₹{(itemTotal).toFixed(2)}
-                              </small>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="alert alert-light border" style={{ backgroundColor: '#f0f0f0' }}>
-                  <small className="text-muted">No items found in this bill</small>
-                </div>
-              )}
-            </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          {billRefunded && (
-            <Alert variant="warning" className="w-100 mb-0">
-              ⚠️ This bill has already been refunded. Cannot process return again.
-            </Alert>
-          )}
-          <Button 
-            variant="danger" 
-            disabled={billRefunded}
-            onClick={() => {
-              setReturnItemSelection({});
-              setReturnError(null);
-              setShowReturnItemModal(true);
-            }}
-          >
-            ↩️ Process Return
-          </Button>
-          <Button variant="secondary" onClick={() => setShowBillDetailsModal(false)}>
-            Close
-          </Button>
-        </Modal.Footer>
-      </Modal>
+      {/* Return Items Modal
+        Click Return on a bill — modal opens with items listed
+        Checkbox toggles item selection
+        Qty input appears only when item is checked
+        Qty cannot exceed ordered quantity
+        Refund summary updates as items are selected
+        Total refund amount calculates correctly
+        Confirm Return triggers handleReturnItems
+        Cancel closes modal without processing     
+      */}
 
-      {/* Return Items Modal */}
-      <Modal show={showReturnItemModal} onHide={() => setShowReturnItemModal(false)} size="lg" scrollable centered>
-        <Modal.Header closeButton>
-          <Modal.Title>↩️ Return Items from Bill {selectedRefundBill?.billId}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {returnError && <Alert variant="danger">{returnError}</Alert>}
+        <ReturnItemsModal
+          show={showReturnItemModal}
+          billItems={billItems}
+          billDiscount={billDiscount}
+          billSubTotal={billSubTotal}
+          selectedRefundBill={selectedRefundBill}
+          returnItemSelection={returnItemSelection}
+          processingReturn={processingReturn}
+          returnError={returnError}
+          t={t}
+          onClose={() => setShowReturnItemModal(false)}
+          onConfirm={handleReturnItems}
+          onToggleItem={(idx, checked) => {
+            if (checked) {
+              setReturnItemSelection((prev) => ({ ...prev, [idx]: 1 }));
+            } else {
+              setReturnItemSelection((prev) => {
+                const copy = { ...prev };
+                delete copy[idx];
+                return copy;
+              });
+            }
+          }}
+          onQtyChange={(idx, qty, maxQty) => {
+            const val = Math.min(qty, maxQty);
+            if (val > 0) {
+              setReturnItemSelection((prev) => ({ ...prev, [idx]: val }));
+            }
+          }}
+        />
 
-          <div className="mb-3">
-            <h6 className="fw-bold mb-3">Select items to return:</h6>
-            
-            {billItems && billItems.length > 0 ? (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table table-sm table-hover">
-                  <thead style={{ backgroundColor: '#e9ecef' }}>
-                    <tr>
-                      <th style={{ fontWeight: 'bold', width: '10%' }}>Select</th>
-                      <th style={{ fontWeight: 'bold' }}>SKU</th>
-                      <th className="text-center" style={{ fontWeight: 'bold' }}>Ordered</th>
-                      <th className="text-center" style={{ fontWeight: 'bold' }}>Return</th>
-                      <th className="text-end" style={{ fontWeight: 'bold' }}>Price</th>
-                      <th className="text-end" style={{ fontWeight: 'bold' }}>Refund</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {billItems.map((item: any, idx: number) => {
-                      const returnQty = returnItemSelection[idx] || 0;
-                      const itemSubtotal = (item.quantity || 0) * (item.price || 0);
-                      const proportionalDiscount = billDiscount && billSubTotal 
-                        ? (billDiscount * itemSubtotal) / billSubTotal 
-                        : 0;
-                      const itemTotal = itemSubtotal - proportionalDiscount;
-                      const refundAmount = (itemTotal * returnQty) / (item.quantity || 1);
+      {/* Payment Method Selection Modal for Return 
+      
+        Process a return — payment method modal opens
 
-                      return (
-                        <tr key={idx}>
-                          <td className="text-center">
-                            <Form.Check
-                              type="checkbox"
-                              checked={idx in returnItemSelection}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setReturnItemSelection(prev => ({ ...prev, [idx]: 1 }));
-                                } else {
-                                  setReturnItemSelection(prev => {
-                                    const copy = { ...prev };
-                                    delete copy[idx];
-                                    return copy;
-                                  });
-                                }
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <small className="fw-bold">{item.sku}</small>
-                          </td>
-                          <td className="text-center">
-                            <small>{item.quantity}</small>
-                          </td>
-                          <td className="text-center">
-                            {idx in returnItemSelection ? (
-                              <InputGroup size="sm">
-                                <Form.Control
-                                  type="number"
-                                  min="1"
-                                  max={item.quantity}
-                                  value={returnQty}
-                                  onChange={(e) => {
-                                    const val = Math.min(parseInt(e.target.value) || 0, item.quantity);
-                                    if (val > 0) {
-                                      setReturnItemSelection(prev => ({ ...prev, [idx]: val }));
-                                    }
-                                  }}
-                                  style={{ width: '60px' }}
-                                />
-                              </InputGroup>
-                            ) : (
-                              <small className="text-muted">-</small>
-                            )}
-                          </td>
-                          <td className="text-end">
-                            <small>₹{(item.price || 0).toFixed(2)}</small>
-                          </td>
-                          <td className="text-end">
-                            <small className="text-success fw-bold">
-                              {returnQty > 0 ? `₹${refundAmount.toFixed(2)}` : '₹0.00'}
-                            </small>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="alert alert-light border">
-                <small className="text-muted">No items found</small>
-              </div>
-            )}
-          </div>
+        Cash / Wallet / Mixed radio buttons work
 
-          {/* Refund Summary */}
-          {Object.keys(returnItemSelection).length > 0 && (
-            <div className="card mb-3">
-              <div className="card-body pb-2">
-                <h6 className="fw-bold mb-2">💰 Refund Summary</h6>
-                {billItems.map((item: any, idx: number) => {
-                  const returnQty = returnItemSelection[idx];
-                  if (!returnQty || returnQty <= 0) return null;
+        Mixed option shows wallet amount input
 
-                  // Show gross refund (price × qty) in the UI; discount reversal handled separately
-                  const refundAmountGross = (item.price || 0) * (returnQty || 0);
+        Wallet amount validates against bill total
 
-                  return (
-                    <div key={idx} className="row g-2 mb-2" style={{ fontSize: '0.85rem' }}>
-                      <div className="col-6">
-                        <small>{item.sku} ({returnQty} × ₹{item.price})</small>
-                      </div>
-                      <div className="col-6 text-end">
-                        <small className="fw-bold text-success">₹{refundAmountGross.toFixed(2)}</small>
-                      </div>
-                    </div>
-                  );
-                })}
-                
-                <hr className="my-2" />
-                
-                <div className="row g-2">
-                  <div className="col-6">
-                    <small className="fw-bold">Total Refund:</small>
-                  </div>
-                  <div className="col-6 text-end">
-                    <small className="fw-bold" style={{ fontSize: '1rem', color: '#28a745' }}>
-                      ₹{Object.entries(returnItemSelection)
-                        .reduce((sum, [idx, qty]) => {
-                          if (!qty || qty <= 0) return sum;
-                          const item = billItems[parseInt(idx)];
-                          const refundAmountGross = (item.price || 0) * (qty || 0);
-                          return sum + refundAmountGross;
-                        }, 0).toFixed(2)}
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button 
-            variant="success" 
-            disabled={Object.values(returnItemSelection).reduce((sum, qty) => sum + qty, 0) === 0 || processingReturn}
-            onClick={handleReturnItems}
-          >
-            {processingReturn ? '⏳ Processing...' : '✅ Confirm Return'}
-          </Button>
-          <Button 
-            variant="secondary" 
-            disabled={processingReturn}
-            onClick={() => setShowReturnItemModal(false)}
-          >
-            Cancel
-          </Button>
-        </Modal.Footer>
-      </Modal>
+        Edit button unlocks disabled fields
 
-      {/* Payment Method Selection Modal for Return */}
-      <Modal show={showPaymentMethodModal} onHide={() => setShowPaymentMethodModal(false)} centered backdrop="static">
-        <Modal.Header>
-          <Modal.Title>💳 Original Payment Method</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {returnError && <Alert variant="danger">{returnError}</Alert>}
+        Discount reversal options show only when bill has discount
 
-          <div className="mb-4">
-            <h6 className="fw-bold mb-3">Original Payment Method</h6>
-            <small className="text-muted d-block mb-2">Select or confirm the payment method used:</small>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Form.Check
-              type="radio"
-              id="payment_cash"
-              label="💵 All Cash"
-              name="paymentMethod"
-              value="cash"
-              checked={paymentMethodType === 'cash'}
-              disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
-              onChange={() => {
-                setPaymentMethodType('cash');
-                setWalletAmountUsed(0);
-                setWalletAmountInput('');
-              }}
-              className="mb-2"
-            />
-            {fetchedBillSummary && (
-              <small className="text-muted">(from API)</small>
-            )}
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Form.Check
-              type="radio"
-              id="payment_wallet"
-              label="💳 All Wallet"
-              name="paymentMethod"
-              value="wallet"
-              checked={paymentMethodType === 'wallet'}
-              disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
-              onChange={() => {
-                setPaymentMethodType('wallet');
-                setWalletAmountUsed(billTotalAmount || 0);
-                setWalletAmountInput(String(billTotalAmount || 0));
-              }}
-              className="mb-2"
-            />
-            {fetchedBillSummary && (
-              <small className="text-muted">(from API)</small>
-            )}
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Form.Check
-              type="radio"
-              id="payment_mixed"
-              label="🔄 Mixed (Cash + Wallet)"
-              name="paymentMethod"
-              value="mixed"
-              checked={paymentMethodType === 'mixed'}
-              disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
-              onChange={() => setPaymentMethodType('mixed')}
-              className="mb-3"
-            />
-            {fetchedBillSummary && (
-              <small className="text-muted">(from API)</small>
-            )}
-            </div>
+        Continue with Return triggers handleProcessRefundWithPaymentMethod
 
-            {paymentMethodType === 'mixed' && (
-              <div className="card mt-3 p-3" style={{ backgroundColor: '#f0f8ff' }}>
-                <small className="text-muted mb-2">Enter the amount paid from wallet:</small>
-                <InputGroup size="sm">
-                  <InputGroup.Text>₹</InputGroup.Text>
-                  <Form.Control
-                    type="number"
-                    min="0"
-                    max={billTotalAmount || 0}
-                    step="0.01"
-                    placeholder="0.00"
-                    value={walletAmountInput}
-                    onChange={(e) => {
-                      setWalletAmountInput(e.target.value);
-                      setWalletAmountUsed(parseFloat(e.target.value) || 0);
-                    }}
-                    disabled={!!fetchedBillSummary && !allowManualPaymentMethodEdit}
-                  />
-                </InputGroup>
-                <small className="text-muted mt-2 d-block">
-                  Bill Total: ₹{(billTotalAmount || 0).toFixed(2)}
-                </small>
-              </div>
-            )}
+        Back button closes modal and clears error
+      
+      */}
+        <PaymentMethodModal show={showPaymentMethodModal} billTotalAmount={billTotalAmount} billDiscount={billDiscount}
+          paymentMethodType={paymentMethodType} walletAmountUsed={walletAmountUsed} walletAmountInput={walletAmountInput} discountReversalOption={discountReversalOption}
+          fetchedBillSummary={fetchedBillSummary} allowManualPaymentMethodEdit={allowManualPaymentMethodEdit} returnError={returnError}
+          processingReturn={processingReturn} t={t}
+          onClose={() => {
+            setShowPaymentMethodModal(false);
+            setReturnError(null);
+          }}
+          onConfirm={handleProcessRefundWithPaymentMethod}
+          onPaymentMethodChange={(method) => setPaymentMethodType(method)}
+          onWalletAmountChange={(input, amount) => {
+            setWalletAmountInput(input);
+            setWalletAmountUsed(amount);
+          }}
+          onDiscountReversalChange={(option) => setDiscountReversalOption(option)}
+          onAllowEdit={() => setAllowManualPaymentMethodEdit(true)}
+        />
 
-            {fetchedBillSummary && !allowManualPaymentMethodEdit && (
-              <div className="mt-2">
-                <Button variant="link" size="sm" onClick={() => setAllowManualPaymentMethodEdit(true)}>Edit</Button>
-                <small className="text-muted ms-2">You can edit the payment method if needed.</small>
-              </div>
-            )}
-          </div>
-
-          <hr />
-
-          {billDiscount > 0 && (
-            <div className="mb-3">
-              <h6 className="fw-bold mb-3">Discount Handling</h6>
-              <small className="text-muted d-block mb-2">
-                This bill had a discount of <span className="fw-bold text-success">₹{billDiscount.toFixed(2)}</span>
-              </small>
-              
-              <Form.Check
-                type="radio"
-                id="discount_yes"
-                label="✅ Revert discount from wallet (recommended)"
-                name="discountReversal"
-                value="yes"
-                checked={discountReversalOption === 'yes'}
-                onChange={() => setDiscountReversalOption('yes')}
-                className="mb-2"
-              />
-              
-              <Form.Check
-                type="radio"
-                id="discount_no"
-                label="❌ Keep discount (no revert)"
-                name="discountReversal"
-                value="no"
-                checked={discountReversalOption === 'no'}
-                onChange={() => setDiscountReversalOption('no')}
-              />
-            </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button 
-            variant="success"
-            disabled={paymentMethodType === 'mixed' && (walletAmountUsed <= 0 || walletAmountUsed > (billTotalAmount || 0))}
-            onClick={handleProcessRefundWithPaymentMethod}
-          >
-            ✅ Continue with Return
-          </Button>
-          <Button 
-            variant="secondary"
-            onClick={() => {
-              setShowPaymentMethodModal(false);
-              setReturnError(null);
-            }}
-          >
-            Back
-          </Button>
-        </Modal.Footer>
-      </Modal>
 
       {/* OLD Inventory Check Modal - DEPRECATED (consolidated into Unified Controls Modal) */}
       {false && <Modal show={showInventoryModal} onHide={() => setShowInventoryModal(false)} size="lg" scrollable>
@@ -4418,58 +4109,37 @@ const Billing = () => {
         </Modal.Body>
       </Modal>
 
-        {/* Batch Allocation Modal — only used for Split action */}
-        <Modal show={showBatchAllocModal} onHide={() => setShowBatchAllocModal(false)} centered>
-          <Modal.Header closeButton>
-            <Modal.Title>Choose Batch / Quantity</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            {batchOptions && batchOptions.length > 0 ? (
-              <div>
-                <div className="mb-2 small text-muted">Select batch</div>
-                <div className="d-flex align-items-center mb-2">
-                  <div style={{ width: 160 }} className="me-2">
-                    <Form.Label>Total Quantity</Form.Label>
-                    <Form.Control type="number" min={1} value={batchModalTotalQty} onChange={e => setBatchModalTotalQty(Number(e.target.value) || 0)} />
-                  </div>
-                  <div style={{ marginTop: 22 }}>
-                    <Button size="sm" variant="outline-primary" onClick={() => distributeSelectedBatches(batchModalTotalQty)}>Auto-distribute</Button>
-                  </div>
-                </div>
-                <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                  {batchOptions.map((b: any, idx: number) => {
-                    const bNo = b.batchNo ?? String(b.id ?? '');
-                    const checked = batchModalSelectedBatches.includes(bNo);
-                    return (
-                      <div key={idx} className="d-flex align-items-center mb-2">
-                        <div className="form-check me-2">
-                          <input className="form-check-input" type="checkbox" name="batchSelect" id={`batch-${idx}`} checked={checked} onChange={() => {
-                            setBatchModalSelectedBatches(prev => checked ? prev.filter(x=>x!==bNo) : [...prev, bNo]);
-                          }} />
-                        </div>
-                        <label className="form-check-label flex-grow-1" htmlFor={`batch-${idx}`} style={{ marginRight: '8px' }}>
-                          {bNo} — {b.availableQty ?? 0} units {b.expiryDate ? `— Exp: ${new Date(b.expiryDate).toLocaleDateString()}` : ''}
-                        </label>
-                        <div style={{ width: 100 }}>
-                          <Form.Control type="number" min={1} value={batchModalQtyMap[bNo] ?? 1} onChange={e => setBatchModalQtyMap(prev => ({ ...prev, [bNo]: Number(e.target.value) }))} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+        {/* Batch Allocation Modal — only used for Split action
+        
+            Click Split on a cart item — batch modal opens
 
-                {/* Per-batch quantities are provided next to each batch */}
-              </div>
-            ) : (
-              <div className="text-center text-muted">No batch information available</div>
-            )}
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowBatchAllocModal(false)}>Cancel</Button>
-            <Button variant="primary" onClick={applyBatchSelection}>Add</Button>
-          </Modal.Footer>
-        </Modal>
-            <VoiceAssistant onIntent={handleVoiceIntent} />
+            All batches listed with correct qty and expiry
+
+            Checkbox toggles batch selection correctly
+
+            Qty input per batch works
+
+            Auto-distribute button distributes total qty across batches
+
+            Add button applies selection and updates cart
+
+            Cancel button closes without changes
+        
+        */}
+
+
+        <BatchAllocModal show={showBatchAllocModal} batchOptions={batchOptions} batchModalSelectedBatches={batchModalSelectedBatches}
+          batchModalQtyMap={batchModalQtyMap}  batchModalTotalQty={batchModalTotalQty}
+          t={t}
+          onClose={() => setShowBatchAllocModal(false)}
+          onApply={applyBatchSelection}
+          onDistribute={distributeSelectedBatches}
+          onToggleBatch={(bNo) => setBatchModalSelectedBatches((prev) => prev.includes(bNo) ? prev.filter((x) => x !== bNo) : [...prev, bNo]) }
+          onQtyChange={(bNo, qty) => setBatchModalQtyMap((prev) => ({ ...prev, [bNo]: qty }))}
+          onTotalQtyChange={(qty) => setBatchModalTotalQty(qty)}
+        />
+
+            
         </div>
   );
 };

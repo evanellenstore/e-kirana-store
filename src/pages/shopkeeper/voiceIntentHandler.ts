@@ -1,6 +1,12 @@
 import api from '../../services/api'; 
 import i18n from '../../i18n/config';
 
+// ─── Timeout Constants ───────────────────────────────────────────────────────
+const TIMEOUT_PAYMENT_RECEIPT_DELAY_MS  = 2000; // Wait for payment to process before receipt prompt
+const TIMEOUT_BILL_ID_POLL_INTERVAL_MS  = 300;  // Interval between billId existence checks
+const TIMEOUT_BILL_ID_SETTLE_DELAY_MS   = 400;  // Extra settle time after billId is found
+// ────────────────────────────────────────────────────────────────────────────
+
 export type IntentPayload = {
   intent?: any;
   action?: any;
@@ -20,7 +26,7 @@ export type VoiceDeps = {
   billId?: string | undefined;
   handleStartBilling: () => Promise<void> | void;
   setShowUnifiedControlsModal: (v: boolean) => void;
-  setUnifiedModalTab: (t: 'payment' | 'inventory' | 'refund' | 'rewards' ) => void;
+  setUnifiedModalTab: (t: 'payment' | 'inventory' | 'refund' | 'rewards') => void;
   setNotificationMessage: (m: string) => void;
   setNotificationType: (t: 'success' | 'danger' | 'warning' | 'info') => void;
   setShowNotification: (b: boolean) => void;
@@ -29,6 +35,15 @@ export type VoiceDeps = {
   playBeep?: () => Promise<void>;
   speak?: (text: string) => void;
   appendAssistantMessage?: (text: string) => void;
+  openPaymentModal?: (mobileNumber?: string, options?: PaymentOptions) => void;
+  /**
+   * Fetch wallet balance for a given mobile number.
+   * Should resolve to a number (the balance), or null/undefined if not found.
+   */
+  fetchWalletBalance?: (mobile: string) => Promise<number | null>;
+  onReceiptPrint?: () => void;
+  onReceiptClose?: () => void;
+  onReceiptDone?: () => void;
 };
 
 export type BrandCandidate = {
@@ -45,8 +60,13 @@ export type PendingBrandState = {
 let pendingRequestState: IntentPayload | null = null;
 let pendingBrandState: PendingBrandState | null = null;
 
+// Stores the mobile number collected during the payment flow
+let pendingPaymentMobile: string | null = null;
+// Stores the wallet balance fetched for the mobile
+let pendingWalletBalance: number | null = null;
+
 if (typeof window !== 'undefined') {
-  (window as any).conversationState = 'IDLE'; 
+  (window as any).conversationState = 'IDLE';
 }
 
 function buildCandidateString(payload: IntentPayload) {
@@ -61,6 +81,28 @@ function buildCandidateString(payload: IntentPayload) {
   try { if (payload?.command) parts.push(String(payload.command)); } catch {}
   return parts.join(' ').toLowerCase();
 }
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Extracts a 10-digit mobile number from any text.
+ * Strips all non-digit characters first, so "81306 77433" → "8130677433" (10 digits ✓).
+ */
+function extractMobileNumber(text: string): string | null {
+  const digits = text.replace(/\D/g, '');
+  if (digits.length === 10) return digits;
+  return null;
+}
+
+function isAffirmative(text: string): boolean {
+  return /\b(yes|yeah|yep|haan|ha|sure|ok|okay|provide|give|use|apply)\b/i.test(text);
+}
+
+function isNegative(text: string): boolean {
+  return /\b(no|nahi|nope|skip|don'?t|dont|without|bypass)\b/i.test(text);
+}
+
+// ─── exported handler ────────────────────────────────────────────────────────
 
 export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps) {
   try {
@@ -80,15 +122,24 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
     let act = String(payload?.intent || payload?.action || '').trim().toUpperCase();
     let txt = String(payload?.command || payload?.text || payload?.message || '').trim();
-    const candStr = buildCandidateString(payload);
 
+    // ─── CRITICAL FIX ────────────────────────────────────────────────────────
+    // When the backend processes a session-mode request (e.g. WAITING_FOR_MOBILE_NUMBER),
+    // it echoes back an AI reply in `text`/`message`, NOT the raw user speech.
+    // The raw user speech is always preserved in `payload.command` (set by VoiceAssistant
+    // before the API call). We must use `command` as the source of truth for parsing
+    // user input in context-resolution branches.
+    const rawUserSpeech = String(payload?.command || '').trim();
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const candStr = buildCandidateString(payload);
     const currentContextState = (window as any).conversationState || 'IDLE';
 
     // =========================================================================
-    // 1. CONTEXT RESOLUTION: BRAND_SELECTION (Processing Response From Turn 2)
+    // 1. BRAND_SELECTION
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_BRAND_SELECTION' && pendingBrandState) {
-      const selectedBrandValue = (payload.brand || txt || '').trim();
+      const selectedBrandValue = (payload.brand || rawUserSpeech || txt || '').trim();
       const lowerBrandValue = selectedBrandValue.toLowerCase();
       const candidates = pendingBrandState.candidates;
       let selectedCandidate: BrandCandidate | null = null;
@@ -106,16 +157,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       }
 
       if (selectedCandidate) {
-        // Matched a candidate option explicitly
         payload = {
           ...pendingBrandState.originalRequest,
           intent: 'ADD_ITEM',
           productSku: selectedCandidate.productSku,
-          brand: selectedCandidate.brand.trim(), 
+          brand: selectedCandidate.brand.trim(),
           isLoose: payload.isLoose !== undefined ? payload.isLoose : pendingBrandState.originalRequest.isLoose
         };
       } else {
-        // No restriction: dynamic fallback directly to the raw user response text
         payload = {
           ...pendingBrandState.originalRequest,
           intent: 'ADD_ITEM',
@@ -123,14 +172,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           isLoose: payload.isLoose !== undefined ? payload.isLoose : pendingBrandState.originalRequest.isLoose
         };
       }
-      
-      act = 'ADD_ITEM'; 
+
+      act = 'ADD_ITEM';
       pendingBrandState = null;
       (window as any).conversationState = 'IDLE';
     }
 
     // =========================================================================
-    // 2. CONTEXT RESOLUTION: CONFIRM_PACKAGING
+    // 2. CONFIRM_PACKAGING
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_PACKAGING' && pendingRequestState) {
       if (payload.isLoose === true || payload.isLoose === false) {
@@ -147,24 +196,233 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 3. MAIN SERVICE ROUTING PIPELINE TRACK
+    // 3. WAITING FOR MOBILE CONSENT
     // =========================================================================
+    if (currentContextState === 'WAITING_FOR_MOBILE_CONSENT') {
+      if (isAffirmative(rawUserSpeech || txt)) {
+        (window as any).conversationState = 'WAITING_FOR_MOBILE_NUMBER';
+        const askMsg = "Please tell me your 10-digit mobile number.";
+        deps.speak?.(askMsg);
+        deps.appendAssistantMessage?.(askMsg);
+        return;
+      } else if (isNegative(rawUserSpeech || txt)) {
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+        (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
+        const proceedMsg = "Proceeding to payment without a mobile number. Shall I proceed with payment? Say yes or no.";
+        deps.speak?.(proceedMsg);
+        deps.appendAssistantMessage?.(proceedMsg);
+        return;
+      } else {
+        const retryMsg = "Please say yes to provide your mobile number, or no to skip.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 4. PAYMENT — WAITING FOR MOBILE NUMBER DIGITS
+    //    FIX: parse from rawUserSpeech (the actual spoken digits), not txt
+    //    (which is the AI's echoed reply from the backend).
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_MOBILE_NUMBER') {
+      const mobile = extractMobileNumber(rawUserSpeech) || extractMobileNumber(txt);
+
+      if (mobile) {
+        pendingPaymentMobile = mobile;
+
+        if (deps.fetchWalletBalance) {
+          try {
+            const balance = await deps.fetchWalletBalance(mobile);
+            pendingWalletBalance = balance ?? null;
+          } catch {
+            pendingWalletBalance = null;
+          }
+        }
+
+        // Update modal immediately with mobile number as soon as it's spoken
+        _openPayment(deps, mobile, {
+          applyWallet: false,
+          walletBalance: pendingWalletBalance ?? undefined,
+        });
+
+        (window as any).conversationState = 'WAITING_FOR_WALLET_CONSENT';
+
+        if (pendingWalletBalance !== null && pendingWalletBalance > 0) {
+          const walletMsg = `Mobile number ${mobile} registered. You have ₹${pendingWalletBalance} in your wallet. Would you like to use your wallet balance for payment? Say yes or no.`;
+          deps.speak?.(walletMsg);
+          deps.appendAssistantMessage?.(walletMsg);
+        } else {
+          const walletMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Would you like to use your wallet for payment? Say yes or no.`;
+          deps.speak?.(walletMsg);
+          deps.appendAssistantMessage?.(walletMsg);
+        }
+        return;
+      } else {
+        const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 5. PAYMENT — WAITING FOR WALLET CONSENT
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_WALLET_CONSENT') {
+      const useWallet = isAffirmative(rawUserSpeech || txt);
+      const skipWallet = isNegative(rawUserSpeech || txt);
+
+      if (useWallet) {
+        (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
+        const mobile = pendingPaymentMobile ?? undefined;
+        const balance = pendingWalletBalance ?? 0;
+        _openPayment(deps, mobile, { applyWallet: true, walletBalance: balance });
+        const askMsg = `Wallet ₹${balance} will be applied. Shall I proceed with payment? Say yes or no.`;
+        deps.speak?.(askMsg);
+        deps.appendAssistantMessage?.(askMsg);
+        return;
+      } else if (skipWallet) {
+        (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
+        const mobile = pendingPaymentMobile ?? undefined;
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+        _openPayment(deps, mobile, { applyWallet: false });
+        const askMsg = "Okay, wallet not applied. Shall I proceed with payment? Say yes or no.";
+        deps.speak?.(askMsg);
+        deps.appendAssistantMessage?.(askMsg);
+        return;
+      } else {
+        const retryMsg = `You have ₹${pendingWalletBalance} in your wallet. Say yes to use it, or no to skip.`;
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 6. PAYMENT — WAITING FOR FINAL PAY CONFIRMATION
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_PAY_CONFIRM') {
+      if (isAffirmative(rawUserSpeech || txt)) {
+        (window as any).conversationState = 'IDLE';
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+        // Yes — click the Pay button exactly as user would manually
+        const payBtn = document.querySelector('button.btn-success') as HTMLButtonElement;
+        if (payBtn) payBtn.click();
+
+        // ✅ Use named constant — controls how long we wait before prompting receipt action
+        setTimeout(() => {
+          (window as any).conversationState = 'WAITING_FOR_RECEIPT_ACTION';
+          const receiptMsg = "Payment done! Say print to print receipt, done to finish, or close to close.";
+          deps.speak?.(receiptMsg);
+          deps.appendAssistantMessage?.(receiptMsg);
+        }, TIMEOUT_PAYMENT_RECEIPT_DELAY_MS);
+
+        const msg = "Processing payment now!";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else if (isNegative(rawUserSpeech || txt)) {
+        (window as any).conversationState = 'IDLE';
+        pendingPaymentMobile = null;
+        pendingWalletBalance = null;
+        const msg = "Payment cancelled. You can pay manually when ready.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else {
+        const retryMsg = "Say yes to confirm payment, or no to cancel.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 7. RECEIPT ACTION — PRINT / CLOSE / DONE
+    // =========================================================================
+    if (currentContextState === 'WAITING_FOR_RECEIPT_ACTION') {
+      const input = (rawUserSpeech || txt).toLowerCase();
+      if (/\bprint\b/i.test(input)) {
+        (window as any).conversationState = 'IDLE';
+        deps.onReceiptPrint?.();
+        const msg = "Printing receipt now.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else if (/\bdone\b/i.test(input)) {
+        (window as any).conversationState = 'IDLE';
+        deps.onReceiptDone?.();
+        const msg = "Bill done. Ready for next customer.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else if (/\bclose\b/i.test(input)) {
+        (window as any).conversationState = 'IDLE';
+        deps.onReceiptClose?.();
+        const msg = "Receipt closed.";
+        deps.speak?.(msg);
+        deps.appendAssistantMessage?.(msg);
+        return;
+      } else {
+        const retryMsg = "Say print to print receipt, done to finish, or close to close.";
+        deps.speak?.(retryMsg);
+        deps.appendAssistantMessage?.(retryMsg);
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 8. MAIN SERVICE ROUTING PIPELINE TRACK
+    // =========================================================================
+
+    // ── PAYMENT intent ───────────────────────────────────────────────────────
+    const isPaymentIntent =
+      act === 'PAYMENT' ||
+      act === 'TAKE_PAYMENT' ||
+      act === 'PAY' ||
+      /\b(payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(candStr);
+
+    if (isPaymentIntent) {
+      if (!deps.billId) {
+        const noBillMsg = "No active bill found. Please start a bill first.";
+        deps.speak?.(noBillMsg);
+        deps.appendAssistantMessage?.(noBillMsg);
+        return;
+      }
+
+      // Open payment popup immediately with no mobile/wallet yet
+      _openPayment(deps, undefined, { applyWallet: false });
+
+      (window as any).conversationState = 'WAITING_FOR_MOBILE_CONSENT';
+      const consentMsg = "Would you like to provide your mobile number? If you do, a discount will be credited to your wallet. Say yes or no.";
+      deps.speak?.(consentMsg);
+      deps.appendAssistantMessage?.(consentMsg);
+      return;
+    }
+
+    // ── ADD_ITEM intent ──────────────────────────────────────────────────────
     if (act === 'ADD_ITEM' || candStr.includes('add')) {
       try {
         if (!deps.billId) {
           const autoBillMsg = "Starting a new bill first. Please wait.";
           deps.speak?.(autoBillMsg);
           deps.appendAssistantMessage?.(autoBillMsg);
-          
+
           await deps.handleStartBilling();
-          
+
           let attempts = 0;
+          // ✅ Use named constant — controls polling interval while waiting for billId
           while (!deps.billId && attempts < 10) {
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, TIMEOUT_BILL_ID_POLL_INTERVAL_MS));
             attempts++;
           }
-          
-          await new Promise(resolve => setTimeout(resolve, 400));
+
+          // ✅ Use named constant — extra settle time after billId is available
+          await new Promise(resolve => setTimeout(resolve, TIMEOUT_BILL_ID_SETTLE_DELAY_MS));
         }
 
         let productName = String(payload?.productName || '').trim();
@@ -179,7 +437,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
         const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('i18nLanguage') : null;
         const lang = String(payload?.language || payload?.lang || storedLang || i18n?.language || 'en').trim();
-        
+
         const inventorySearchPayload = {
           intent: "ADD_ITEM",
           productName: productName,
@@ -195,43 +453,39 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const resp = await api.post('/inventory/search', inventorySearchPayload);
         const json = resp.data;
 
-        //===================================================================================
-        if ((json?.multipleBrands === true || json?.multiBrand === true ) && currentContextState !== 'WAITING_FOR_BRAND_SELECTION') {
+        if ((json?.multipleBrands === true || json?.multiBrand === true) && currentContextState !== 'WAITING_FOR_BRAND_SELECTION') {
           const candidatesList: BrandCandidate[] = json.candidates || [];
-          
+
           pendingBrandState = {
-            originalRequest: { 
+            originalRequest: {
               ...payload,
-              intent: 'ADD_ITEM', 
-              productName, 
-              qty: payload?.qty !== undefined ? Number(payload.qty) : undefined, 
-              unit: String(payload?.unit || 'kg') 
+              intent: 'ADD_ITEM',
+              productName,
+              qty: payload?.qty !== undefined ? Number(payload.qty) : undefined,
+              unit: String(payload?.unit || 'kg')
             },
             candidates: candidatesList
           };
 
           (window as any).conversationState = 'WAITING_FOR_BRAND_SELECTION';
 
-          const uniqueBrandsArray = Array.from(
-            new Set(candidatesList.map(c => c.brand.trim()))
-          );
-          
+          const uniqueBrandsArray = Array.from(new Set(candidatesList.map(c => c.brand.trim())));
           const humanBrands = uniqueBrandsArray.map((brand, index) => `${index + 1}. ${brand}`).join(', ');
           const prompt = `Multiple brands found. ${humanBrands}. Which brand do you want?`;
-          
+
           deps.speak?.(prompt);
           deps.appendAssistantMessage?.(prompt);
           return;
         }
-        //===================================================================================
+
         if (json?.needsPackagingClarification === true) {
-          pendingRequestState = { 
+          pendingRequestState = {
             ...payload,
-            intent: 'ADD_ITEM', 
-            productName, 
-            qty: payload?.qty !== undefined ? Number(payload.qty) : undefined, 
-            unit: String(payload?.unit || 'kg'), 
-            language: lang 
+            intent: 'ADD_ITEM',
+            productName,
+            qty: payload?.qty !== undefined ? Number(payload.qty) : undefined,
+            unit: String(payload?.unit || 'kg'),
+            language: lang
           };
           (window as any).conversationState = 'WAITING_FOR_PACKAGING';
           const packagingPrompt = json.prompt || "Do you want loose or packet?";
@@ -240,7 +494,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           return;
         }
 
-        if(json?.error) {
+        if (json?.error) {
           const errorMsg = json.error || "An error occurred while searching for the product.";
           deps.speak?.(errorMsg);
           deps.appendAssistantMessage?.(errorMsg);
@@ -261,9 +515,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
         if (pid) {
           try {
-            console.log(`Calling original batches API via query string parameter for productId: ${pid}`);
             const batchResp = await api.get('/inventory/batches', { params: { productId: pid } });
-            
             if (Array.isArray(batchResp.data) && batchResp.data.length > 0) {
               selectedBatchNo = batchResp.data[0].batchNo || batchResp.data[0].id || selectedBatchNo;
             } else if (batchResp.data && batchResp.data.batchNo) {
@@ -274,17 +526,15 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           }
         }
 
-        console.log("Voice Assistant matching product object schema details:", product);
-
         const targetProductSource = product.product || product;
         const availableStock = Number(targetProductSource.totalQty ?? targetProductSource.avlQty ?? targetProductSource.availableQty ?? 0);
         const price = Number(targetProductSource.price);
         const discount = Number(targetProductSource.discountAmount);
-        const mrp = Number(targetProductSource.mrp ?? price); 
+        const mrp = Number(targetProductSource.mrp ?? price);
 
-        const baseDiscountPerItem = discount; 
+        const baseDiscountPerItem = discount;
         const grossAmount = price * finalCartQty;
-        const totalDiscount = baseDiscountPerItem * finalCartQty; 
+        const totalDiscount = baseDiscountPerItem * finalCartQty;
         const netAmount = grossAmount - totalDiscount;
 
         const cartItems = [{
@@ -293,23 +543,23 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           name: product.productName ?? targetProductSource.productName ?? productName,
           sku: product.productSku ?? targetProductSource.productSku ?? '',
           qty: finalCartQty,
-          
+
           avlQty: availableStock,
           availableQty: availableStock,
           stock: availableStock,
           totalQty: availableStock,
           quantity: finalCartQty,
-          
+
           price: price,
           mrp: mrp,
-          
-          discount: baseDiscountPerItem, 
-          discountAmount: baseDiscountPerItem, 
-          
+
+          discount: baseDiscountPerItem,
+          discountAmount: baseDiscountPerItem,
+
           total: netAmount,
           amount: netAmount,
           grossAmount: grossAmount,
-          
+
           product: {
             ...targetProductSource,
             id: String(pid ?? targetProductSource.productId ?? targetProductSource.id ?? ''),
@@ -322,7 +572,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
             discount: baseDiscountPerItem,
             discountAmount: baseDiscountPerItem
           }
-        }];     
+        }];
 
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
@@ -345,6 +595,22 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
   } catch (e) {
     console.error('voiceIntentHandler internal exception:', e);
+  }
+}
+
+// ─── private helpers ─────────────────────────────────────────────────────────
+
+type PaymentOptions = {
+  applyWallet?: boolean;
+  walletBalance?: number;
+};
+
+function _openPayment(deps: VoiceDeps, mobileNumber?: string, options?: PaymentOptions) {
+  if (deps.openPaymentModal) {
+    deps.openPaymentModal(mobileNumber, options);
+  } else {
+    deps.setUnifiedModalTab('payment');
+    deps.setShowUnifiedControlsModal(true);
   }
 }
 
