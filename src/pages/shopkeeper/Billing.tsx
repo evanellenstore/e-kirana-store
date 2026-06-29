@@ -93,7 +93,6 @@ const Billing = () => {
   const [refundSlipData, setRefundSlipData] = useState<any>(null);
 
   const [useWallet, setUseWallet] = useState<boolean>(false);
-  
 
   // Unified Controls Modal state
   const [showUnifiedControlsModal, setShowUnifiedControlsModal] = useState(false);
@@ -2223,150 +2222,159 @@ const Billing = () => {
     };
 
     return (
-    <div className="billing-page-container">
-      <ShopkeeperHeader 
-        title={t('billing.pageTitle')}
-        description={t('billing.pageDescription')}
-      />
+
+
       
-      <Container className="billing-content" style={{ maxWidth: 1100 }}>
-        {/* Notification Alert - Fixed position at top */}
-        {showNotification && (
-          <Alert 
-            variant={notificationType} 
-            onClose={() => setShowNotification(false)} 
-            dismissible
-            className="mb-3 position-fixed top-0 start-50 translate-middle-x"
-            style={{ zIndex: 9999, width: '90%', maxWidth: '500px', marginTop: '20px' }}
-          >
-            {notificationMessage}
-          </Alert>
-        )}
-        
-        {/* Main Billing Section */}
-        <div className="billing-main-card">
-          <div className="billing-header-section">
-            <div className="billing-title-area">
-              <div className="mb-2">
-                <div className="d-flex justify-content-start mb-2">
-                  <Button 
-                    variant="primary"
-                    onClick={async () => {
-                      await handleGoBackToBilling();
-                      setTimeout(() => handleStartBilling(), 300);
-                    }}
-                    className="fw-bold px-3"
-                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                  >
-                    {t('billing.startBill')}
-                  </Button>
+    <div className="billing-page-container">
+
+
+        {/* This div will automatically take 70% width */}
+        <div className="billing-left">
+
+          <ShopkeeperHeader
+            title={t('billing.pageTitle')}
+            description={t('billing.pageDescription')}
+          />
+
+          <Container className="billing-content" style={{ maxWidth: 1100 }}>
+            {/* Notification Alert - Fixed position at top */}
+            {showNotification && (
+              <Alert
+                variant={notificationType}
+                onClose={() => setShowNotification(false)}
+                dismissible
+                className="mb-3 position-fixed top-0 start-50 translate-middle-x"
+                style={{ zIndex: 9999, width: '90%', maxWidth: '500px', marginTop: '20px' }}
+              >
+                {notificationMessage}
+              </Alert>
+            )}
+
+            {/* Main Billing Section */}
+            <div className="billing-main-card">
+              <div className="billing-header-section">
+                <div className="billing-title-area">
+                  <div className="mb-2">
+                    <div className="d-flex justify-content-start mb-2">
+                      <Button
+                        variant="primary"
+                        onClick={async () => {
+                          await handleGoBackToBilling();
+                          setTimeout(() => handleStartBilling(), 300);
+                        }}
+                        className="fw-bold px-3"
+                        style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                      >
+                        {t('billing.startBill')}
+                      </Button>
+                    </div>
+                    <div className="d-flex align-items-center justify-content-between gap-2">
+                      <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>{t('billing.billDetails')}</h5>
+                      {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>{t('billing.billLabel', { billId })}</Badge>}
+                    </div>
+                  </div>
                 </div>
-                <div className="d-flex align-items-center justify-content-between gap-2">
-                  <h5 className="mb-0" style={{ fontSize: '1rem', fontWeight: 'bold' }}>{t('billing.billDetails')}</h5>
-                  {billId && <Badge className="billing-badge bg-primary" style={{ flexShrink: 0, fontSize: '0.85rem' }}>{t('billing.billLabel', { billId })}</Badge>}
+              </div>
+
+              <div className="billing-body">
+                <Row className="g-2">
+                  <Col xs={12} md={8}>
+                    <InputGroup>
+                      <Form.Control
+                        ref={barcodeRef}
+                        placeholder={t('billing.scanPlaceholder')}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") {
+                            console.log("manual Enter pressed, value:", e.currentTarget.value);
+                            handleBarcode(e.currentTarget.value);
+                          }
+                        }}
+                        style={{ fontSize: 18 }}
+                      />
+                      <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>{t('billing.focus')}</Button>
+                    </InputGroup>
+                  </Col>
+
+                  <Col xs={12} md={4} className="d-flex gap-2">
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setUnifiedModalTab("inventory");
+                        setShowUnifiedControlsModal(true);
+                      }}
+                      className="flex-grow-1"
+                    >
+                      {t('billing.billingControls')}
+                    </Button>
+                  </Col>
+                </Row>
+
+                {/*  Cart Table
+                  Cart items display correctly
+                  + / - buttons work
+                  Split button opens batch modal
+                   Discount and total columns calculate correctly */}
+
+                <CartTable
+                  cart={cart}
+                  getLocalized={getLocalized}
+                  increaseQty={increaseQty}
+                  decreaseQty={decreaseQty}
+                  openBatchAllocModal={openBatchAllocModal}
+                  t={t}
+                />
+
+
+
+                {/* Summary */}
+                <Row className="mt-2">
+                  <Col md={{ span: 4, offset: 8 }}>
+                    {(() => {
+                      const { discountAmt, gstAmt, grandTotal } = computeTotals();
+                      return (
+                        <>
+                          <div className="d-flex justify-content-between small">
+                            <div>{t('billing.subtotal')}</div>
+                            <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
+                          </div>
+                          <div className="d-flex justify-content-between small">
+                            <div>{t('billing.discountLabel')} {discountIsPercent ? `(${discount}%)` : ''}</div>
+                            <div>₹{discountAmt.toFixed(2)}</div>
+                          </div>
+                          <div className="d-flex justify-content-between small">
+                            <div>{t('billing.gst')}</div>
+                            <div>₹{gstAmt.toFixed(2)}</div>
+                          </div>
+                          <hr />
+                          <div className="d-flex justify-content-between fw-bold">
+                            <div>{t('billing.grandTotal')}</div>
+                            <div>₹{grandTotal.toFixed(2)}</div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </Col>
+                </Row>
+
+                <div className="billing-total-section">
+                  <h4 className="billing-total-label">
+                    {t('billing.totalLabel')}: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
+                  </h4>
                 </div>
               </div>
             </div>
+          </Container>
+
+        </div>
+
+
+  {/* This div will automatically take 30% width */}
+        <div className="billing-right">
+          
+          <div className="voice-assistant-fixed">
+            <VoiceAssistant onIntent={handleVoiceIntent} />
           </div>
-
-          <div className="billing-body">
-          <Row className="g-2">
-            <Col xs={12} md={8}>
-              <InputGroup>
-                <Form.Control
-                  ref={barcodeRef}
-                  placeholder={t('billing.scanPlaceholder')}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      console.log("manual Enter pressed, value:", e.currentTarget.value);
-                      handleBarcode(e.currentTarget.value);
-                    }
-                  }}
-                  style={{ fontSize: 18 }}
-                />
-                <Button variant="outline-secondary" onClick={() => barcodeRef.current?.focus()}>{t('billing.focus')}</Button>
-              </InputGroup>
-            </Col>
-
-              <Col xs={12} md={4} className="d-flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setUnifiedModalTab("inventory");
-                    setShowUnifiedControlsModal(true);
-                  }}
-                  className="flex-grow-1"
-                >
-                  {t('billing.billingControls')}
-                </Button>
-              </Col>
-          </Row>
-
-
-          {/*  Cart Table
-
- 
-                  Cart items display correctly
-
-                  + / - buttons work
-
-                  Split button opens batch modal
-
-                   Discount and total columns calculate correctly
-
-
-          */}
-
-
-              <CartTable
-                cart={cart}
-                getLocalized={getLocalized}
-                increaseQty={increaseQty}
-                decreaseQty={decreaseQty}
-                openBatchAllocModal={openBatchAllocModal}
-                t={t}
-              />
-
-
-
-          {/* Summary */}
-          <Row className="mt-2">
-            <Col md={{ span: 4, offset: 8 }}>
-              {(() => {
-                const { discountAmt, gstAmt, grandTotal } = computeTotals();
-                return (
-                  <>
-                    <div className="d-flex justify-content-between small">
-                      <div>{t('billing.subtotal')}</div>
-                      <div>₹{subtotalBeforeDiscount.toFixed(2)}</div>
-                    </div>
-                    <div className="d-flex justify-content-between small">
-                      <div>{t('billing.discountLabel')} {discountIsPercent ? `(${discount}%)` : ''}</div>
-                      <div>₹{discountAmt.toFixed(2)}</div>
-                    </div>
-                    <div className="d-flex justify-content-between small">
-                      <div>{t('billing.gst')}</div>
-                      <div>₹{gstAmt.toFixed(2)}</div>
-                    </div>
-                    <hr />
-                    <div className="d-flex justify-content-between fw-bold">
-                      <div>{t('billing.grandTotal')}</div>
-                      <div>₹{grandTotal.toFixed(2)}</div>
-                    </div>
-                  </>
-                );
-              })()}
-            </Col>
-          </Row>
-
-          <div className="billing-total-section">
-            <h4 className="billing-total-label">
-              {t('billing.totalLabel')}: <Badge className="billing-total-badge bg-success">₹{total.toFixed(2)}</Badge>
-            </h4>
-          </div>
-            </div>
-          </div>
-      </Container>
+        </div>
 
       {/* Unified Controls Modal - All controls in one place */}
       <Modal 
@@ -4131,7 +4139,7 @@ const Billing = () => {
           onTotalQtyChange={(qty) => setBatchModalTotalQty(qty)}
         />
 
-            <VoiceAssistant onIntent={handleVoiceIntent} />
+            
         </div>
   );
 };
