@@ -191,7 +191,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 3. PAYMENT — WAITING FOR MOBILE CONSENT
+    // 3.   WAITING FOR MOBILE CONSENT
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_MOBILE_CONSENT') {
       if (isAffirmative(rawUserSpeech || txt)) {
@@ -225,10 +225,10 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     if (currentContextState === 'WAITING_FOR_MOBILE_NUMBER') {
       // Try raw user speech first, then fall back to txt
       const mobile = extractMobileNumber(rawUserSpeech) || extractMobileNumber(txt);
+    // AFTER ✅
       if (mobile) {
         pendingPaymentMobile = mobile;
 
-        // Try to fetch wallet balance if the dep is wired
         if (deps.fetchWalletBalance) {
           try {
             const balance = await deps.fetchWalletBalance(mobile);
@@ -238,22 +238,25 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           }
         }
 
-        // ALWAYS ask wallet consent question after mobile number is received
+        // ✅ Update modal immediately with mobile number as soon as it's spoken
+        _openPayment(deps, mobile, {
+          applyWallet: false,
+          walletBalance: pendingWalletBalance ?? undefined,
+        });
+
         (window as any).conversationState = 'WAITING_FOR_WALLET_CONSENT';
 
         if (pendingWalletBalance !== null && pendingWalletBalance > 0) {
-          // Wallet has balance — tell user and ask
           const walletMsg = `Mobile number ${mobile} registered. You have ₹${pendingWalletBalance} in your wallet. Would you like to use your wallet balance for payment? Say yes or no.`;
           deps.speak?.(walletMsg);
           deps.appendAssistantMessage?.(walletMsg);
         } else {
-          // No wallet balance — still ask, checkbox will be unchecked
           const walletMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Would you like to use your wallet for payment? Say yes or no.`;
           deps.speak?.(walletMsg);
           deps.appendAssistantMessage?.(walletMsg);
         }
         return;
-      } 
+      }
       else {
         const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
         deps.speak?.(retryMsg);
@@ -394,6 +397,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       act === 'PAY' ||
       /\b(payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(candStr);
 
+    // AFTER ✅
     if (isPaymentIntent) {
       if (!deps.billId) {
         const noBillMsg = "No active bill found. Please start a bill first.";
@@ -402,9 +406,11 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         return;
       }
 
+      // ✅ Open payment popup immediately with no mobile/wallet yet
+      _openPayment(deps, undefined, { applyWallet: false });
+
       (window as any).conversationState = 'WAITING_FOR_MOBILE_CONSENT';
-      const consentMsg =
-        "Would you like to provide your mobile number? If you do, a discount will be credited to your wallet. Say yes or no.";
+      const consentMsg = "Would you like to provide your mobile number? If you do, a discount will be credited to your wallet. Say yes or no.";
       deps.speak?.(consentMsg);
       deps.appendAssistantMessage?.(consentMsg);
       return;

@@ -236,15 +236,18 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   };
 
   // ── payment modal opener ───────────────────────────────────────────────────
+  // AFTER ✅
   const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
     if (onOpenPayment) {
       onOpenPayment(mobileNumber, options);
     } else {
-      setPaymentMobile(mobileNumber);
-      setPaymentOptions(options ?? {});
+      setPaymentMobile(mobileNumber ?? '');  // ✅ always set, even empty string
+      setPaymentOptions(prev => ({ ...prev, ...(options ?? {}) }));
       setShowPaymentModal(true);
     }
   };
+
+
 
   const handlePaymentConfirm = (mobile?: string, useWallet?: boolean) => {
     setShowPaymentModal(false);
@@ -357,9 +360,9 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     <>
       {/* ── Internal Payment Modal (used when no onOpenPayment prop) ── */}
       {!onOpenPayment && (
-
+        // AFTER ✅ — key includes mobile + wallet so modal remounts when either changes
         <PaymentModal
-          key={paymentMobile || 'no-mobile'}
+          key={`${paymentMobile || 'no-mobile'}-${paymentOptions.applyWallet}-${paymentOptions.walletBalance}`}
           show={showPaymentModal}
           mobileNumber={paymentMobile}
           walletBalance={paymentOptions.walletBalance}

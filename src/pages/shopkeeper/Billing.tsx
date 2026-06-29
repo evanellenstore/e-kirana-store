@@ -235,7 +235,7 @@ const Billing = () => {
       setNotificationMessage(t('billing.newBillStarted', { billId: res.data.billId }));
       setNotificationType("success");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 3000);
+      setTimeout(() => setShowNotification(false), 1000);
       barcodeRef.current?.focus();
     } catch (error: any) {
       console.error('Error starting bill:', error);
@@ -243,7 +243,7 @@ const Billing = () => {
       setNotificationMessage(t('billing.failedStartBilling', { message: error.response?.data?.message || error.message || t('billing.unknownError') }));
       setNotificationType("danger");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 5000);
+      setTimeout(() => setShowNotification(false), 1000);
     }
   };
 
@@ -435,7 +435,7 @@ const Billing = () => {
           if (code) {
             handleBarcode(code);
           }
-        }, 2000);
+        }, 1000);
       }
     };
 
@@ -458,7 +458,7 @@ const Billing = () => {
       setNotificationMessage(t('billing.startBillPrompt'));
       setNotificationType("warning");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 4000);
+      setTimeout(() => setShowNotification(false), 1000);
       return;
     }
 
@@ -1002,7 +1002,7 @@ const Billing = () => {
       setNotificationMessage('✅ Bill cancelled successfully! All reserved items have been released back to inventory.');
       setNotificationType("success");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 4000);
+      setTimeout(() => setShowNotification(false), 1000);
       
       // Reset UI
       setCart([]);
@@ -1020,7 +1020,7 @@ const Billing = () => {
       setNotificationMessage(`❌ Failed to cancel bill: ${msg}`);
       setNotificationType("danger");
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 4000);
+      setTimeout(() => setShowNotification(false), 1000);
       setShowCancelConfirmModal(false);
     } finally {
       setIsCancelling(false);
