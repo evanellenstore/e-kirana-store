@@ -275,6 +275,18 @@ const Billing = () => {
         setNotificationType,
         setShowNotification,
         t,
+
+        // ✅ ADD THIS BLOCK — fetches real wallet balance by mobile number
+        fetchWalletBalance: async (mobile: string) => {
+          try {
+            const res = await getCustomerByMobile(mobile);
+            const cust = res.data;
+            return (cust?.walletBalance ?? null);
+          } catch {
+            return null;
+          }
+        },
+
         addCartItems: (items: any[]) => {
           setCart(prev => {
             const copy = [...prev];
