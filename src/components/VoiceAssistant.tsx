@@ -5,6 +5,8 @@ import { sendMessage } from "../services/aiService";
 import api from '../services/api';
 import "../styles/Billing.css";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export type IntentPayload = {
   intent?: any;
   action?: any;
@@ -25,29 +27,29 @@ type PaymentOptions = {
   walletBalance?: number;
 };
 
-
+type VoiceConfig = {
+  autoSendDelayMs: number;
+  recognitionSafetyTimeoutMs: number;
+  paymentModalOpenDelayMs: number;
+  speechLang: { hi: string; default: string };
+  recognition: { interimResults: boolean; continuous: boolean };
+};
 
 type Props = {
   onIntent?: (
     payload: IntentPayload,
     helpers: { speak: (text: string) => void; appendAssistantMessage: (text: string) => void; }
   ) => void;
-  /**
-   * Called when the voice flow has collected the mobile number (or undefined if
-   * the user skipped) and the payment modal should open.
-   * Now also receives optional PaymentOptions (e.g. applyWallet, walletBalance).
-   * If you pass this prop, VoiceAssistant will NOT render its own payment modal.
-   */
   onOpenPayment?: (mobileNumber?: string, options?: PaymentOptions) => void;
 };
 
-// ─── internal payment modal ──────────────────────────────────────────────────
+// ─── Internal Payment Modal ───────────────────────────────────────────────────
 
 type PaymentModalProps = {
   show: boolean;
   mobileNumber?: string;
-  walletBalance?: number;       // pre-fetched wallet balance (if any)
-  applyWallet?: boolean;        // whether voice already said "use wallet"
+  walletBalance?: number;
+  applyWallet?: boolean;
   onClose: () => void;
   onConfirmPayment: (mobile?: string, useWallet?: boolean) => void;
 };
@@ -60,14 +62,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   onConfirmPayment,
 }) => {
-
   const [mobile, setMobile] = useState(mobileNumber || '');
- const [mobileError, setMobileError] = useState('');
-
-  
-
-
-  // Pre-tick the checkbox if voice already confirmed wallet use
+  const [mobileError, setMobileError] = useState('');
   const [useWallet, setUseWallet] = useState<boolean>(applyWallet ?? false);
 
   useEffect(() => { setMobile(mobileNumber || ''); }, [mobileNumber]);
@@ -95,7 +91,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           discount will be credited to your wallet.
         </p>
 
-        {/* Mobile number field */}
         <Form.Group className="mb-3">
           <Form.Label>Mobile Number <span className="text-muted">(optional)</span></Form.Label>
           <Form.Control
@@ -124,9 +119,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           )}
         </Form.Group>
 
-        {/* Wallet balance section — shown only when balance is available */}
         {hasWallet && (
-          <Form.Group className="mb-2 p-3 rounded" style={{ background: 'var(--bs-light, #f8f9fa)', border: '1px solid var(--bs-border-color, #dee2e6)' }}>
+          <Form.Group
+            className="mb-2 p-3 rounded"
+            style={{
+              background: 'var(--bs-light, #f8f9fa)',
+              border: '1px solid var(--bs-border-color, #dee2e6)',
+            }}
+          >
             <div className="d-flex align-items-center justify-content-between mb-1">
               <Form.Label className="mb-0 fw-semibold">
                 💰 Wallet Balance: <span className="text-success">₹{walletBalance}</span>
@@ -139,12 +139,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 onChange={e => setUseWallet(e.target.checked)}
               />
             </div>
-            {useWallet && (
+            {useWallet ? (
               <Form.Text className="text-success">
                 ✓ ₹{walletBalance} will be deducted from wallet at checkout.
               </Form.Text>
-            )}
-            {!useWallet && (
+            ) : (
               <Form.Text className="text-muted">
                 Toggle to apply your wallet balance toward this bill.
               </Form.Text>
@@ -164,9 +163,30 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   );
 };
 
-// ─── main component ──────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+
+
+
 
 const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
+
+  // ── Config ref — change any value anytime, zero re-render ─────────────────
+  const voiceConfigRef = useRef<VoiceConfig>({
+    autoSendDelayMs: 1,                  // delay after speech ends before auto-send
+    recognitionSafetyTimeoutMs: 15000,   // force-stop recognition if onend never fires
+    paymentModalOpenDelayMs: 300,        // delay before opening payment modal
+    speechLang: {
+      hi: 'hi-IN',
+      default: 'en-IN',
+    },
+    recognition: {
+      interimResults: true,
+      continuous: false,
+    },
+  });
+
+  // ── State ──────────────────────────────────────────────────────────────────
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -175,57 +195,111 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Payment modal state (used when parent does NOT supply onOpenPayment)
+  // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMobile, setPaymentMobile] = useState<string | undefined>(undefined);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions>({});
 
+  // ── Refs ───────────────────────────────────────────────────────────────────
   const { i18n } = useTranslation();
   const recognitionRef = useRef<any>(null);
   const autoSendRef = useRef(true);
   const handleSendRef = useRef<() => Promise<void> | null>(null);
 
-  // ── speech recognition setup ───────────────────────────────────────────────
+  // Timer refs
+  const recognitionSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paymentModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Timer helpers ──────────────────────────────────────────────────────────
+  const clearSafetyTimer = () => {
+    if (recognitionSafetyTimerRef.current) {
+      clearTimeout(recognitionSafetyTimerRef.current);
+      recognitionSafetyTimerRef.current = null;
+    }
+  };
+
+  const clearAutoSendTimer = () => {
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current);
+      autoSendTimerRef.current = null;
+    }
+  };
+
+  const clearPaymentModalTimer = () => {
+    if (paymentModalTimerRef.current) {
+      clearTimeout(paymentModalTimerRef.current);
+      paymentModalTimerRef.current = null;
+    }
+  };
+
+  // ── Language helper ────────────────────────────────────────────────────────
+  const getLang = () =>
+    (i18n?.language || navigator.language || 'en').startsWith('hi')
+      ? voiceConfigRef.current.speechLang.hi
+      : voiceConfigRef.current.speechLang.default;
+
+  // ── Speech recognition setup ───────────────────────────────────────────────
   useEffect(() => {
-    const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechClass) {
       setError('Speech recognition layout interface missing.');
       return;
     }
 
+    const cfg = voiceConfigRef.current;
     const r = new SpeechClass();
-    r.lang = (i18n?.language || navigator.language || 'en').startsWith('hi') ? 'hi-IN' : 'en-IN';
-    r.interimResults = true;
-    r.continuous = false;
+    r.lang = getLang();
+    r.interimResults = cfg.recognition.interimResults;
+    r.continuous = cfg.recognition.continuous;
 
     r.onresult = (ev: any) => {
       const parts: string[] = [];
       for (let i = 0; i < ev.results.length; i++) {
         parts.push(ev.results[i][0].transcript);
       }
-      setTranscript(parts.join(" "));
+      setTranscript(parts.join(' '));
     };
 
     r.onend = () => {
+      clearSafetyTimer();
       setListening(false);
-      if (autoSendRef.current && handleSendRef.current) void handleSendRef.current();
+
+      if (autoSendRef.current && handleSendRef.current) {
+        const delay = voiceConfigRef.current.autoSendDelayMs;
+        if (delay > 0) {
+          autoSendTimerRef.current = setTimeout(() => {
+            void handleSendRef.current?.();
+          }, delay);
+        } else {
+          void handleSendRef.current();
+        }
+      }
     };
 
     r.onerror = (e: any) => {
-      setError(String(e.error || "Speech error."));
+      clearSafetyTimer();
+      setError(String(e.error || 'Speech error.'));
       setListening(false);
     };
 
     recognitionRef.current = r;
-    return () => { try { r.stop(); } catch (_) {} };
+
+    return () => {
+      clearSafetyTimer();
+      clearAutoSendTimer();
+      clearPaymentModalTimer();
+      try { r.stop(); } catch (_) {}
+    };
   }, [i18n?.language]);
 
-  // ── speech synthesis ───────────────────────────────────────────────────────
+  // ── Speech synthesis ───────────────────────────────────────────────────────
   const speak = (text: string) => {
     try {
       if (!('speechSynthesis' in window)) return;
       const ut = new SpeechSynthesisUtterance(text);
-      ut.lang = (i18n?.language || navigator.language || 'en').startsWith('hi') ? 'hi-IN' : 'en-IN';
+      ut.lang = getLang();
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(ut);
     } catch {}
@@ -235,19 +309,19 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     setMessages(s => [...s, { from: 'assistant', text }]);
   };
 
-  // ── payment modal opener ───────────────────────────────────────────────────
-  // AFTER ✅
+  // ── Payment modal opener ───────────────────────────────────────────────────
   const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
     if (onOpenPayment) {
       onOpenPayment(mobileNumber, options);
     } else {
-      setPaymentMobile(mobileNumber ?? '');  // ✅ always set, even empty string
-      setPaymentOptions(prev => ({ ...prev, ...(options ?? {}) }));
-      setShowPaymentModal(true);
+      clearPaymentModalTimer();
+      paymentModalTimerRef.current = setTimeout(() => {
+        setPaymentMobile(mobileNumber ?? '');
+        setPaymentOptions(prev => ({ ...prev, ...(options ?? {}) }));
+        setShowPaymentModal(true);
+      }, voiceConfigRef.current.paymentModalOpenDelayMs);
     }
   };
-
-
 
   const handlePaymentConfirm = (mobile?: string, useWallet?: boolean) => {
     setShowPaymentModal(false);
@@ -262,25 +336,37 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     speak(msg);
   };
 
-  // ── listening controls ─────────────────────────────────────────────────────
+  // ── Listening controls ─────────────────────────────────────────────────────
   const startListening = () => {
     setError(null);
     setTranscript('');
     if (!recognitionRef.current) return;
     autoSendRef.current = true;
+
     try {
       recognitionRef.current.start();
       setListening(true);
+
+      // Safety-net: force-stop if onend never fires
+      clearSafetyTimer();
+      recognitionSafetyTimerRef.current = setTimeout(() => {
+        try { recognitionRef.current?.stop(); } catch (_) {}
+        setListening(false);
+        setError('Recognition timed out. Please try again.');
+      }, voiceConfigRef.current.recognitionSafetyTimeoutMs);
+
     } catch {}
   };
 
   const stopListening = () => {
+    clearSafetyTimer();
+    clearAutoSendTimer();
     try { recognitionRef.current?.stop(); } catch (_) {}
     autoSendRef.current = false;
     setListening(false);
   };
 
-  // ── send transcript to AI ──────────────────────────────────────────────────
+  // ── Send transcript to AI ──────────────────────────────────────────────────
   const handleSend = async () => {
     if (!transcript || !transcript.trim()) return;
     const userText = transcript.trim();
@@ -296,26 +382,27 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
       if (currentContextState === 'WAITING_FOR_BRAND_SELECTION') {
         const response = await api.post('/ai/intent', { command: userText }, {
-          params: { sessionMode: 'BRAND_SELECTION' }
+          params: { sessionMode: 'BRAND_SELECTION' },
         });
         data = response.data;
+
       } else if (currentContextState === 'WAITING_FOR_PACKAGING') {
         const response = await api.post('/ai/intent', { command: userText }, {
-          params: { sessionMode: 'CONFIRM_PACKAGING' }
+          params: { sessionMode: 'CONFIRM_PACKAGING' },
         });
         data = response.data;
-      } else if (
-        currentContextState === 'WAITING_FOR_MOBILE_CONSENT' || currentContextState === 'WAITING_FOR_MOBILE_NUMBER' ||
-        currentContextState === 'WAITING_FOR_WALLET_CONSENT' || currentContextState === 'WAITING_FOR_PAY_CONFIRM'
-      || currentContextState === 'WAITING_FOR_RECEIPT_ACTION'
-      ) {
 
-        // ✅ Add these logs to debug
+      } else if (
+        currentContextState === 'WAITING_FOR_MOBILE_CONSENT' ||
+        currentContextState === 'WAITING_FOR_MOBILE_NUMBER' ||
+        currentContextState === 'WAITING_FOR_WALLET_CONSENT' ||
+        currentContextState === 'WAITING_FOR_PAY_CONFIRM' ||
+        currentContextState === 'WAITING_FOR_RECEIPT_ACTION'
+      ) {
         console.log('currentContextState:', currentContextState);
         console.log('userText:', userText);
 
         const isNegativeResponse = /\b(no|nahi|nope|skip|don'?t|dont|without|bypass)\b/i.test(userText);
-
         console.log('isNegativeResponse:', isNegativeResponse);
 
         const sessionMode =
@@ -323,18 +410,19 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
             ? 'CONFIRM_WITHOUTMOBILE'
             : currentContextState;
 
-        console.log('sessionMode being sent:', sessionMode); // ✅ Check this line
+        console.log('sessionMode being sent:', sessionMode);
 
         const response = await api.post('/ai/intent', { command: userText }, {
-          params: { sessionMode }
+          params: { sessionMode },
         });
         data = { ...response.data, command: userText };
 
       } else if (/\b(take\s*payment|payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(userText)) {
         const response = await api.post('/ai/intent', { command: userText }, {
-          params: { sessionMode: 'TAKE_PAYMENT' }
+          params: { sessionMode: 'TAKE_PAYMENT' },
         });
         data = response.data;
+
       } else {
         data = await sendMessage(userText);
       }
@@ -346,7 +434,6 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         intent: data?.intent,
         action: data?.action,
         text: txt,
-        // Ensure raw user speech is always preserved for context-resolution branches
         command: data?.command ?? userText,
         ...data,
       };
@@ -366,12 +453,10 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   (window as any).__voiceOpenPaymentModal = openPaymentModal;
 
-  // ── render ─────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Internal Payment Modal (used when no onOpenPayment prop) ── */}
       {!onOpenPayment && (
-        // AFTER ✅ — key includes mobile + wallet so modal remounts when either changes
         <PaymentModal
           key={`${paymentMobile || 'no-mobile'}-${paymentOptions.applyWallet}-${paymentOptions.walletBalance}`}
           show={showPaymentModal}
@@ -383,7 +468,6 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         />
       )}
 
-      {/* ── Voice Terminal UI ── */}
       {collapsed ? (
         <div className="voice-floating-trigger">
           <Button onClick={() => setCollapsed(false)}>🎙️ Voice Terminal</Button>
@@ -391,7 +475,10 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       ) : (
         <div
           className="voice-terminal-window"
-          style={{ transform: visible ? 'translateY(0)' : 'translateY(12px)', opacity: visible ? 1 : 0 }}
+          style={{
+            transform: visible ? 'translateY(0)' : 'translateY(12px)',
+            opacity: visible ? 1 : 0,
+          }}
         >
           <div className="voice-terminal-card">
             <div className="voice-terminal-header">
@@ -420,7 +507,10 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
             <div className="voice-terminal-body">
               <div className="voice-transcript-box">
-                {transcript || (processing ? 'Processing operation routing...' : 'Awaiting live voice input sequence...')}
+                {transcript || (processing
+                  ? 'Processing operation routing...'
+                  : 'Awaiting live voice input sequence...'
+                )}
               </div>
               <div className="voice-history-stream">
                 {messages.length === 0 ? (

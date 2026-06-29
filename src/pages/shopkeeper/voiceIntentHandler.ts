@@ -1,6 +1,12 @@
 import api from '../../services/api'; 
 import i18n from '../../i18n/config';
 
+// ─── Timeout Constants ───────────────────────────────────────────────────────
+const TIMEOUT_PAYMENT_RECEIPT_DELAY_MS  = 2000; // Wait for payment to process before receipt prompt
+const TIMEOUT_BILL_ID_POLL_INTERVAL_MS  = 300;  // Interval between billId existence checks
+const TIMEOUT_BILL_ID_SETTLE_DELAY_MS   = 400;  // Extra settle time after billId is found
+// ────────────────────────────────────────────────────────────────────────────
+
 export type IntentPayload = {
   intent?: any;
   action?: any;
@@ -38,7 +44,6 @@ export type VoiceDeps = {
   onReceiptPrint?: () => void;
   onReceiptClose?: () => void;
   onReceiptDone?: () => void;
-
 };
 
 export type BrandCandidate = {
@@ -191,7 +196,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     }
 
     // =========================================================================
-    // 3.   WAITING FOR MOBILE CONSENT
+    // 3. WAITING FOR MOBILE CONSENT
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_MOBILE_CONSENT') {
       if (isAffirmative(rawUserSpeech || txt)) {
@@ -207,7 +212,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const proceedMsg = "Proceeding to payment without a mobile number. Shall I proceed with payment? Say yes or no.";
         deps.speak?.(proceedMsg);
         deps.appendAssistantMessage?.(proceedMsg);
-  return;
+        return;
       } else {
         const retryMsg = "Please say yes to provide your mobile number, or no to skip.";
         deps.speak?.(retryMsg);
@@ -222,9 +227,8 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     //    (which is the AI's echoed reply from the backend).
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_MOBILE_NUMBER') {
-      // Try raw user speech first, then fall back to txt
       const mobile = extractMobileNumber(rawUserSpeech) || extractMobileNumber(txt);
-    // AFTER ✅
+
       if (mobile) {
         pendingPaymentMobile = mobile;
 
@@ -237,7 +241,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           }
         }
 
-        // ✅ Update modal immediately with mobile number as soon as it's spoken
+        // Update modal immediately with mobile number as soon as it's spoken
         _openPayment(deps, mobile, {
           applyWallet: false,
           walletBalance: pendingWalletBalance ?? undefined,
@@ -255,8 +259,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           deps.appendAssistantMessage?.(walletMsg);
         }
         return;
-      }
-      else {
+      } else {
         const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
@@ -271,20 +274,16 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       const useWallet = isAffirmative(rawUserSpeech || txt);
       const skipWallet = isNegative(rawUserSpeech || txt);
 
- 
       if (useWallet) {
         (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
         const mobile = pendingPaymentMobile ?? undefined;
         const balance = pendingWalletBalance ?? 0;
-        // Open modal with wallet pre-checked
         _openPayment(deps, mobile, { applyWallet: true, walletBalance: balance });
         const askMsg = `Wallet ₹${balance} will be applied. Shall I proceed with payment? Say yes or no.`;
         deps.speak?.(askMsg);
         deps.appendAssistantMessage?.(askMsg);
         return;
-      }
-
-      else if (skipWallet) {
+      } else if (skipWallet) {
         (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
         const mobile = pendingPaymentMobile ?? undefined;
         pendingPaymentMobile = null;
@@ -294,9 +293,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         deps.speak?.(askMsg);
         deps.appendAssistantMessage?.(askMsg);
         return;
-      }
-
-      else {
+      } else {
         const retryMsg = `You have ₹${pendingWalletBalance} in your wallet. Say yes to use it, or no to skip.`;
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
@@ -304,10 +301,9 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       }
     }
 
-
-// =========================================================================
-// 6. PAYMENT — WAITING FOR FINAL PAY CONFIRMATION
-// =========================================================================
+    // =========================================================================
+    // 6. PAYMENT — WAITING FOR FINAL PAY CONFIRMATION
+    // =========================================================================
     if (currentContextState === 'WAITING_FOR_PAY_CONFIRM') {
       if (isAffirmative(rawUserSpeech || txt)) {
         (window as any).conversationState = 'IDLE';
@@ -316,18 +312,20 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         // Yes — click the Pay button exactly as user would manually
         const payBtn = document.querySelector('button.btn-success') as HTMLButtonElement;
         if (payBtn) payBtn.click();
+
+        // ✅ Use named constant — controls how long we wait before prompting receipt action
         setTimeout(() => {
           (window as any).conversationState = 'WAITING_FOR_RECEIPT_ACTION';
           const receiptMsg = "Payment done! Say print to print receipt, done to finish, or close to close.";
           deps.speak?.(receiptMsg);
           deps.appendAssistantMessage?.(receiptMsg);
-        }, 2000);
+        }, TIMEOUT_PAYMENT_RECEIPT_DELAY_MS);
+
         const msg = "Processing payment now!";
         deps.speak?.(msg);
         deps.appendAssistantMessage?.(msg);
         return;
       } else if (isNegative(rawUserSpeech || txt)) {
-        // No — do nothing, just cancel
         (window as any).conversationState = 'IDLE';
         pendingPaymentMobile = null;
         pendingWalletBalance = null;
@@ -343,9 +341,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       }
     }
 
-    // =========================================================================
-    // 7. MAIN SERVICE ROUTING PIPELINE TRACK
-    // =========================================================================
     // =========================================================================
     // 7. RECEIPT ACTION — PRINT / CLOSE / DONE
     // =========================================================================
@@ -384,11 +379,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     // 8. MAIN SERVICE ROUTING PIPELINE TRACK
     // =========================================================================
 
-
-
-
-
-
     // ── PAYMENT intent ───────────────────────────────────────────────────────
     const isPaymentIntent =
       act === 'PAYMENT' ||
@@ -396,7 +386,6 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       act === 'PAY' ||
       /\b(payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(candStr);
 
-    // AFTER ✅
     if (isPaymentIntent) {
       if (!deps.billId) {
         const noBillMsg = "No active bill found. Please start a bill first.";
@@ -405,7 +394,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         return;
       }
 
-      // ✅ Open payment popup immediately with no mobile/wallet yet
+      // Open payment popup immediately with no mobile/wallet yet
       _openPayment(deps, undefined, { applyWallet: false });
 
       (window as any).conversationState = 'WAITING_FOR_MOBILE_CONSENT';
@@ -426,12 +415,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           await deps.handleStartBilling();
 
           let attempts = 0;
+          // ✅ Use named constant — controls polling interval while waiting for billId
           while (!deps.billId && attempts < 10) {
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, TIMEOUT_BILL_ID_POLL_INTERVAL_MS));
             attempts++;
           }
 
-          await new Promise(resolve => setTimeout(resolve, 400));
+          // ✅ Use named constant — extra settle time after billId is available
+          await new Promise(resolve => setTimeout(resolve, TIMEOUT_BILL_ID_SETTLE_DELAY_MS));
         }
 
         let productName = String(payload?.productName || '').trim();
