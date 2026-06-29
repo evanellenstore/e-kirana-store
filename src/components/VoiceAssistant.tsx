@@ -305,18 +305,29 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         });
         data = response.data;
       } else if (
-        currentContextState === 'WAITING_FOR_MOBILE_CONSENT' ||
-        currentContextState === 'WAITING_FOR_MOBILE_NUMBER' ||
-        currentContextState === 'WAITING_FOR_WALLET_CONSENT' ||
-        currentContextState === 'WAITING_FOR_PAY_CONFIRM'
+        currentContextState === 'WAITING_FOR_MOBILE_CONSENT' || currentContextState === 'WAITING_FOR_MOBILE_NUMBER' ||
+        currentContextState === 'WAITING_FOR_WALLET_CONSENT' || currentContextState === 'WAITING_FOR_PAY_CONFIRM'
+      || currentContextState === 'WAITING_FOR_RECEIPT_ACTION'
       ) {
+
+        // ✅ Add these logs to debug
+        console.log('currentContextState:', currentContextState);
+        console.log('userText:', userText);
+
+        const isNegativeResponse = /\b(no|nahi|nope|skip|don'?t|dont|without|bypass)\b/i.test(userText);
+
+        console.log('isNegativeResponse:', isNegativeResponse);
+
+        const sessionMode =
+          currentContextState === 'WAITING_FOR_MOBILE_CONSENT' && isNegativeResponse
+            ? 'CONFIRM_WITHOUTMOBILE'
+            : currentContextState;
+
+        console.log('sessionMode being sent:', sessionMode); // ✅ Check this line
+
         const response = await api.post('/ai/intent', { command: userText }, {
-          params: { sessionMode: currentContextState }
+          params: { sessionMode }
         });
-        // ─── CRITICAL: always inject the raw spoken text as `command` ───────
-        // The backend may transform/echo back a different `text`/`message`.
-        // The handler MUST see the original user speech to parse mobile numbers,
-        // yes/no answers, etc. We guarantee it here.
         data = { ...response.data, command: userText };
 
       } else if (/\b(take\s*payment|payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(userText)) {

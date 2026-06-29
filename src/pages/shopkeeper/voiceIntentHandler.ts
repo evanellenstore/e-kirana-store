@@ -201,14 +201,13 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         deps.appendAssistantMessage?.(askMsg);
         return;
       } else if (isNegative(rawUserSpeech || txt)) {
-        (window as any).conversationState = 'IDLE';
         pendingPaymentMobile = null;
         pendingWalletBalance = null;
-        const proceedMsg = "Proceeding to payment without a mobile number.";
+        (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
+        const proceedMsg = "Proceeding to payment without a mobile number. Shall I proceed with payment? Say yes or no.";
         deps.speak?.(proceedMsg);
         deps.appendAssistantMessage?.(proceedMsg);
-        _openPayment(deps, undefined);
-        return;
+  return;
       } else {
         const retryMsg = "Please say yes to provide your mobile number, or no to skip.";
         deps.speak?.(retryMsg);
