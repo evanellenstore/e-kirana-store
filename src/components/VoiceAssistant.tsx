@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Button, Modal, Form } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import { sendMessage } from "../services/aiService";
@@ -167,11 +167,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
 const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
-  // ── Config ref — change any value anytime, zero re-render ─────────────────
+  // ── Config ref ─────────────────────────────────────────────────────────────
   const voiceConfigRef = useRef<VoiceConfig>({
-    autoSendDelayMs: 1,                  // delay after speech ends before auto-send
-    recognitionSafetyTimeoutMs: 15000,   // force-stop recognition if onend never fires
-    paymentModalOpenDelayMs: 300,        // delay before opening payment modal
+    autoSendDelayMs: 1,
+    recognitionSafetyTimeoutMs: 15000,
+    paymentModalOpenDelayMs: 300,
     speechLang: {
       hi: 'hi-IN',
       default: 'en-IN',
@@ -200,21 +200,21 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   const { i18n } = useTranslation();
   const recognitionRef = useRef<any>(null);
   const autoSendRef = useRef(true);
-  const handleSendRef = useRef<() => Promise<void> | null>(null);
+  // FIX: store transcript in a ref so onend closure always reads the latest value
+  const transcriptRef = useRef<string>("");
 
   const wakeRecognitionRef = useRef<any>(null);
   const wakeEnabledRef = useRef(true);
   const activeSessionRef = useRef(false);
-
   const wakeStartedRef = useRef(false);
-
-  // NEW
   const assistantSpeakingRef = useRef(false);
+  const processingRef = useRef(false); // mirrors processing state for use in callbacks
 
   // Timer refs
   const recognitionSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const paymentModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Timer helpers ──────────────────────────────────────────────────────────
   const clearSafetyTimer = () => {
@@ -244,12 +244,34 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       ? voiceConfigRef.current.speechLang.hi
       : voiceConfigRef.current.speechLang.default;
 
+  // ── Session reset — centralised so every exit path calls it ───────────────
+  // FIX: single function to clean up after a session ends (success or failure)
+  const resetSession = useCallback((shouldRestartWake: boolean = true) => {
+    activeSessionRef.current = false;
+    processingRef.current = false;
+    setProcessing(false);
+
+    if (shouldRestartWake) {
+      const state = (window as any).conversationState || "IDLE";
+      if (
+        wakeEnabledRef.current &&
+        !assistantSpeakingRef.current &&
+        state === "IDLE"
+      ) {
+        // Small delay to avoid immediately re-triggering on residual audio
+        wakeRestartTimerRef.current = setTimeout(() => {
+          startWakeWordListener();
+        }, 800);
+      }
+    }
+  }, []);
+
   // ── Speech recognition setup ───────────────────────────────────────────────
   useEffect(() => {
     const SpeechClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechClass) {
-      setError('Speech recognition layout interface missing.');
+      setError('Speech recognition not supported in this browser.');
       return;
     }
 
@@ -264,35 +286,67 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       for (let i = 0; i < ev.results.length; i++) {
         parts.push(ev.results[i][0].transcript);
       }
-      setTranscript(parts.join(' '));
+      const text = parts.join(' ');
+      // FIX: update both state and ref simultaneously
+      setTranscript(text);
+      transcriptRef.current = text;
     };
 
     r.onend = () => {
       clearSafetyTimer();
-
       setListening(false);
 
-      if (
-        autoSendRef.current &&
-        handleSendRef.current
-      ) {
-        const delay =
-          voiceConfigRef.current.autoSendDelayMs;
+      // FIX: read from ref, not state — avoids stale closure
+      const currentTranscript = transcriptRef.current;
 
-        if (delay > 0) {
-          autoSendTimerRef.current = setTimeout(() => {
-            void handleSendRef.current?.();
-          }, delay);
-        } else {
-          void handleSendRef.current();
-        }
+      if (!autoSendRef.current) {
+        // User manually stopped — don't auto-send
+        return;
+      }
+
+      // FIX: if nothing was heard, reset session and go back to wake listener
+      if (!currentTranscript || !currentTranscript.trim()) {
+        console.log("No transcript captured, resetting session.");
+        resetSession(true);
+        return;
+      }
+
+      const delay = voiceConfigRef.current.autoSendDelayMs;
+      if (delay > 0) {
+        autoSendTimerRef.current = setTimeout(() => {
+          void handleSendRef.current?.();
+        }, delay);
+      } else {
+        void handleSendRef.current?.();
       }
     };
 
     r.onerror = (e: any) => {
       clearSafetyTimer();
-      setError(String(e.error || 'Speech error.'));
+      clearAutoSendTimer();
+
+      const errCode = String(e.error || '');
+
+      // FIX: "no-speech" and "aborted" are non-fatal — don't show error, just recover
+      if (errCode === 'no-speech' || errCode === 'aborted') {
+        console.log(`Recognition ended with: ${errCode} — recovering silently.`);
+        setListening(false);
+        resetSession(true);
+        return;
+      }
+
+      // FIX: "network" errors are transient — recover with a user-visible message
+      if (errCode === 'network') {
+        setError('Network issue with speech recognition. Retrying...');
+        setListening(false);
+        resetSession(true);
+        return;
+      }
+
+      setError(`Speech error: ${errCode || 'unknown'}`);
       setListening(false);
+      // FIX: always reset session on error so app doesn't get stuck
+      resetSession(true);
     };
 
     recognitionRef.current = r;
@@ -301,21 +355,19 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       clearSafetyTimer();
       clearAutoSendTimer();
       clearPaymentModalTimer();
+      if (wakeRestartTimerRef.current) clearTimeout(wakeRestartTimerRef.current);
       try { r.stop(); } catch (_) { }
     };
   }, [i18n?.language]);
 
   // ── Speech synthesis ───────────────────────────────────────────────────────
-  const speak = (text: string) => {
+  const speak = useCallback((text: string) => {
     try {
       if (!("speechSynthesis" in window)) return;
 
       assistantSpeakingRef.current = true;
 
-      // Stop wake listener while assistant talks
-      try {
-        wakeRecognitionRef.current?.stop();
-      } catch { }
+      try { wakeRecognitionRef.current?.stop(); } catch { }
 
       const ut = new SpeechSynthesisUtterance(text);
       ut.lang = getLang();
@@ -341,128 +393,95 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         ];
 
         if (WAITING_STATES.includes(state)) {
-          // Assistant just prompted the user — now listen for their reply
-          setTimeout(() => {
-            startListening();
-          }, 400); // small delay so speech synthesis fully ends
-        } else if (
-          state === "IDLE" &&
-          !activeSessionRef.current &&
-          !processing
-        ) {
+          setTimeout(() => { startListening(); }, 400);
+        } else if (state === "IDLE" && !activeSessionRef.current && !processingRef.current) {
           startWakeWordListener();
         }
       };
 
-      ut.onerror = () => {
+      // FIX: recover if speech synthesis itself errors
+      ut.onerror = (e) => {
+        console.warn("Speech synthesis error:", e);
         assistantSpeakingRef.current = false;
+        // Still try to restart wake listener
+        const state = (window as any).conversationState || "IDLE";
+        if (state === "IDLE" && !activeSessionRef.current) {
+          setTimeout(() => { startWakeWordListener(); }, 500);
+        }
       };
 
       speechSynthesis.cancel();
       speechSynthesis.speak(ut);
 
-    } catch {
+    } catch (err) {
+      console.error("speak() threw:", err);
+      // FIX: ensure flag resets even if speak() throws synchronously
       assistantSpeakingRef.current = false;
     }
-  };
+  }, []);
 
-  const appendAssistantMessage = (text: string) => {
+  const appendAssistantMessage = useCallback((text: string) => {
     setMessages(s => [...s, { from: 'assistant', text }]);
-  };
+  }, []);
 
+  // ── Wake word listener ─────────────────────────────────────────────────────
   const handleWakeDetected = () => {
-
     console.log("WAKE DETECTED");
-
     activeSessionRef.current = true;
 
-    try {
-      wakeRecognitionRef.current?.stop();
-    } catch { }
-
+    try { wakeRecognitionRef.current?.stop(); } catch { }
     wakeRecognitionRef.current = null;
 
     speak("Yes?");
-
-    setTimeout(() => {
-      startListening();
-    }, 1000);
+    setTimeout(() => { startListening(); }, 1000);
   };
 
-  const startWakeWordListener = () => {
-
-    if (assistantSpeakingRef.current) {
-      return;
-    }
-
-    if (wakeRecognitionRef.current) {
-      return;
-    }
+  const startWakeWordListener = useCallback(() => {
+    if (assistantSpeakingRef.current) return;
+    if (wakeRecognitionRef.current) return;
+    if (!wakeEnabledRef.current) return;
 
     const SpeechClass =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
-
-    if (!SpeechClass) {
-      return;
-    }
+    if (!SpeechClass) return;
 
     console.log("STARTING WAKE LISTENER");
 
     const wakeRec = new SpeechClass();
-
     wakeRec.lang = getLang();
     wakeRec.continuous = true;
     wakeRec.interimResults = false;
 
-    wakeRec.onstart = () => {
-      console.log("WAKE STARTED");
-    };
+    wakeRec.onstart = () => { console.log("WAKE STARTED"); };
 
     wakeRec.onresult = (event: any) => {
-
-      const state =
-        (window as any).conversationState;
-
+      const state = (window as any).conversationState;
       console.log("CURRENT STATE:", state);
 
-      const wakeAllowed =
-        !state ||
-        state === "IDLE" ||
-        state === "COMPLETE";
+      const wakeAllowed = !state || state === "IDLE" || state === "COMPLETE";
+      if (!wakeAllowed) return;
 
-      if (!wakeAllowed) {
-        return;
-      }
-
-      const text =
-        event.results[event.results.length - 1][0]
-          .transcript
-          .toLowerCase()
-          .trim();
-
+      const text = event.results[event.results.length - 1][0].transcript
+        .toLowerCase().trim();
       console.log("WAKE:", text);
 
-      if (
-        text.includes("dukandar") ||
-        text.includes("dukanadar")
-      ) {
+      if (text.includes("dukandar") || text.includes("dukanadar")) {
         handleWakeDetected();
       }
     };
 
     wakeRec.onerror = (e: any) => {
       console.log("WAKE ERROR", e.error);
+      // FIX: clear ref on error so onend can attempt restart
+      wakeRecognitionRef.current = null;
     };
 
     wakeRec.onend = () => {
-
       console.log("WAKE ENDED");
-
       wakeRecognitionRef.current = null;
 
-      const state =
-        (window as any).conversationState || "IDLE";
+      const state = (window as any).conversationState || "IDLE";
 
       if (
         wakeEnabledRef.current &&
@@ -470,7 +489,8 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         !activeSessionRef.current &&
         state === "IDLE"
       ) {
-        setTimeout(() => {
+        // FIX: track this timer so we can cancel it on unmount
+        wakeRestartTimerRef.current = setTimeout(() => {
           startWakeWordListener();
         }, 1000);
       }
@@ -481,12 +501,10 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     try {
       wakeRec.start();
     } catch (e) {
-      console.error(e);
+      console.error("Failed to start wake listener:", e);
+      wakeRecognitionRef.current = null;
     }
-  };
-
-
-
+  }, []);
 
   // ── Payment modal opener ───────────────────────────────────────────────────
   const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
@@ -519,52 +537,68 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   const startListening = () => {
     activeSessionRef.current = true;
 
-    try {
-      wakeRecognitionRef.current?.stop();
-    } catch { }
-
+    try { wakeRecognitionRef.current?.stop(); } catch { }
     wakeRecognitionRef.current = null;
 
     setError(null);
     setTranscript('');
-
-    if (!recognitionRef.current) return;
-
+    transcriptRef.current = ''; // FIX: clear ref too
     autoSendRef.current = true;
+
+    if (!recognitionRef.current) {
+      setError('Speech recognition not initialised.');
+      resetSession(true);
+      return;
+    }
 
     try {
       recognitionRef.current.start();
       setListening(true);
 
       clearSafetyTimer();
-
       recognitionSafetyTimerRef.current = setTimeout(() => {
-        try {
-          recognitionRef.current?.stop();
-        } catch { }
-
+        console.warn("Recognition safety timeout — force stopping.");
+        try { recognitionRef.current?.stop(); } catch { }
         setListening(false);
-        setError('Recognition timed out. Please try again.');
+        setError('Listening timed out. Please try again.');
+        // FIX: reset session so app recovers from timeout
+        resetSession(true);
       }, voiceConfigRef.current.recognitionSafetyTimeoutMs);
 
-    } catch { }
+    } catch (err) {
+      console.error("Failed to start recognition:", err);
+      setError('Could not start listening. Please try again.');
+      // FIX: recover instead of getting stuck
+      resetSession(true);
+    }
   };
 
   const stopListening = () => {
     clearSafetyTimer();
     clearAutoSendTimer();
-    try { recognitionRef.current?.stop(); } catch (_) { }
     autoSendRef.current = false;
+    try { recognitionRef.current?.stop(); } catch (_) { }
     setListening(false);
+    // FIX: reset session when user manually stops
+    resetSession(true);
   };
 
   // ── Send transcript to AI ──────────────────────────────────────────────────
   const handleSend = async () => {
-    if (!transcript || !transcript.trim()) return;
-    const userText = transcript.trim();
+    // FIX: read from ref for latest value, fall back to state
+    const userText = (transcriptRef.current || transcript || '').trim();
+
+    if (!userText) {
+      console.log("handleSend called with empty transcript — skipping.");
+      resetSession(true);
+      return;
+    }
+
     setProcessing(true);
+    processingRef.current = true;
     setError(null);
     setTranscript('');
+    transcriptRef.current = '';
 
     setMessages(s => [...s, { from: 'user', text: userText }]);
 
@@ -619,7 +653,19 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         data = await sendMessage(userText);
       }
 
-      if (typeof data === 'string') data = JSON.parse(data);
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          // FIX: if response is plain text (not JSON), wrap it so the rest of the code works
+          data = { text: data };
+        }
+      }
+
+      // FIX: guard against null/undefined response
+      if (!data) {
+        throw new Error('Empty response from server.');
+      }
 
       const txt = data?.text || data?.message || data?.response || JSON.stringify(data);
       const intentPayload: IntentPayload = {
@@ -631,43 +677,56 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       };
 
       if (onIntent) {
-        onIntent(intentPayload, { speak, appendAssistantMessage });
+        // FIX: wrap onIntent in try/catch — a crash here would skip the finally block
+        try {
+          onIntent(intentPayload, { speak, appendAssistantMessage });
+        } catch (intentErr) {
+          console.error("onIntent handler threw:", intentErr);
+          const fallback = "Sorry, there was an issue processing that.";
+          appendAssistantMessage(fallback);
+          speak(fallback);
+        }
       }
-    } catch (err: any) {
-      setError(err?.message || String(err));
-    } finally {
-      setProcessing(false);
 
+    } catch (err: any) {
+      console.error("handleSend error:", err);
+      const errMsg = err?.response?.data?.message || err?.message || String(err);
+      setError(errMsg);
+
+      // FIX: speak an error message so the user knows something went wrong
+      // and the app stays in a usable state
+      const voiceError = "Sorry, I couldn't process that. Please try again.";
+      appendAssistantMessage(voiceError);
+      speak(voiceError);
+
+    } finally {
+      // FIX: always reset active session flag so wake listener can restart
       activeSessionRef.current = false;
+      processingRef.current = false;
+      setProcessing(false);
     }
   };
 
-  useEffect(() => { handleSendRef.current = handleSend; }, [transcript]);
+  // FIX: ref must capture the latest handleSend *and* the latest transcript
+  const handleSendRef = useRef<() => Promise<void>>(handleSend);
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
 
-
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
   useEffect(() => { setVisible(true); }, []);
 
   useEffect(() => {
-
-    if (wakeStartedRef.current) {
-      return;
-    }
-
+    if (wakeStartedRef.current) return;
     wakeStartedRef.current = true;
-
     startWakeWordListener();
 
     return () => {
-
       wakeEnabledRef.current = false;
-
-      try {
-        wakeRecognitionRef.current?.stop();
-      } catch { }
-
+      if (wakeRestartTimerRef.current) clearTimeout(wakeRestartTimerRef.current);
+      try { wakeRecognitionRef.current?.stop(); } catch { }
       wakeRecognitionRef.current = null;
     };
-
   }, []);
 
   (window as any).__voiceOpenPaymentModal = openPaymentModal;
@@ -710,8 +769,9 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
                   size="sm"
                   variant={listening ? 'danger' : 'primary'}
                   onClick={() => (listening ? stopListening() : startListening())}
+                  disabled={processing}
                 >
-                  {listening ? 'Stop' : 'Listen'}
+                  {listening ? 'Stop' : processing ? 'Processing…' : 'Listen'}
                 </Button>
                 <Button
                   size="sm"
