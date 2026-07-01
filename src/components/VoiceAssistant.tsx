@@ -30,10 +30,26 @@ type PaymentOptions = {
 type VoiceConfig = {
   autoSendDelayMs: number;
   recognitionSafetyTimeoutMs: number;
+  noResponseTimeoutMs: number;
+  maxListenRetries: number;
   paymentModalOpenDelayMs: number;
   speechLang: { hi: string; default: string };
   recognition: { interimResults: boolean; continuous: boolean };
 };
+
+// FIX: states where the assistant is actively waiting on a specific answer
+// from the user (as opposed to idling for the wake word). Shared by speak()'s
+// onend handler and the recognition retry logic so both agree on what counts
+// as "still need an answer".
+const INPUT_WAITING_STATES = [
+  "WAITING_FOR_BRAND_SELECTION",
+  "WAITING_FOR_PACKAGING",
+  "WAITING_FOR_MOBILE_CONSENT",
+  "WAITING_FOR_MOBILE_NUMBER",
+  "WAITING_FOR_WALLET_CONSENT",
+  "WAITING_FOR_PAY_CONFIRM",
+  "WAITING_FOR_RECEIPT_ACTION",
+];
 
 type Props = {
   onIntent?: (
@@ -70,6 +86,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   useEffect(() => { setUseWallet(applyWallet ?? false); }, [applyWallet]);
 
   const handleSubmit = () => {
+    console.log("[47] ******** PaymentModal.handleSubmit method *******", 'state:', (window as any).conversationState || 'IDLE');
     if (mobile && !/^\d{10}$/.test(mobile)) {
       setMobileError('Please enter a valid 10-digit mobile number.');
       return;
@@ -166,11 +183,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
+   console.log("[1] ******** VoiceAssistant component render *******", 'state:', (window as any).conversationState || 'IDLE');
 
   // ── Config ref ─────────────────────────────────────────────────────────────
   const voiceConfigRef = useRef<VoiceConfig>({
     autoSendDelayMs: 1,
     recognitionSafetyTimeoutMs: 15000,
+    noResponseTimeoutMs: 5000,
+    // FIX: was 2 — bumped way up so that while we're waiting on a specific
+    // answer (a WAITING_FOR_* stage) the assistant essentially never gives
+    // up and falls back to the wake-word listener on its own; it just keeps
+    // re-opening the mic for that same stage. INPUT_WAITING_STATES-gated
+    // retry loops now also log the stage name on every attempt (see
+    // logRetryAttempt below) so this is easy to trace/tune from the console.
+    maxListenRetries: 999,
     paymentModalOpenDelayMs: 300,
     speechLang: {
       hi: 'hi-IN',
@@ -212,12 +238,68 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   // Timer refs
   const recognitionSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // FIX: counts consecutive empty/erroring listen attempts for the current
+  // WAITING_FOR_* prompt so we can retry listening instead of giving up.
+  const listenRetryCountRef = useRef(0);
   const paymentModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wakeRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // FIX: remembers the last stage we were retrying in, purely for logging —
+  // lets us tell "still retrying stage X" apart from "just switched stages"
+  // in the console without having to cross-reference timestamps.
+  const lastRetryStageRef = useRef<string | null>(null);
+
+  // ── Voice history stream auto-scroll ──────────────────────────────────────
+  // FIX: ref to the scrollable message-log container so we can drive its
+  // scrollTop directly, plus a ref tracking whether the user has manually
+  // scrolled away from the bottom. We use a ref (not state) for the scrolled
+  // flag so that rapid scroll events don't cause extra re-renders.
+  const historyStreamRef = useRef<HTMLDivElement | null>(null);
+  const isUserScrolledUpRef = useRef(false);
+
+  // FIX: single, reusable logger for every retry decision point (onend /
+  // onerror / catch in startListening). Centralising this means every retry
+  // path prints the same shape of log line: which stage, which reason,
+  // which attempt number, and whether we're continuing to listen on that
+  // same stage or bailing out.
+  const logRetryAttempt = (
+    source: string,
+    reason: string,
+    state: string,
+    willRetry: boolean
+  ) => {
+    if (willRetry) {
+      lastRetryStageRef.current = state;
+      console.log(
+        `[R] [${source}] issue="${reason}" stage="${state}" attempt=${listenRetryCountRef.current + 1}/${voiceConfigRef.current.maxListenRetries} -> RETRY LISTENING on same stage`,
+        'state:', (window as any).conversationState || 'IDLE'
+      );
+    } else {
+      console.log(
+        `[R] [${source}] issue="${reason}" stage="${state}" attempts_used=${listenRetryCountRef.current} -> GIVING UP on stage, falling back to wake listener`,
+        'state:', (window as any).conversationState || 'IDLE'
+      );
+      lastRetryStageRef.current = null;
+    }
+  };
+
+
+  // FIX: single source of truth for "is it safe to re-arm the wake listener"
+  const WAKE_ALLOWED_STATES = ["IDLE", "COMPLETE"];
+  const canRestartWake = () => {
+    console.log("[48] ******** canRestartWake method *******", 'state:', (window as any).conversationState || 'IDLE');
+    const state = (window as any).conversationState || "IDLE";
+    return WAKE_ALLOWED_STATES.includes(state);
+  };
+
+
   // ── Timer helpers ──────────────────────────────────────────────────────────
   const clearSafetyTimer = () => {
+
+    console.log("[2] ******** clearSafetyTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+
     if (recognitionSafetyTimerRef.current) {
       clearTimeout(recognitionSafetyTimerRef.current);
       recognitionSafetyTimerRef.current = null;
@@ -225,13 +307,25 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   };
 
   const clearAutoSendTimer = () => {
+    console.log("[3] ******** clearAutoSendTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+
     if (autoSendTimerRef.current) {
       clearTimeout(autoSendTimerRef.current);
       autoSendTimerRef.current = null;
     }
   };
 
+  const clearNoResponseTimer = () => {
+    console.log("[44] ******** clearNoResponseTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+
+    if (noResponseTimerRef.current) {
+      clearTimeout(noResponseTimerRef.current);
+      noResponseTimerRef.current = null;
+    }
+  };
+
   const clearPaymentModalTimer = () => {
+    console.log("[4] ******** clearPaymentModalTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
     if (paymentModalTimerRef.current) {
       clearTimeout(paymentModalTimerRef.current);
       paymentModalTimerRef.current = null;
@@ -239,24 +333,32 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   };
 
   // ── Language helper ────────────────────────────────────────────────────────
-  const getLang = () =>
-    (i18n?.language || navigator.language || 'en').startsWith('hi')
+  const getLang = () => {
+    console.log("[49] ******** getLang method *******", 'state:', (window as any).conversationState || 'IDLE');
+    return (i18n?.language || navigator.language || 'en').startsWith('hi')
       ? voiceConfigRef.current.speechLang.hi
       : voiceConfigRef.current.speechLang.default;
+  };
+
+
+
 
   // ── Session reset — centralised so every exit path calls it ───────────────
   // FIX: single function to clean up after a session ends (success or failure)
   const resetSession = useCallback((shouldRestartWake: boolean = true) => {
+    console.log("[5] ******** resetSession method *******", 'state:', (window as any).conversationState || 'IDLE');
     activeSessionRef.current = false;
     processingRef.current = false;
     setProcessing(false);
+    // FIX: a full session reset means we're no longer mid-retry on any prompt
+    listenRetryCountRef.current = 0;
+    lastRetryStageRef.current = null;
 
     if (shouldRestartWake) {
-      const state = (window as any).conversationState || "IDLE";
       if (
         wakeEnabledRef.current &&
         !assistantSpeakingRef.current &&
-        state === "IDLE"
+        canRestartWake()
       ) {
         // Small delay to avoid immediately re-triggering on residual audio
         wakeRestartTimerRef.current = setTimeout(() => {
@@ -266,8 +368,12 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     }
   }, []);
 
+
+  
+
   // ── Speech recognition setup ───────────────────────────────────────────────
   useEffect(() => {
+    console.log("[6] ******** Speech recognition setup method *******", 'state:', (window as any).conversationState || 'IDLE');
     const SpeechClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechClass) {
@@ -290,10 +396,23 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       // FIX: update both state and ref simultaneously
       setTranscript(text);
       transcriptRef.current = text;
+
+      // FIX: user has responded — cancel the 5s no-response watchdog and
+      // reset the retry counter since we got real input.
+      if (text && text.trim()) {
+        listenRetryCountRef.current = 0;
+        lastRetryStageRef.current = null;
+        if (noResponseTimerRef.current) {
+          console.log("[45] User responded within 5s — clearing no-response timer", 'state:', (window as any).conversationState || 'IDLE');
+          clearNoResponseTimer();
+        }
+      }
     };
 
     r.onend = () => {
+      console.log("[50] ******** recognition.onend method *******", 'state:', (window as any).conversationState || 'IDLE');
       clearSafetyTimer();
+      clearNoResponseTimer();
       setListening(false);
 
       // FIX: read from ref, not state — avoids stale closure
@@ -304,9 +423,28 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         return;
       }
 
-      // FIX: if nothing was heard, reset session and go back to wake listener
+      // FIX: if nothing was heard, either retry listening (if the assistant
+      // is still waiting on a specific answer and retries remain) or reset
+      // session and go back to the wake listener.
       if (!currentTranscript || !currentTranscript.trim()) {
-        console.log("No transcript captured, resetting session.");
+        console.log("[7] No transcript captured, resetting session.", 'state:', (window as any).conversationState || 'IDLE');
+
+        const state = (window as any).conversationState || "IDLE";
+        const canRetry =
+          INPUT_WAITING_STATES.includes(state) &&
+          listenRetryCountRef.current < voiceConfigRef.current.maxListenRetries;
+
+        if (canRetry) {
+          logRetryAttempt('recognition.onend', 'no-transcript', state, true);
+          listenRetryCountRef.current += 1;
+          setTimeout(() => { startListening(); }, 300);
+          return;
+        }
+
+        if (INPUT_WAITING_STATES.includes(state)) {
+          logRetryAttempt('recognition.onend', 'no-transcript', state, false);
+        }
+        listenRetryCountRef.current = 0;
         resetSession(true);
         return;
       }
@@ -322,15 +460,29 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     };
 
     r.onerror = (e: any) => {
+      console.log("[51] ******** recognition.onerror method *******", 'state:', (window as any).conversationState || 'IDLE');
       clearSafetyTimer();
       clearAutoSendTimer();
+      clearNoResponseTimer();
 
       const errCode = String(e.error || '');
+      const state = (window as any).conversationState || "IDLE";
+      const canRetry =
+        INPUT_WAITING_STATES.includes(state) &&
+        listenRetryCountRef.current < voiceConfigRef.current.maxListenRetries;
 
       // FIX: "no-speech" and "aborted" are non-fatal — don't show error, just recover
       if (errCode === 'no-speech' || errCode === 'aborted') {
-        console.log(`Recognition ended with: ${errCode} — recovering silently.`);
+        console.log(`[8] Recognition ended with: ${errCode} — recovering silently.`, 'state:', (window as any).conversationState || 'IDLE');
         setListening(false);
+        if (canRetry) {
+          logRetryAttempt('recognition.onerror', errCode, state, true);
+          listenRetryCountRef.current += 1;
+          setTimeout(() => { startListening(); }, 300);
+          return;
+        }
+        logRetryAttempt('recognition.onerror', errCode, state, false);
+        listenRetryCountRef.current = 0;
         resetSession(true);
         return;
       }
@@ -339,13 +491,32 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       if (errCode === 'network') {
         setError('Network issue with speech recognition. Retrying...');
         setListening(false);
+        if (canRetry) {
+          logRetryAttempt('recognition.onerror', 'network', state, true);
+          listenRetryCountRef.current += 1;
+          setTimeout(() => { startListening(); }, 300);
+          return;
+        }
+        logRetryAttempt('recognition.onerror', 'network', state, false);
+        listenRetryCountRef.current = 0;
         resetSession(true);
         return;
       }
 
       setError(`Speech error: ${errCode || 'unknown'}`);
       setListening(false);
-      // FIX: always reset session on error so app doesn't get stuck
+      // FIX: for unexpected errors, still retry listening if we're mid-way
+      // through collecting an answer — otherwise the app would silently
+      // drop the user's in-progress flow. Fall back to a full reset once
+      // retries are exhausted so the app never gets stuck.
+      if (canRetry) {
+        logRetryAttempt('recognition.onerror', errCode || 'unknown', state, true);
+        listenRetryCountRef.current += 1;
+        setTimeout(() => { startListening(); }, 300);
+        return;
+      }
+      logRetryAttempt('recognition.onerror', errCode || 'unknown', state, false);
+      listenRetryCountRef.current = 0;
       resetSession(true);
     };
 
@@ -354,54 +525,96 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     return () => {
       clearSafetyTimer();
       clearAutoSendTimer();
+      clearNoResponseTimer();
       clearPaymentModalTimer();
       if (wakeRestartTimerRef.current) clearTimeout(wakeRestartTimerRef.current);
       try { r.stop(); } catch (_) { }
     };
   }, [i18n?.language]);
 
+
+
+
+  // ── Auto-scroll voice-history-stream to bottom on new messages ───────────
+  // FIX: whenever `messages` changes (assistant or user bubble appended),
+  // snap the log to the bottom so the latest message is visible by default.
+  // If the user has manually scrolled up to read earlier history, we don't
+  // yank them back down — auto-scroll resumes once they scroll back near
+  // the bottom themselves (see handleHistoryScroll below).
+  useEffect(() => {
+    console.log("[58] ******** auto-scroll history stream on new message *******", 'state:', (window as any).conversationState || 'IDLE');
+    const el = historyStreamRef.current;
+    if (!el) return;
+
+    if (!isUserScrolledUpRef.current) {
+      // rAF ensures the DOM has painted the new bubble before we measure scrollHeight
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    }
+  }, [messages]);
+
+  // FIX: tracks whether the user is currently scrolled away from the bottom
+  // of the history stream. Uses a small threshold (40px) so being "close
+  // enough" to the bottom still counts as "at bottom" for auto-scroll
+  // purposes. Kept as a ref (not state) to avoid re-rendering on every
+  // scroll tick.
+  const handleHistoryScroll = () => {
+    const el = historyStreamRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserScrolledUpRef.current = distanceFromBottom > 40;
+  };
+
+
+
+
   // ── Speech synthesis ───────────────────────────────────────────────────────
   const speak = useCallback((text: string) => {
+
+    console.log("[9] ******** speak method *******", 'state:', (window as any).conversationState || 'IDLE');
     try {
+
       if (!("speechSynthesis" in window)) return;
 
       assistantSpeakingRef.current = true;
+      try { 
+        wakeRecognitionRef.current?.stop();
+       } catch
+        { 
 
-      try { wakeRecognitionRef.current?.stop(); } catch { }
+        console.log('[10] ---------------error in stopping wake recognition-------', 'state:', (window as any).conversationState || 'IDLE');
+      }
 
       const ut = new SpeechSynthesisUtterance(text);
+
+      console.log("[11] ******** speak method (utterance created) *******", 'state:', (window as any).conversationState || 'IDLE');
       ut.lang = getLang();
 
       ut.onstart = () => {
-        console.log("ASSISTANT SPEAKING");
+        console.log("[12] ASSISTANT SPEAKING", 'state:', (window as any).conversationState || 'IDLE');
       };
 
       ut.onend = () => {
         assistantSpeakingRef.current = false;
 
         const state = (window as any).conversationState || "IDLE";
-        console.log("STATE AFTER SPEAK:", state);
+        console.log("[13] STATE AFTER SPEAK:", state, 'state:', (window as any).conversationState || 'IDLE');
 
-        const WAITING_STATES = [
-          "WAITING_FOR_BRAND_SELECTION",
-          "WAITING_FOR_PACKAGING",
-          "WAITING_FOR_MOBILE_CONSENT",
-          "WAITING_FOR_MOBILE_NUMBER",
-          "WAITING_FOR_WALLET_CONSENT",
-          "WAITING_FOR_PAY_CONFIRM",
-          "WAITING_FOR_RECEIPT_ACTION",
-        ];
-
-        if (WAITING_STATES.includes(state)) {
+        if (INPUT_WAITING_STATES.includes(state)) {
+          // FIX: a fresh prompt just went out — reset the retry counter so
+          // the upcoming listening attempt gets its full retry budget.
+          listenRetryCountRef.current = 0;
+          lastRetryStageRef.current = null;
           setTimeout(() => { startListening(); }, 400);
-        } else if (state === "IDLE" && !activeSessionRef.current && !processingRef.current) {
+        } else if (canRestartWake() && !activeSessionRef.current && !processingRef.current) {
           startWakeWordListener();
         }
       };
 
       // FIX: recover if speech synthesis itself errors
       ut.onerror = (e) => {
-        console.warn("Speech synthesis error:", e);
+        console.warn("[14] Speech synthesis error:", e, 'state:', (window as any).conversationState || 'IDLE');
         assistantSpeakingRef.current = false;
         // Still try to restart wake listener
         const state = (window as any).conversationState || "IDLE";
@@ -414,19 +627,20 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       speechSynthesis.speak(ut);
 
     } catch (err) {
-      console.error("speak() threw:", err);
+      console.error("[15] speak() threw:", err, 'state:', (window as any).conversationState || 'IDLE');
       // FIX: ensure flag resets even if speak() throws synchronously
       assistantSpeakingRef.current = false;
     }
   }, []);
 
   const appendAssistantMessage = useCallback((text: string) => {
+    console.log("[52] ******** appendAssistantMessage method *******", 'state:', (window as any).conversationState || 'IDLE');
     setMessages(s => [...s, { from: 'assistant', text }]);
   }, []);
 
   // ── Wake word listener ─────────────────────────────────────────────────────
   const handleWakeDetected = () => {
-    console.log("WAKE DETECTED");
+    console.log("[16] WAKE DETECTED", 'state:', (window as any).conversationState || 'IDLE');
     activeSessionRef.current = true;
 
     try { wakeRecognitionRef.current?.stop(); } catch { }
@@ -436,7 +650,15 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     setTimeout(() => { startListening(); }, 1000);
   };
 
+
+
+  //======================================================================
+
   const startWakeWordListener = useCallback(() => {
+
+    console.log("[17] ******** startWakeWordListener method *******", 'state:', (window as any).conversationState || 'IDLE');
+
+
     if (assistantSpeakingRef.current) return;
     if (wakeRecognitionRef.current) return;
     if (!wakeEnabledRef.current) return;
@@ -446,48 +668,59 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       (window as any).webkitSpeechRecognition;
     if (!SpeechClass) return;
 
-    console.log("STARTING WAKE LISTENER");
+    console.log("[18] STARTING WAKE LISTENER", 'state:', (window as any).conversationState || 'IDLE');
 
     const wakeRec = new SpeechClass();
     wakeRec.lang = getLang();
     wakeRec.continuous = true;
     wakeRec.interimResults = false;
 
-    wakeRec.onstart = () => { console.log("WAKE STARTED"); };
+    wakeRec.onstart = () => { console.log("[19] WAKE STARTED", 'state:', (window as any).conversationState || 'IDLE'); };
 
     wakeRec.onresult = (event: any) => {
       const state = (window as any).conversationState;
-      console.log("CURRENT STATE:", state);
+      console.log("[20] CURRENT STATE:", state, 'state:', (window as any).conversationState || 'IDLE');
+
+      console.log('[21] ---2------------CURRENT STATE: ' + state + '-------', 'state:', (window as any).conversationState || 'IDLE');
 
       const wakeAllowed = !state || state === "IDLE" || state === "COMPLETE";
       if (!wakeAllowed) return;
 
-      const text = event.results[event.results.length - 1][0].transcript
-        .toLowerCase().trim();
-      console.log("WAKE:", text);
+      const text = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
 
-      if (text.includes("dukandar") || text.includes("dukanadar")) {
+      console.log("[22] WAKE:", text, 'state:', (window as any).conversationState || 'IDLE');
+
+      console.log('[23] ---4------------WAKE TEXT: ' + text + '-------', 'state:', (window as any).conversationState || 'IDLE');
+
+      if (text.includes("raghav") || text.includes("Raghav") 
+        || text.includes("RAGHAV") || text.includes("राघव") 
+        || text.includes("राघव") || text.includes("राघव") 
+        || text.includes("राघव") || text.includes("राघव") 
+        || text.includes("राघव") || text.includes("राघव") ) {
         handleWakeDetected();
       }
     };
 
+
+
+
+
     wakeRec.onerror = (e: any) => {
-      console.log("WAKE ERROR", e.error);
+      console.log('[24] ---3------------WAKE ERROR: ' + e.error + '-------', 'state:', (window as any).conversationState || 'IDLE');
+      console.log("[25] WAKE ERROR", e.error, 'state:', (window as any).conversationState || 'IDLE');
       // FIX: clear ref on error so onend can attempt restart
       wakeRecognitionRef.current = null;
     };
 
     wakeRec.onend = () => {
-      console.log("WAKE ENDED");
+      console.log("[26] WAKE ENDED", 'state:', (window as any).conversationState || 'IDLE');
       wakeRecognitionRef.current = null;
-
-      const state = (window as any).conversationState || "IDLE";
 
       if (
         wakeEnabledRef.current &&
         !assistantSpeakingRef.current &&
         !activeSessionRef.current &&
-        state === "IDLE"
+        canRestartWake()
       ) {
         // FIX: track this timer so we can cancel it on unmount
         wakeRestartTimerRef.current = setTimeout(() => {
@@ -501,13 +734,14 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     try {
       wakeRec.start();
     } catch (e) {
-      console.error("Failed to start wake listener:", e);
+      console.error("[27] Failed to start wake listener:", e, 'state:', (window as any).conversationState || 'IDLE');
       wakeRecognitionRef.current = null;
     }
   }, []);
 
   // ── Payment modal opener ───────────────────────────────────────────────────
   const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
+    console.log("[53] ******** openPaymentModal method *******", 'state:', (window as any).conversationState || 'IDLE');
     if (onOpenPayment) {
       onOpenPayment(mobileNumber, options);
     } else {
@@ -522,7 +756,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   const handlePaymentConfirm = (mobile?: string, useWallet?: boolean) => {
     setShowPaymentModal(false);
-    console.log('Payment confirmed — mobile:', mobile ?? '(none)', '| useWallet:', useWallet);
+    console.log('[28] Payment confirmed — mobile:', mobile ?? '(none)', '| useWallet:', useWallet, 'state:', (window as any).conversationState || 'IDLE');
     const parts: string[] = ['Payment processed.'];
     if (mobile) parts.push(`Discount credited to ${mobile}.`);
     if (useWallet && paymentOptions.walletBalance) {
@@ -535,9 +769,15 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   // ── Listening controls ─────────────────────────────────────────────────────
   const startListening = () => {
+
+    console.log("[29] ******** startListening method *******", 'state:', (window as any).conversationState || 'IDLE');
     activeSessionRef.current = true;
 
-    try { wakeRecognitionRef.current?.stop(); } catch { }
+    try { 
+      wakeRecognitionRef.current?.stop(); 
+    } catch { 
+      console.log('[30] ---------------error in stopping wake recognition-------', 'state:', (window as any).conversationState || 'IDLE');
+    }
     wakeRecognitionRef.current = null;
 
     setError(null);
@@ -557,25 +797,60 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
       clearSafetyTimer();
       recognitionSafetyTimerRef.current = setTimeout(() => {
-        console.warn("Recognition safety timeout — force stopping.");
+        console.warn("[31] Recognition safety timeout — force stopping.", 'state:', (window as any).conversationState || 'IDLE');
         try { recognitionRef.current?.stop(); } catch { }
         setListening(false);
         setError('Listening timed out. Please try again.');
-        // FIX: reset session so app recovers from timeout
-        resetSession(true);
+        // FIX: recognitionRef.current.stop() triggers r.onend, which now
+        // contains the retry-vs-reset decision for WAITING_FOR_* states —
+        // so we don't duplicate that logic here.
       }, voiceConfigRef.current.recognitionSafetyTimeoutMs);
 
+      // FIX: separate, shorter watchdog — if the user hasn't said anything
+      // within 5s of a WAITING_FOR_* prompt, don't wait for the full 15s
+      // safety timeout: force-stop now so r.onend's retry-or-reset logic
+      // can kick in immediately and the assistant can listen again sooner.
+      clearNoResponseTimer();
+      noResponseTimerRef.current = setTimeout(() => {
+        if (!transcriptRef.current || !transcriptRef.current.trim()) {
+          console.log(
+            "[46] No response from user within 5 seconds — treating as not listening / silence.",
+            'state:', (window as any).conversationState || 'IDLE'
+          );
+          try { recognitionRef.current?.stop(); } catch { }
+        }
+      }, voiceConfigRef.current.noResponseTimeoutMs);
+
     } catch (err) {
-      console.error("Failed to start recognition:", err);
+      console.error("[32] Failed to start recognition:", err, 'state:', (window as any).conversationState || 'IDLE');
       setError('Could not start listening. Please try again.');
+
+      // FIX: if we were waiting on a specific answer, try again instead of
+      // silently dropping back to the wake listener on the first failure.
+      const state = (window as any).conversationState || "IDLE";
+      const canRetry =
+        INPUT_WAITING_STATES.includes(state) &&
+        listenRetryCountRef.current < voiceConfigRef.current.maxListenRetries;
+
+      if (canRetry) {
+        logRetryAttempt('startListening.catch', (err as any)?.message || 'start-failed', state, true);
+        listenRetryCountRef.current += 1;
+        setTimeout(() => { startListening(); }, 300);
+        return;
+      }
+
+      logRetryAttempt('startListening.catch', (err as any)?.message || 'start-failed', state, false);
+      listenRetryCountRef.current = 0;
       // FIX: recover instead of getting stuck
       resetSession(true);
     }
   };
 
   const stopListening = () => {
+    console.log("[33] ******** stopListening method *******", 'state:', (window as any).conversationState || 'IDLE');
     clearSafetyTimer();
     clearAutoSendTimer();
+    clearNoResponseTimer();
     autoSendRef.current = false;
     try { recognitionRef.current?.stop(); } catch (_) { }
     setListening(false);
@@ -583,21 +858,29 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     resetSession(true);
   };
 
+
+
+  //==============================================================================
   // ── Send transcript to AI ──────────────────────────────────────────────────
   const handleSend = async () => {
+
+    console.log("[34] ******** handleSend method *******", 'state:', (window as any).conversationState || 'IDLE');
     // FIX: read from ref for latest value, fall back to state
     const userText = (transcriptRef.current || transcript || '').trim();
 
+    console.log('[35] ---------------handleSend method----userText---'+userText, 'state:', (window as any).conversationState || 'IDLE');
+
     if (!userText) {
-      console.log("handleSend called with empty transcript — skipping.");
+      console.log("[36] handleSend called with empty transcript — skipping.", 'state:', (window as any).conversationState || 'IDLE');
       resetSession(true);
       return;
     }
 
     setProcessing(true);
     processingRef.current = true;
+
     setError(null);
-    setTranscript('');
+    setTranscript(userText);
     transcriptRef.current = '';
 
     setMessages(s => [...s, { from: 'user', text: userText }]);
@@ -625,18 +908,18 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         currentContextState === 'WAITING_FOR_PAY_CONFIRM' ||
         currentContextState === 'WAITING_FOR_RECEIPT_ACTION'
       ) {
-        console.log('currentContextState:', currentContextState);
-        console.log('userText:', userText);
+        console.log('[37] currentContextState:', currentContextState, 'state:', (window as any).conversationState || 'IDLE');
+        console.log('[38] userText:', userText, 'state:', (window as any).conversationState || 'IDLE');
 
         const isNegativeResponse = /\b(no|nahi|nope|skip|don'?t|dont|without|bypass)\b/i.test(userText);
-        console.log('isNegativeResponse:', isNegativeResponse);
+        console.log('[39] isNegativeResponse:', isNegativeResponse, 'state:', (window as any).conversationState || 'IDLE');
 
         const sessionMode =
           currentContextState === 'WAITING_FOR_MOBILE_CONSENT' && isNegativeResponse
             ? 'CONFIRM_WITHOUTMOBILE'
             : currentContextState;
 
-        console.log('sessionMode being sent:', sessionMode);
+        console.log('[40] sessionMode being sent:', sessionMode, 'state:', (window as any).conversationState || 'IDLE');
 
         const response = await api.post('/ai/intent', { command: userText }, {
           params: { sessionMode },
@@ -678,10 +961,11 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
       if (onIntent) {
         // FIX: wrap onIntent in try/catch — a crash here would skip the finally block
+        console.log('[41] ---------------onIntent method-------', 'state:', (window as any).conversationState || 'IDLE');
         try {
           onIntent(intentPayload, { speak, appendAssistantMessage });
         } catch (intentErr) {
-          console.error("onIntent handler threw:", intentErr);
+          console.error("[42] onIntent handler threw:", intentErr, 'state:', (window as any).conversationState || 'IDLE');
           const fallback = "Sorry, there was an issue processing that.";
           appendAssistantMessage(fallback);
           speak(fallback);
@@ -689,18 +973,21 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       }
 
     } catch (err: any) {
-      console.error("handleSend error:", err);
+      console.error("[43] handleSend error:", err, 'state:', (window as any).conversationState || 'IDLE');
       const errMsg = err?.response?.data?.message || err?.message || String(err);
       setError(errMsg);
 
-      // FIX: speak an error message so the user knows something went wrong
-      // and the app stays in a usable state
+      // FIX: an error mid-flow must not leave conversationState stuck on a
+      // WAITING_FOR_* value forever — bail back to IDLE so wake word can re-arm
+      (window as any).conversationState = 'IDLE';
+
       const voiceError = "Sorry, I couldn't process that. Please try again.";
       appendAssistantMessage(voiceError);
       speak(voiceError);
 
     } finally {
       // FIX: always reset active session flag so wake listener can restart
+
       activeSessionRef.current = false;
       processingRef.current = false;
       setProcessing(false);
@@ -710,18 +997,24 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // FIX: ref must capture the latest handleSend *and* the latest transcript
   const handleSendRef = useRef<() => Promise<void>>(handleSend);
   useEffect(() => {
+    console.log("[54] ******** handleSendRef sync effect *******", 'state:', (window as any).conversationState || 'IDLE');
     handleSendRef.current = handleSend;
   });
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
-  useEffect(() => { setVisible(true); }, []);
+  useEffect(() => {
+    console.log("[55] ******** mount effect: setVisible *******", 'state:', (window as any).conversationState || 'IDLE');
+    setVisible(true);
+  }, []);
 
   useEffect(() => {
+    console.log("[56] ******** mount effect: wake word lifecycle *******", 'state:', (window as any).conversationState || 'IDLE');
     if (wakeStartedRef.current) return;
     wakeStartedRef.current = true;
     startWakeWordListener();
 
     return () => {
+      console.log("[57] ******** unmount cleanup: wake word lifecycle *******", 'state:', (window as any).conversationState || 'IDLE');
       wakeEnabledRef.current = false;
       if (wakeRestartTimerRef.current) clearTimeout(wakeRestartTimerRef.current);
       try { wakeRecognitionRef.current?.stop(); } catch { }
@@ -791,7 +1084,11 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
                   : 'Awaiting live voice input sequence...'
                 )}
               </div>
-              <div className="voice-history-stream">
+              <div
+                className="voice-history-stream"
+                ref={historyStreamRef}
+                onScroll={handleHistoryScroll}
+              >
                 {messages.length === 0 ? (
                   <div className="voice-empty-log">No execution records in current cycle.</div>
                 ) : (
