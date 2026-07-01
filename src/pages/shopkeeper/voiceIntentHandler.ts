@@ -408,12 +408,16 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     if (act === 'ADD_ITEM' || candStr.includes('add')) {
       try {
         if (!deps.billId) {
-          const autoBillMsg = "Starting a new bill first. Please wait.";
+
+          let autoBillMsg = "";
+          if (i18n?.language === "en") {
+            autoBillMsg = "Starting a new bill first. Please wait.";
+          } else {
+            autoBillMsg = "पहले नया बिल शुरू किया जा रहा है। कृपया प्रतीक्षा करें।";
+          }
           deps.speak?.(autoBillMsg);
           deps.appendAssistantMessage?.(autoBillMsg);
-
           await deps.handleStartBilling();
-
           let attempts = 0;
           // ✅ Use named constant — controls polling interval while waiting for billId
           while (!deps.billId && attempts < 10) {
@@ -470,9 +474,27 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           (window as any).conversationState = 'WAITING_FOR_BRAND_SELECTION';
 
           const uniqueBrandsArray = Array.from(new Set(candidatesList.map(c => c.brand.trim())));
-          const humanBrands = uniqueBrandsArray.map((brand, index) => `${index + 1}. ${brand}`).join(', ');
-          const prompt = `Multiple brands found. ${humanBrands}. Which brand do you want?`;
+         
+          const humanBrands = uniqueBrandsArray
+            .map((brand, index) => `${index + 1}. ${brand}`)
+            .join('\n');
 
+          let prompt;
+
+          switch (i18n?.language) {
+            case "hi":
+              prompt = `कई ब्रांड मिले हैं। ${humanBrands}. आप कौन सा ब्रांड चाहते हैं?`;
+              break;
+
+            case "en":
+              prompt = `Multiple brands found. ${humanBrands}. Which brand do you want?`;
+              break;
+
+            default:
+              prompt = `Multiple brands found. ${humanBrands}. Which brand do you want?`;
+          }
+         
+        
           deps.speak?.(prompt);
           deps.appendAssistantMessage?.(prompt);
           return;
@@ -487,8 +509,27 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
             unit: String(payload?.unit || 'kg'),
             language: lang
           };
+
           (window as any).conversationState = 'WAITING_FOR_PACKAGING';
-          const packagingPrompt = json.prompt || "Do you want loose or packet?";
+
+          
+
+          let packagingPrompt = json.prompt;
+
+          if (!packagingPrompt) {
+           switch (i18n?.language){
+              case "hi":
+                packagingPrompt = "आप खुला चाहते हैं या पैकेट?";
+                break;
+
+              case "en":
+                packagingPrompt = "Aap khula chahte hain ya packet?";
+                break;
+
+              default:
+                packagingPrompt = "Do you want loose or packet?";
+            }
+          }
           deps.speak?.(packagingPrompt);
           deps.appendAssistantMessage?.(packagingPrompt);
           return;
