@@ -349,6 +349,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           askMsg =
             `Wallet balance of ₹${balance} will be applied. Shall I proceed with payment? Say yes or no.`;
         }
+        deps.speak?.(askMsg);
         deps.appendAssistantMessage?.(askMsg);
         return;
       } else if (skipWallet) {
