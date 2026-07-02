@@ -1,5 +1,6 @@
 import api from '../../services/api'; 
 import i18n from '../../i18n/config';
+import { getTotalItemQuantity } from './productUtils';
 
 // ─── Timeout Constants ───────────────────────────────────────────────────────
 const TIMEOUT_PAYMENT_RECEIPT_DELAY_MS  = 2000; // Wait for payment to process before receipt prompt
@@ -12,7 +13,7 @@ export type IntentPayload = {
   action?: any;
   text?: any;
   message?: any;
-  command?: any;
+  command?: any;  
   productName?: string;
   qty?: number;
   unit?: string;
@@ -95,11 +96,15 @@ function extractMobileNumber(text: string): string | null {
 }
 
 function isAffirmative(text: string): boolean {
-  return /\b(yes|yeah|yep|haan|ha|sure|ok|okay|provide|give|use|apply)\b/i.test(text);
+  if (!text) return false;
+  const input = text.trim().toLowerCase();
+  return /(?:^|\s)(yes|yeah|yep|yup|ok|okay|sure|proceed|continue|confirm|accept|go\s*ahead|do\s*it|provide|give|use|apply|wallet\s*use|haan|han|ha|haa|haan\s*ji|ji\s*haan|theek\s*hai|thik\s*hai|bilkul|zaroor|kar\s*do|karo|chalo|हाँ|हां|जी|जी\s*हाँ|हाँ\s*जी|ठीक\s*है|बिल्कुल|ज़रूर|कर\s*दो|करिए|आगे\s*बढ़ो|आगे\s*बढ़िए|स्वीकार)(?:\s|$)/i.test(input);
 }
 
 function isNegative(text: string): boolean {
-  return /\b(no|nahi|nope|skip|don'?t|dont|without|bypass)\b/i.test(text);
+  if (!text) return false;
+  const input = text.trim().toLowerCase();
+  return /(?:^|\s)(no|nope|nahi|nahin|na|cancel|stop|skip|don't|dont|do\s*not|without|bypass|reject|mat\s*karo|rehne\s*do|chod\s*do|chhod\s*do|nahi\s*chahiye|नहीं|ना|मत|मत\s*करो|मत\s*कीजिए|रद्द\s*करो|रहने\s*दो|छोड़\s*दो|नहीं\s*चाहिए|नहीं\s*करना)(?:\s|$)/i.test(input);
 }
 
 // ─── exported handler ────────────────────────────────────────────────────────
@@ -201,7 +206,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     if (currentContextState === 'WAITING_FOR_MOBILE_CONSENT') {
       if (isAffirmative(rawUserSpeech || txt)) {
         (window as any).conversationState = 'WAITING_FOR_MOBILE_NUMBER';
-        const askMsg = "Please tell me your 10-digit mobile number.";
+        let askMsg = "";
+        if (i18n?.language === "hi") {
+          askMsg =
+            "कृपया अपना 10 अंकों का मोबाइल नंबर बताइए।";
+        } else {
+          askMsg =
+            "Please tell me your 10-digit mobile number.";
+        }
         deps.speak?.(askMsg);
         deps.appendAssistantMessage?.(askMsg);
         return;
@@ -209,12 +221,26 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         pendingPaymentMobile = null;
         pendingWalletBalance = null;
         (window as any).conversationState = 'WAITING_FOR_PAY_CONFIRM';
-        const proceedMsg = "Proceeding to payment without a mobile number. Shall I proceed with payment? Say yes or no.";
+        let proceedMsg = "";
+        if (i18n?.language === "hi") {
+          proceedMsg =
+            "ठीक है, मोबाइल नंबर के बिना भुगतान जारी रखा जाएगा। क्या मैं भुगतान करूँ? कृपया 'हाँ' या 'नहीं' कहें।";
+        } else {
+          proceedMsg =
+            "Proceeding to payment without a mobile number. Shall I proceed with payment? Say yes or no.";
+        }
         deps.speak?.(proceedMsg);
         deps.appendAssistantMessage?.(proceedMsg);
         return;
       } else {
-        const retryMsg = "Please say yes to provide your mobile number, or no to skip.";
+        let retryMsg = "";
+        if (i18n?.language === "hi") {
+          retryMsg =
+            "कृपया मोबाइल नंबर देने के लिए 'हाँ' कहें या छोड़ने के लिए 'नहीं' कहें।";
+        } else {
+          retryMsg =
+            "Please say yes to provide your mobile number, or no to skip.";
+        }
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
         return;
@@ -250,17 +276,51 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         (window as any).conversationState = 'WAITING_FOR_WALLET_CONSENT';
 
         if (pendingWalletBalance !== null && pendingWalletBalance > 0) {
-          const walletMsg = `Mobile number ${mobile} registered. You have ₹${pendingWalletBalance} in your wallet. Would you like to use your wallet balance for payment? Say yes or no.`;
+          let walletMsg = "";
+          if (i18n?.language === "hi") {
+            walletMsg =
+              `मोबाइल नंबर ${mobile} दर्ज कर लिया गया है। ` +
+              `आपके वॉलेट में ₹${pendingWalletBalance} उपलब्ध हैं। ` +
+              `क्या आप भुगतान के लिए अपने वॉलेट की राशि का उपयोग करना चाहेंगे? ` +
+              `कृपया 'हाँ' या 'नहीं' कहें।`;
+          } else {
+            walletMsg =
+              `Mobile number ${mobile} registered. ` +
+              `You have ₹${pendingWalletBalance} in your wallet. ` +
+              `Would you like to use your wallet balance for payment? ` +
+              `Say yes or no.`;
+          }
           deps.speak?.(walletMsg);
           deps.appendAssistantMessage?.(walletMsg);
         } else {
-          const walletMsg = `Got it! Mobile number ${mobile} saved. A discount will be credited to your wallet. Would you like to use your wallet for payment? Say yes or no.`;
+         let walletMsg = "";
+
+          if (i18n?.language === "hi") {
+            walletMsg =
+              `ठीक है! आपका मोबाइल नंबर ${mobile} सुरक्षित कर लिया गया है। ` +
+              `खरीदारी पर मिलने वाली छूट आपके वॉलेट में जमा कर दी जाएगी। ` +
+              `क्या आप भुगतान के लिए अपना वॉलेट इस्तेमाल करना चाहेंगे? ` +
+              `कृपया 'हाँ' या 'नहीं' कहें।`;
+          } else {
+            walletMsg =
+              `Got it! Mobile number ${mobile} saved. ` +
+              `A discount will be credited to your wallet. ` +
+              `Would you like to use your wallet for payment? ` +
+              `Say yes or no.`;
+          }
           deps.speak?.(walletMsg);
           deps.appendAssistantMessage?.(walletMsg);
         }
         return;
       } else {
-        const retryMsg = "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
+        let retryMsg = "";
+        if (i18n?.language === "hi") {
+          retryMsg =
+            "क्षमा करें, मैं आपका मोबाइल नंबर समझ नहीं पाया। कृपया अपना 10 अंकों का मोबाइल नंबर स्पष्ट रूप से बताइए। आवश्यकता हो तो एक-एक अंक बोलें।";
+        } else {
+          retryMsg =
+            "I didn't catch that. Please say your 10-digit mobile number clearly, digit by digit if needed.";
+        }
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
         return;
@@ -279,8 +339,16 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         const mobile = pendingPaymentMobile ?? undefined;
         const balance = pendingWalletBalance ?? 0;
         _openPayment(deps, mobile, { applyWallet: true, walletBalance: balance });
-        const askMsg = `Wallet ₹${balance} will be applied. Shall I proceed with payment? Say yes or no.`;
-        deps.speak?.(askMsg);
+        
+        let askMsg = "";
+        if (i18n?.language === "hi") {
+          askMsg =
+            `ठीक है! आपके वॉलेट की ₹${balance} राशि का उपयोग किया जाएगा। ` +
+            `क्या मैं भुगतान की प्रक्रिया आगे बढ़ाऊँ? कृपया 'हाँ' या 'नहीं' कहें।`;
+        } else {
+          askMsg =
+            `Wallet balance of ₹${balance} will be applied. Shall I proceed with payment? Say yes or no.`;
+        }
         deps.appendAssistantMessage?.(askMsg);
         return;
       } else if (skipWallet) {
@@ -289,12 +357,28 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         pendingPaymentMobile = null;
         pendingWalletBalance = null;
         _openPayment(deps, mobile, { applyWallet: false });
-        const askMsg = "Okay, wallet not applied. Shall I proceed with payment? Say yes or no.";
+        let askMsg = "";
+        if (i18n?.language === "hi") {
+          askMsg =
+            "ठीक है! वॉलेट का उपयोग नहीं किया जाएगा। क्या मैं भुगतान की प्रक्रिया आगे बढ़ाऊँ? कृपया 'हाँ' या 'नहीं' कहें।";
+        } else {
+          askMsg =
+            "Okay, wallet not applied. Shall I proceed with payment? Say yes or no.";
+        }
         deps.speak?.(askMsg);
         deps.appendAssistantMessage?.(askMsg);
         return;
       } else {
-        const retryMsg = `You have ₹${pendingWalletBalance} in your wallet. Say yes to use it, or no to skip.`;
+        let retryMsg = "";
+
+        if (i18n?.language === "hi") {
+          retryMsg =
+            `आपके वॉलेट में ₹${pendingWalletBalance} हैं। 'हाँ' कहें ताकि इस्तेमाल किया जा सके, या 'नहीं' कहें ताकि छोड़ा जा सके।`;
+        } else {
+          retryMsg =
+            `You have ₹${pendingWalletBalance} in your wallet. Say yes to use it, or no to skip.`;
+        }
+
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
         return;
@@ -316,12 +400,26 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         // ✅ Use named constant — controls how long we wait before prompting receipt action
         setTimeout(() => {
           (window as any).conversationState = 'WAITING_FOR_RECEIPT_ACTION';
-          const receiptMsg = "Payment done! Say print to print receipt, done to finish, or close to close.";
+          let receiptMsg = "";
+          if (i18n?.language === "hi") {
+            receiptMsg =
+              "भुगतान सफलतापूर्वक हो गया है। रसीद प्रिंट करने के लिए 'प्रिंट' कहें, बिल समाप्त करने के लिए 'हो गया' कहें, या विंडो बंद करने के लिए 'बंद करें' कहें।";
+          } else {
+            receiptMsg =
+              "Payment completed successfully! Say 'print' to print the receipt, 'done' to finish the bill, or 'close' to close the receipt.";
+          }
           deps.speak?.(receiptMsg);
           deps.appendAssistantMessage?.(receiptMsg);
         }, TIMEOUT_PAYMENT_RECEIPT_DELAY_MS);
 
-        const msg = "Processing payment now!";
+        let msg = "";
+        if (i18n?.language === "hi") {
+          msg =
+            "भुगतान की प्रक्रिया शुरू की जा रही है। कृपया प्रतीक्षा करें।";
+        } else {
+          msg =
+            "Processing payment now! Please wait.";
+        }
         deps.speak?.(msg);
         deps.appendAssistantMessage?.(msg);
         return;
@@ -329,12 +427,26 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         (window as any).conversationState = 'IDLE';
         pendingPaymentMobile = null;
         pendingWalletBalance = null;
-        const msg = "Payment cancelled. You can pay manually when ready.";
+        let msg = "";
+        if (i18n?.language === "hi") {
+          msg =
+            "भुगतान रद्द कर दिया गया है। जब आप तैयार हों, तब आप मैन्युअली भुगतान कर सकते हैं।";
+        } else {
+          msg =
+            "Payment cancelled. You can pay manually when ready.";
+        }
         deps.speak?.(msg);
         deps.appendAssistantMessage?.(msg);
         return;
       } else {
-        const retryMsg = "Say yes to confirm payment, or no to cancel.";
+        let retryMsg = "";
+        if (i18n?.language === "hi") {
+          retryMsg =
+            "क्षमा करें, मैं आपका उत्तर समझ नहीं पाया। कृपया 'हाँ' या 'नहीं' कहें।";
+        } else {
+          retryMsg =
+            "I didn't catch that. Please say yes or no.";
+        }
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
         return;
@@ -346,21 +458,31 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     // =========================================================================
     if (currentContextState === 'WAITING_FOR_RECEIPT_ACTION') {
       const input = (rawUserSpeech || txt).toLowerCase();
-      if (/\bprint\b/i.test(input)) {
+      if ( /\b(print|printer|print\s+receipt)\b/i.test(input) ||/(प्रिंट|रसीद\s*प्रिंट|रसीद\s*निकालो|प्रिंट\s*करो)/.test(input)) {
         (window as any).conversationState = 'IDLE';
         deps.onReceiptPrint?.();
-        const msg = "Printing receipt now.";
+        let msg = "";
+        if (i18n?.language === "hi") {
+          msg = "रसीद प्रिंट हो रही है।";
+        } else {
+          msg = "Printing receipt now.";
+        }
         deps.speak?.(msg);
         deps.appendAssistantMessage?.(msg);
         return;
-      } else if (/\bdone\b/i.test(input)) {
+      }else if (/\b(done|finish|complete|completed|end|close bill)\b/i.test(input) ||/(हो गया|होगया|खत्म|समाप्त|पूरा|पूर्ण|बिल\s*खत्म|बिल\s*पूरा|समाप्त\s*करो|खत्म\s*करो)/.test(input))  {
         (window as any).conversationState = 'IDLE';
         deps.onReceiptDone?.();
-        const msg = "Bill done. Ready for next customer.";
+        let msg = "";
+        if (i18n?.language === "hi") {
+          msg = "बिल समाप्त हो गया है। अगले ग्राहक के लिए तैयार हैं।";
+        } else {
+          msg = "Bill done. Ready for next customer.";
+        }
         deps.speak?.(msg);
         deps.appendAssistantMessage?.(msg);
         return;
-      } else if (/\bclose\b/i.test(input)) {
+      } else if (/\b(close|exit|dismiss|cancel|shut)\b/i.test(input) || /(बंद|बंद करो|बंद कर दो|बंद कीजिए|बाहर निकलो|विंडो बंद करो|रसीद बंद करो)/.test(input)) {
         (window as any).conversationState = 'IDLE';
         deps.onReceiptClose?.();
         const msg = "Receipt closed.";
@@ -368,7 +490,14 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         deps.appendAssistantMessage?.(msg);
         return;
       } else {
-        const retryMsg = "Say print to print receipt, done to finish, or close to close.";
+        let retryMsg = "";
+        if (i18n?.language === "hi") {
+          retryMsg =
+            "कृपया रसीद प्रिंट करने के लिए 'प्रिंट' कहें, बिल समाप्त करने के लिए 'हो गया' कहें, या रसीद बंद करने के लिए 'बंद करें' कहें।";
+        } else {
+          retryMsg =
+            "Please say 'print' to print the receipt, 'done' to finish the bill, or 'close' to close the receipt.";
+        }
         deps.speak?.(retryMsg);
         deps.appendAssistantMessage?.(retryMsg);
         return;
@@ -380,11 +509,9 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
     // =========================================================================
 
     // ── PAYMENT intent ───────────────────────────────────────────────────────
-    const isPaymentIntent =
-      act === 'PAYMENT' ||
-      act === 'TAKE_PAYMENT' ||
-      act === 'PAY' ||
-      /\b(payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(candStr);
+    const paymentRegex = /\b(payment|pay|checkout|bill\s*pay|bill\s*payment|pay\s*bill|take\s*payment|bhugtan|payment\s*karo|pay\s*karo)\b/i;
+    const paymentHindiRegex = /(भुगतान|पेमेंट|भुगतान\s*करो|पेमेंट\s*करो|बिल\s*का\s*भुगतान|चेकआउट|पैसे\s*लो|पैसे\s*ले\s*लो)/;
+    const isPaymentIntent = act === "PAYMENT" || act === "TAKE_PAYMENT" || act === "PAY" || paymentRegex.test(candStr) || paymentHindiRegex.test(candStr);
 
     if (isPaymentIntent) {
       if (!deps.billId) {
@@ -398,7 +525,16 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
       _openPayment(deps, undefined, { applyWallet: false });
 
       (window as any).conversationState = 'WAITING_FOR_MOBILE_CONSENT';
-      const consentMsg = "Would you like to provide your mobile number? If you do, a discount will be credited to your wallet. Say yes or no.";
+
+      let consentMsg = "";
+      if (i18n?.language === "hi") {
+        consentMsg =
+          "क्या आप अपना मोबाइल नंबर देना चाहेंगे? ऐसा करने पर छूट की राशि आपके वॉलेट में जमा कर दी जाएगी। कृपया हाँ या नहीं कहें।";
+      } else {
+        consentMsg =
+          "Would you like to provide your mobile number? If you do, a discount will be credited to your wallet. Say yes or no.";
+      }
+      
       deps.speak?.(consentMsg);
       deps.appendAssistantMessage?.(consentMsg);
       return;
@@ -514,8 +650,9 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
           
 
-          let packagingPrompt = json.prompt;
+          let packagingPrompt = "";
 
+        
           if (!packagingPrompt) {
            switch (i18n?.language){
               case "hi":
@@ -523,13 +660,15 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
                 break;
 
               case "en":
-                packagingPrompt = "Aap khula chahte hain ya packet?";
+                packagingPrompt = "Do you want loose or packet?";
                 break;
 
               default:
-                packagingPrompt = "Do you want loose or packet?";
+                packagingPrompt = "Aap khula chahte hain ya packet?";
             }
           }
+
+      
           deps.speak?.(packagingPrompt);
           deps.appendAssistantMessage?.(packagingPrompt);
           return;
@@ -617,8 +756,18 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
 
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
-          const localizedBrandText = payload.brand ? `${payload.brand} ` : '';
-          const confirmationText = `Added ${finalCartQty} ${payload.unit || 'kg'} ${localizedBrandText}${productName || product.productName}.`;
+
+          console.log("========targetProductSource======", targetProductSource);
+         
+          const { quantity, unit } = getTotalItemQuantity(targetProductSource?.isLoose ?? false,finalCartQty,targetProductSource);
+          alert(`Added ${quantity}${unit ? ` ${unit}` : ""} of ${product.productName || productName} to the cart.`);  
+          
+          const brand = targetProductSource?.brand ? `${targetProductSource.brand} ` : "";
+          const name =i18n?.language === "hi"? (targetProductSource.productNameHi || productName || targetProductSource.productName) : (productName || targetProductSource.productName);
+
+          const unitText = unit ? ` ${unit}` : "";
+          const confirmationText =i18n?.language === "hi" ? `${quantity}${unitText} ${brand}${name} जोड़ा गया।`: `Added ${quantity}${unitText} ${brand}${name}.`;
+
           deps.speak?.(confirmationText);
           deps.appendAssistantMessage?.(confirmationText);
         }
@@ -645,6 +794,7 @@ type PaymentOptions = {
   applyWallet?: boolean;
   walletBalance?: number;
 };
+
 
 function _openPayment(deps: VoiceDeps, mobileNumber?: string, options?: PaymentOptions) {
   if (deps.openPaymentModal) {

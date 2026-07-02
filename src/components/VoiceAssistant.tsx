@@ -926,7 +926,9 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         });
         data = { ...response.data, command: userText };
 
-      } else if (/\b(take\s*payment|payment|pay|checkout|bill\s*pay|bhugtan)\b/i.test(userText)) {
+      } 
+      else if (/\b(take\s*payment|payment|pay|checkout|bill\s*pay|make\s*payment|collect\s*payment|payment\s*karo|pay\s*karo|payment\s*kar\s*do|bhugtan)\b/i.test(userText) 
+        || /(पेमेंट|भुगतान|पैसे\s*लो|पैसे\s*ले\s*लो|भुगतान\s*करो|पेमेंट\s*करो|बिल\s*का\s*पेमेंट)/i.test(userText)) {
         const response = await api.post('/ai/intent', { command: userText }, {
           params: { sessionMode: 'TAKE_PAYMENT' },
         });
