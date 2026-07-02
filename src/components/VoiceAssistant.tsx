@@ -217,6 +217,10 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Live caption (speech-synced text reveal) ──────────────────────────────
+  const [liveCaption, setLiveCaption] = useState<string>("");
+  const liveCaptionSourceRef = useRef<string>(""); // full text currently being spoken
+
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMobile, setPaymentMobile] = useState<string | undefined>(undefined);
@@ -570,7 +574,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
 
   // ── Speech synthesis ───────────────────────────────────────────────────────
-  const speak = useCallback((text: string) => {
+const speak = useCallback((text: string) => {
 
     console.log("[9] ******** speak method *******", 'state:', (window as any).conversationState || 'IDLE');
     try {
@@ -591,12 +595,32 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       console.log("[11] ******** speak method (utterance created) *******", 'state:', (window as any).conversationState || 'IDLE');
       ut.lang = getLang();
 
+      // FIX: live caption — reset and prime the reveal buffer for this utterance
+      liveCaptionSourceRef.current = text;
+      setLiveCaption("");
+
       ut.onstart = () => {
         console.log("[12] ASSISTANT SPEAKING", 'state:', (window as any).conversationState || 'IDLE');
       };
 
+      // FIX: live caption — fires at each word/sentence boundary while speaking;
+      // charIndex tells us how far into `text` the voice currently is, so we
+      // reveal the caption in lockstep with the audio instead of dumping it
+      // all at once.
+      ut.onboundary = (event: any) => {
+        if (event.name && event.name !== 'word' && event.name !== 'sentence') return;
+        const idx = typeof event.charIndex === 'number' ? event.charIndex : 0;
+        const end = idx + (event.charLength || 0);
+        const revealed = liveCaptionSourceRef.current.slice(0, end > idx ? end : idx);
+        setLiveCaption(revealed);
+      };
+
       ut.onend = () => {
         assistantSpeakingRef.current = false;
+
+        // FIX: live caption — caught up with full text, clear the buffer
+        setLiveCaption("");
+        liveCaptionSourceRef.current = "";
 
         const state = (window as any).conversationState || "IDLE";
         console.log("[13] STATE AFTER SPEAK:", state, 'state:', (window as any).conversationState || 'IDLE');
@@ -616,6 +640,9 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       ut.onerror = (e) => {
         console.warn("[14] Speech synthesis error:", e, 'state:', (window as any).conversationState || 'IDLE');
         assistantSpeakingRef.current = false;
+        // FIX: live caption — clear buffer on error too
+        setLiveCaption("");
+        liveCaptionSourceRef.current = "";
         // Still try to restart wake listener
         const state = (window as any).conversationState || "IDLE";
         if (state === "IDLE" && !activeSessionRef.current) {
@@ -632,6 +659,10 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       assistantSpeakingRef.current = false;
     }
   }, []);
+
+
+
+
 
   const appendAssistantMessage = useCallback((text: string) => {
     console.log("[52] ******** appendAssistantMessage method *******", 'state:', (window as any).conversationState || 'IDLE');
@@ -1080,12 +1111,15 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
             </div>
 
             <div className="voice-terminal-body">
-              <div className="voice-transcript-box">
-                {transcript || (processing
-                  ? 'Processing operation routing...'
-                  : 'Awaiting live voice input sequence...'
-                )}
-              </div>
+                <div className="voice-transcript-box">
+                  {liveCaption
+                    ? liveCaption
+                    : (transcript || (processing
+                      ? 'Processing operation routing...'
+                      : 'Awaiting live voice input sequence...'
+                    ))
+                  }
+                </div>
               <div
                 className="voice-history-stream"
                 ref={historyStreamRef}
