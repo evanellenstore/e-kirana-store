@@ -5,6 +5,10 @@ import { sendMessage } from "../services/aiService";
 import api from '../services/api';
 import "../styles/Billing.css";
 
+
+const DEBUG = false; // set true only when debugging
+const dlog = (...args: any[]) => { if (DEBUG) console.log(...args); };
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type IntentPayload = {
@@ -86,7 +90,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   useEffect(() => { setUseWallet(applyWallet ?? false); }, [applyWallet]);
 
   const handleSubmit = () => {
-    console.log("[47] ******** PaymentModal.handleSubmit method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[47] ******** PaymentModal.handleSubmit method *******", 'state:', (window as any).conversationState || 'IDLE');
     if (mobile && !/^\d{10}$/.test(mobile)) {
       setMobileError('Please enter a valid 10-digit mobile number.');
       return;
@@ -183,7 +187,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
-   console.log("[1] ******** VoiceAssistant component render *******", 'state:', (window as any).conversationState || 'IDLE');
+   dlog("[1] ******** VoiceAssistant component render *******", 'state:', (window as any).conversationState || 'IDLE');
 
   // ── Config ref ─────────────────────────────────────────────────────────────
   const voiceConfigRef = useRef<VoiceConfig>({
@@ -276,12 +280,12 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   ) => {
     if (willRetry) {
       lastRetryStageRef.current = state;
-      console.log(
+      dlog(
         `[R] [${source}] issue="${reason}" stage="${state}" attempt=${listenRetryCountRef.current + 1}/${voiceConfigRef.current.maxListenRetries} -> RETRY LISTENING on same stage`,
         'state:', (window as any).conversationState || 'IDLE'
       );
     } else {
-      console.log(
+      dlog(
         `[R] [${source}] issue="${reason}" stage="${state}" attempts_used=${listenRetryCountRef.current} -> GIVING UP on stage, falling back to wake listener`,
         'state:', (window as any).conversationState || 'IDLE'
       );
@@ -293,7 +297,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // FIX: single source of truth for "is it safe to re-arm the wake listener"
   const WAKE_ALLOWED_STATES = ["IDLE", "COMPLETE"];
   const canRestartWake = () => {
-    console.log("[48] ******** canRestartWake method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[48] ******** canRestartWake method *******", 'state:', (window as any).conversationState || 'IDLE');
     const state = (window as any).conversationState || "IDLE";
     return WAKE_ALLOWED_STATES.includes(state);
   };
@@ -302,7 +306,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // ── Timer helpers ──────────────────────────────────────────────────────────
   const clearSafetyTimer = () => {
 
-    console.log("[2] ******** clearSafetyTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[2] ******** clearSafetyTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
 
     if (recognitionSafetyTimerRef.current) {
       clearTimeout(recognitionSafetyTimerRef.current);
@@ -311,7 +315,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   };
 
   const clearAutoSendTimer = () => {
-    console.log("[3] ******** clearAutoSendTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[3] ******** clearAutoSendTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
 
     if (autoSendTimerRef.current) {
       clearTimeout(autoSendTimerRef.current);
@@ -320,7 +324,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   };
 
   const clearNoResponseTimer = () => {
-    console.log("[44] ******** clearNoResponseTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[44] ******** clearNoResponseTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
 
     if (noResponseTimerRef.current) {
       clearTimeout(noResponseTimerRef.current);
@@ -329,7 +333,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   };
 
   const clearPaymentModalTimer = () => {
-    console.log("[4] ******** clearPaymentModalTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[4] ******** clearPaymentModalTimer method *******", 'state:', (window as any).conversationState || 'IDLE');
     if (paymentModalTimerRef.current) {
       clearTimeout(paymentModalTimerRef.current);
       paymentModalTimerRef.current = null;
@@ -338,7 +342,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   // ── Language helper ────────────────────────────────────────────────────────
   const getLang = () => {
-    console.log("[49] ******** getLang method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[49] ******** getLang method *******", 'state:', (window as any).conversationState || 'IDLE');
     return (i18n?.language || navigator.language || 'en').startsWith('hi')
       ? voiceConfigRef.current.speechLang.hi
       : voiceConfigRef.current.speechLang.default;
@@ -350,7 +354,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // ── Session reset — centralised so every exit path calls it ───────────────
   // FIX: single function to clean up after a session ends (success or failure)
   const resetSession = useCallback((shouldRestartWake: boolean = true) => {
-    console.log("[5] ******** resetSession method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[5] ******** resetSession method *******", 'state:', (window as any).conversationState || 'IDLE');
     activeSessionRef.current = false;
     processingRef.current = false;
     setProcessing(false);
@@ -377,7 +381,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
   // ── Speech recognition setup ───────────────────────────────────────────────
   useEffect(() => {
-    console.log("[6] ******** Speech recognition setup method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[6] ******** Speech recognition setup method *******", 'state:', (window as any).conversationState || 'IDLE');
     const SpeechClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechClass) {
@@ -407,14 +411,14 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
         listenRetryCountRef.current = 0;
         lastRetryStageRef.current = null;
         if (noResponseTimerRef.current) {
-          console.log("[45] User responded within 5s — clearing no-response timer", 'state:', (window as any).conversationState || 'IDLE');
+          dlog("[45] User responded within 5s — clearing no-response timer", 'state:', (window as any).conversationState || 'IDLE');
           clearNoResponseTimer();
         }
       }
     };
 
     r.onend = () => {
-      console.log("[50] ******** recognition.onend method *******", 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[50] ******** recognition.onend method *******", 'state:', (window as any).conversationState || 'IDLE');
       clearSafetyTimer();
       clearNoResponseTimer();
       setListening(false);
@@ -431,7 +435,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
       // is still waiting on a specific answer and retries remain) or reset
       // session and go back to the wake listener.
       if (!currentTranscript || !currentTranscript.trim()) {
-        console.log("[7] No transcript captured, resetting session.", 'state:', (window as any).conversationState || 'IDLE');
+        dlog("[7] No transcript captured, resetting session.", 'state:', (window as any).conversationState || 'IDLE');
 
         const state = (window as any).conversationState || "IDLE";
         const canRetry =
@@ -464,7 +468,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
     };
 
     r.onerror = (e: any) => {
-      console.log("[51] ******** recognition.onerror method *******", 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[51] ******** recognition.onerror method *******", 'state:', (window as any).conversationState || 'IDLE');
       clearSafetyTimer();
       clearAutoSendTimer();
       clearNoResponseTimer();
@@ -477,7 +481,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
 
       // FIX: "no-speech" and "aborted" are non-fatal — don't show error, just recover
       if (errCode === 'no-speech' || errCode === 'aborted') {
-        console.log(`[8] Recognition ended with: ${errCode} — recovering silently.`, 'state:', (window as any).conversationState || 'IDLE');
+        dlog(`[8] Recognition ended with: ${errCode} — recovering silently.`, 'state:', (window as any).conversationState || 'IDLE');
         setListening(false);
         if (canRetry) {
           logRetryAttempt('recognition.onerror', errCode, state, true);
@@ -546,7 +550,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // yank them back down — auto-scroll resumes once they scroll back near
   // the bottom themselves (see handleHistoryScroll below).
   useEffect(() => {
-    console.log("[58] ******** auto-scroll history stream on new message *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[58] ******** auto-scroll history stream on new message *******", 'state:', (window as any).conversationState || 'IDLE');
     const el = historyStreamRef.current;
     if (!el) return;
 
@@ -576,7 +580,7 @@ const VoiceAssistant: React.FC<Props> = ({ onIntent, onOpenPayment }) => {
   // ── Speech synthesis ───────────────────────────────────────────────────────
 const speak = useCallback((text: string) => {
 
-    console.log("[9] ******** speak method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[9] ******** speak method *******", 'state:', (window as any).conversationState || 'IDLE');
     try {
 
       if (!("speechSynthesis" in window)) return;
@@ -587,12 +591,12 @@ const speak = useCallback((text: string) => {
        } catch
         { 
 
-        console.log('[10] ---------------error in stopping wake recognition-------', 'state:', (window as any).conversationState || 'IDLE');
+        dlog('[10] ---------------error in stopping wake recognition-------', 'state:', (window as any).conversationState || 'IDLE');
       }
 
       const ut = new SpeechSynthesisUtterance(text);
 
-      console.log("[11] ******** speak method (utterance created) *******", 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[11] ******** speak method (utterance created) *******", 'state:', (window as any).conversationState || 'IDLE');
       ut.lang = getLang();
 
       // FIX: live caption — reset and prime the reveal buffer for this utterance
@@ -600,7 +604,7 @@ const speak = useCallback((text: string) => {
       setLiveCaption("");
 
       ut.onstart = () => {
-        console.log("[12] ASSISTANT SPEAKING", 'state:', (window as any).conversationState || 'IDLE');
+        dlog("[12] ASSISTANT SPEAKING", 'state:', (window as any).conversationState || 'IDLE');
       };
 
       // FIX: live caption — fires at each word/sentence boundary while speaking;
@@ -623,7 +627,7 @@ const speak = useCallback((text: string) => {
         liveCaptionSourceRef.current = "";
 
         const state = (window as any).conversationState || "IDLE";
-        console.log("[13] STATE AFTER SPEAK:", state, 'state:', (window as any).conversationState || 'IDLE');
+        dlog("[13] STATE AFTER SPEAK:", state, 'state:', (window as any).conversationState || 'IDLE');
 
         if (INPUT_WAITING_STATES.includes(state)) {
           // FIX: a fresh prompt just went out — reset the retry counter so
@@ -638,7 +642,7 @@ const speak = useCallback((text: string) => {
 
       // FIX: recover if speech synthesis itself errors
       ut.onerror = (e) => {
-        console.warn("[14] Speech synthesis error:", e, 'state:', (window as any).conversationState || 'IDLE');
+        dlog("[14] Speech synthesis error:", e, 'state:', (window as any).conversationState || 'IDLE');
         assistantSpeakingRef.current = false;
         // FIX: live caption — clear buffer on error too
         setLiveCaption("");
@@ -654,7 +658,7 @@ const speak = useCallback((text: string) => {
       speechSynthesis.speak(ut);
 
     } catch (err) {
-      console.error("[15] speak() threw:", err, 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[15] speak() threw:", err, 'state:', (window as any).conversationState || 'IDLE');
       // FIX: ensure flag resets even if speak() throws synchronously
       assistantSpeakingRef.current = false;
     }
@@ -665,13 +669,13 @@ const speak = useCallback((text: string) => {
 
 
   const appendAssistantMessage = useCallback((text: string) => {
-    console.log("[52] ******** appendAssistantMessage method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[52] ******** appendAssistantMessage method *******", 'state:', (window as any).conversationState || 'IDLE');
     setMessages(s => [...s, { from: 'assistant', text }]);
   }, []);
 
   // ── Wake word listener ─────────────────────────────────────────────────────
   const handleWakeDetected = () => {
-    console.log("[16] WAKE DETECTED", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[16] WAKE DETECTED", 'state:', (window as any).conversationState || 'IDLE');
     activeSessionRef.current = true;
 
     try { wakeRecognitionRef.current?.stop(); } catch { }
@@ -687,7 +691,7 @@ const speak = useCallback((text: string) => {
 
   const startWakeWordListener = useCallback(() => {
 
-    console.log("[17] ******** startWakeWordListener method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[17] ******** startWakeWordListener method *******", 'state:', (window as any).conversationState || 'IDLE');
 
 
     if (assistantSpeakingRef.current) return;
@@ -699,29 +703,29 @@ const speak = useCallback((text: string) => {
       (window as any).webkitSpeechRecognition;
     if (!SpeechClass) return;
 
-    console.log("[18] STARTING WAKE LISTENER", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[18] STARTING WAKE LISTENER", 'state:', (window as any).conversationState || 'IDLE');
 
     const wakeRec = new SpeechClass();
     wakeRec.lang = getLang();
     wakeRec.continuous = true;
     wakeRec.interimResults = false;
 
-    wakeRec.onstart = () => { console.log("[19] WAKE STARTED", 'state:', (window as any).conversationState || 'IDLE'); };
+    dlog("[19] WAKE STARTED", 'state:', (window as any).conversationState || 'IDLE');
 
     wakeRec.onresult = (event: any) => {
       const state = (window as any).conversationState;
-      console.log("[20] CURRENT STATE:", state, 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[20] CURRENT STATE:", state, 'state:', (window as any).conversationState || 'IDLE');
 
-      console.log('[21] ---2------------CURRENT STATE: ' + state + '-------', 'state:', (window as any).conversationState || 'IDLE');
+      dlog('[21] ---2------------CURRENT STATE: ' + state + '-------', 'state:', (window as any).conversationState || 'IDLE');
 
       const wakeAllowed = !state || state === "IDLE" || state === "COMPLETE";
       if (!wakeAllowed) return;
 
       const text = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
 
-      console.log("[22] WAKE:", text, 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[22] WAKE:", text, 'state:', (window as any).conversationState || 'IDLE');
 
-      console.log('[23] ---4------------WAKE TEXT: ' + text + '-------', 'state:', (window as any).conversationState || 'IDLE');
+      dlog('[23] ---4------------WAKE TEXT: ' + text + '-------', 'state:', (window as any).conversationState || 'IDLE');
 
       if (text.includes("raghav") || text.includes("Raghav") 
         || text.includes("RAGHAV") || text.includes("राघव") 
@@ -737,14 +741,14 @@ const speak = useCallback((text: string) => {
 
 
     wakeRec.onerror = (e: any) => {
-      console.log('[24] ---3------------WAKE ERROR: ' + e.error + '-------', 'state:', (window as any).conversationState || 'IDLE');
-      console.log("[25] WAKE ERROR", e.error, 'state:', (window as any).conversationState || 'IDLE');
+      dlog('[24] ---3------------WAKE ERROR: ' + e.error + '-------', 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[25] WAKE ERROR", e.error, 'state:', (window as any).conversationState || 'IDLE');
       // FIX: clear ref on error so onend can attempt restart
       wakeRecognitionRef.current = null;
     };
 
     wakeRec.onend = () => {
-      console.log("[26] WAKE ENDED", 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[26] WAKE ENDED", 'state:', (window as any).conversationState || 'IDLE');
       wakeRecognitionRef.current = null;
 
       if (
@@ -772,7 +776,7 @@ const speak = useCallback((text: string) => {
 
   // ── Payment modal opener ───────────────────────────────────────────────────
   const openPaymentModal = (mobileNumber?: string, options?: PaymentOptions) => {
-    console.log("[53] ******** openPaymentModal method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[53] ******** openPaymentModal method *******", 'state:', (window as any).conversationState || 'IDLE');
     if (onOpenPayment) {
       onOpenPayment(mobileNumber, options);
     } else {
@@ -787,7 +791,7 @@ const speak = useCallback((text: string) => {
 
   const handlePaymentConfirm = (mobile?: string, useWallet?: boolean) => {
     setShowPaymentModal(false);
-    console.log('[28] Payment confirmed — mobile:', mobile ?? '(none)', '| useWallet:', useWallet, 'state:', (window as any).conversationState || 'IDLE');
+    dlog('[28] Payment confirmed — mobile:', mobile ?? '(none)', '| useWallet:', useWallet, 'state:', (window as any).conversationState || 'IDLE');
     const parts: string[] = ['Payment processed.'];
     if (mobile) parts.push(`Discount credited to ${mobile}.`);
     if (useWallet && paymentOptions.walletBalance) {
@@ -801,13 +805,13 @@ const speak = useCallback((text: string) => {
   // ── Listening controls ─────────────────────────────────────────────────────
   const startListening = () => {
 
-    console.log("[29] ******** startListening method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[29] ******** startListening method *******", 'state:', (window as any).conversationState || 'IDLE');
     activeSessionRef.current = true;
 
     try { 
       wakeRecognitionRef.current?.stop(); 
     } catch { 
-      console.log('[30] ---------------error in stopping wake recognition-------', 'state:', (window as any).conversationState || 'IDLE');
+      dlog('[30] ---------------error in stopping wake recognition-------', 'state:', (window as any).conversationState || 'IDLE');
     }
     wakeRecognitionRef.current = null;
 
@@ -844,7 +848,7 @@ const speak = useCallback((text: string) => {
       clearNoResponseTimer();
       noResponseTimerRef.current = setTimeout(() => {
         if (!transcriptRef.current || !transcriptRef.current.trim()) {
-          console.log(
+          dlog(
             "[46] No response from user within 5 seconds — treating as not listening / silence.",
             'state:', (window as any).conversationState || 'IDLE'
           );
@@ -853,7 +857,7 @@ const speak = useCallback((text: string) => {
       }, voiceConfigRef.current.noResponseTimeoutMs);
 
     } catch (err) {
-      console.error("[32] Failed to start recognition:", err, 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[32] Failed to start recognition:", err, 'state:', (window as any).conversationState || 'IDLE');
       setError('Could not start listening. Please try again.');
 
       // FIX: if we were waiting on a specific answer, try again instead of
@@ -878,7 +882,7 @@ const speak = useCallback((text: string) => {
   };
 
   const stopListening = () => {
-    console.log("[33] ******** stopListening method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[33] ******** stopListening method *******", 'state:', (window as any).conversationState || 'IDLE');
     clearSafetyTimer();
     clearAutoSendTimer();
     clearNoResponseTimer();
@@ -895,14 +899,14 @@ const speak = useCallback((text: string) => {
   // ── Send transcript to AI ──────────────────────────────────────────────────
   const handleSend = async () => {
 
-    console.log("[34] ******** handleSend method *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[34] ******** handleSend method *******", 'state:', (window as any).conversationState || 'IDLE');
     // FIX: read from ref for latest value, fall back to state
     const userText = (transcriptRef.current || transcript || '').trim();
 
-    console.log('[35] ---------------handleSend method----userText---'+userText, 'state:', (window as any).conversationState || 'IDLE');
+    dlog('[35] ---------------handleSend method----userText---'+userText, 'state:', (window as any).conversationState || 'IDLE');
 
     if (!userText) {
-      console.log("[36] handleSend called with empty transcript — skipping.", 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[36] handleSend called with empty transcript — skipping.", 'state:', (window as any).conversationState || 'IDLE');
       resetSession(true);
       return;
     }
@@ -939,18 +943,18 @@ const speak = useCallback((text: string) => {
         currentContextState === 'WAITING_FOR_PAY_CONFIRM' ||
         currentContextState === 'WAITING_FOR_RECEIPT_ACTION'
       ) {
-        console.log('[37] currentContextState:', currentContextState, 'state:', (window as any).conversationState || 'IDLE');
-        console.log('[38] userText:', userText, 'state:', (window as any).conversationState || 'IDLE');
+        dlog('[37] currentContextState:', currentContextState, 'state:', (window as any).conversationState || 'IDLE');
+        dlog('[38] userText:', userText, 'state:', (window as any).conversationState || 'IDLE');
 
         const isNegativeResponse = /\b(no|nahi|nope|skip|don'?t|dont|without|bypass)\b/i.test(userText);
-        console.log('[39] isNegativeResponse:', isNegativeResponse, 'state:', (window as any).conversationState || 'IDLE');
+        dlog('[39] isNegativeResponse:', isNegativeResponse, 'state:', (window as any).conversationState || 'IDLE');
 
         const sessionMode =
           currentContextState === 'WAITING_FOR_MOBILE_CONSENT' && isNegativeResponse
             ? 'CONFIRM_WITHOUTMOBILE'
             : currentContextState;
 
-        console.log('[40] sessionMode being sent:', sessionMode, 'state:', (window as any).conversationState || 'IDLE');
+        dlog('[40] sessionMode being sent:', sessionMode, 'state:', (window as any).conversationState || 'IDLE');
 
         const response = await api.post('/ai/intent', { command: userText }, {
           params: { sessionMode },
@@ -994,11 +998,11 @@ const speak = useCallback((text: string) => {
 
       if (onIntent) {
         // FIX: wrap onIntent in try/catch — a crash here would skip the finally block
-        console.log('[41] ---------------onIntent method-------', 'state:', (window as any).conversationState || 'IDLE');
+        dlog('[41] ---------------onIntent method-------', 'state:', (window as any).conversationState || 'IDLE');
         try {
           onIntent(intentPayload, { speak, appendAssistantMessage });
         } catch (intentErr) {
-          console.error("[42] onIntent handler threw:", intentErr, 'state:', (window as any).conversationState || 'IDLE');
+          dlog("[42] onIntent handler threw:", intentErr, 'state:', (window as any).conversationState || 'IDLE');
           const fallback = "Sorry, there was an issue processing that.";
           appendAssistantMessage(fallback);
           speak(fallback);
@@ -1006,7 +1010,7 @@ const speak = useCallback((text: string) => {
       }
 
     } catch (err: any) {
-      console.error("[43] handleSend error:", err, 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[43] handleSend error:", err, 'state:', (window as any).conversationState || 'IDLE');
       const errMsg = err?.response?.data?.message || err?.message || String(err);
       setError(errMsg);
 
@@ -1030,24 +1034,24 @@ const speak = useCallback((text: string) => {
   // FIX: ref must capture the latest handleSend *and* the latest transcript
   const handleSendRef = useRef<() => Promise<void>>(handleSend);
   useEffect(() => {
-    console.log("[54] ******** handleSendRef sync effect *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[54] ******** handleSendRef sync effect *******", 'state:', (window as any).conversationState || 'IDLE');
     handleSendRef.current = handleSend;
   });
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    console.log("[55] ******** mount effect: setVisible *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[55] ******** mount effect: setVisible *******", 'state:', (window as any).conversationState || 'IDLE');
     setVisible(true);
   }, []);
 
   useEffect(() => {
-    console.log("[56] ******** mount effect: wake word lifecycle *******", 'state:', (window as any).conversationState || 'IDLE');
+    dlog("[56] ******** mount effect: wake word lifecycle *******", 'state:', (window as any).conversationState || 'IDLE');
     if (wakeStartedRef.current) return;
     wakeStartedRef.current = true;
     startWakeWordListener();
 
     return () => {
-      console.log("[57] ******** unmount cleanup: wake word lifecycle *******", 'state:', (window as any).conversationState || 'IDLE');
+      dlog("[57] ******** unmount cleanup: wake word lifecycle *******", 'state:', (window as any).conversationState || 'IDLE');
       wakeEnabledRef.current = false;
       if (wakeRestartTimerRef.current) clearTimeout(wakeRestartTimerRef.current);
       try { wakeRecognitionRef.current?.stop(); } catch { }

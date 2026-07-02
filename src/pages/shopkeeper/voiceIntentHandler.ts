@@ -2,6 +2,9 @@ import api from '../../services/api';
 import i18n from '../../i18n/config';
 import { getTotalItemQuantity } from './productUtils';
 
+
+const DEBUG = false; // set true only when debugging
+const dlog = (...args: any[]) => { if (DEBUG) console.log(...args); };
 // ─── Timeout Constants ───────────────────────────────────────────────────────
 const TIMEOUT_PAYMENT_RECEIPT_DELAY_MS  = 2000; // Wait for payment to process before receipt prompt
 const TIMEOUT_BILL_ID_POLL_INTERVAL_MS  = 300;  // Interval between billId existence checks
@@ -111,7 +114,7 @@ function isNegative(text: string): boolean {
 
 export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps) {
   try {
-    console.log('voiceIntentHandler received payload:', payload);
+    dlog('voiceIntentHandler received payload:', payload);
 
     try {
       if (typeof payload?.text === 'string') {
@@ -590,7 +593,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
           productSku: payload.productSku || null
         };
 
-        console.log("Calling inventory search API with payload:", inventorySearchPayload);
+        dlog("Calling inventory search API with payload:", inventorySearchPayload);
         const resp = await api.post('/inventory/search', inventorySearchPayload);
         const json = resp.data;
 
@@ -758,7 +761,7 @@ export async function handleVoiceIntent(payload: IntentPayload, deps: VoiceDeps)
         if (deps.addCartItems) {
           deps.addCartItems(cartItems);
 
-          console.log("========targetProductSource======", targetProductSource);
+          dlog("========targetProductSource======", targetProductSource);
          
           const { quantity, unit } = getTotalItemQuantity(targetProductSource?.isLoose ?? false,finalCartQty,targetProductSource);
           alert(`Added ${quantity}${unit ? ` ${unit}` : ""} of ${product.productName || productName} to the cart.`);  
